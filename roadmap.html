@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>교리교육 시스템 개발 로드맵 | PL교회</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --primary-light: #3b82f6;
+            --primary-dark: #1e40af;
+            --secondary: #7c3aed;
+            --accent: #10b981;
+            --warning: #f59e0b;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+            background: linear-gradient(to bottom, #f9fafb 0%, #ffffff 100%);
+            color: var(--gray-800);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .page-wrapper {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* 헤더 */
+        .header {
+            text-align: center;
+            padding: 60px 20px 40px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            margin-bottom: 40px;
+            animation: fadeInDown 0.6s ease;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header-logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .logo-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2em;
+            color: white;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        .header h1 {
+            font-size: 2.8em;
+            color: var(--gray-900);
+            font-weight: 700;
+            margin-bottom: 15px;
+            letter-spacing: -0.5px;
+        }
+
+        .header-subtitle {
+            font-size: 1.2em;
+            color: var(--gray-600);
+            margin-bottom: 30px;
+        }
+
+        .header-meta {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            flex-wrap: wrap;
+            padding-top: 30px;
+            border-top: 2px solid var(--gray-100);
+        }
+
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .meta-label {
+            font-size: 0.9em;
+            color: var(--gray-500);
+            margin-bottom: 5px;
+        }
+
+        .meta-value {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* 프로젝트 개요 */
+        .overview-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 50px;
+            animation: fadeIn 0.6s ease 0.2s both;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .overview-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            border-left: 4px solid;
+            transition: all 0.3s ease;
+        }
+
+        .overview-card:hover {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transform: translateY(-5px);
+        }
+
+        .overview-card.current { border-color: var(--accent); }
+        .overview-card.goal { border-color: var(--primary); }
+        .overview-card.timeline { border-color: var(--secondary); }
+
+        .overview-card h3 {
+            font-size: 1.3em;
+            color: var(--gray-800);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .overview-card-icon {
+            font-size: 1.5em;
+        }
+
+        .overview-card p {
+            color: var(--gray-600);
+            line-height: 1.8;
+        }
+
+        .overview-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .overview-list li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+            color: var(--gray-700);
+        }
+
+        .overview-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+            font-weight: bold;
+        }
+
+        /* 로드맵 타임라인 */
+        .roadmap-section {
+            margin: 60px 0;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 50px;
+            animation: fadeIn 0.6s ease 0.4s both;
+        }
+
+        .section-header h2 {
+            font-size: 2.3em;
+            color: var(--gray-900);
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .section-header p {
+            font-size: 1.1em;
+            color: var(--gray-600);
+        }
+
+        /* 타임라인 */
+        .timeline {
+            position: relative;
+            padding: 40px 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(to bottom, var(--primary), var(--secondary));
+            transform: translateX(-50%);
+        }
+
+        .timeline-item {
+            display: flex;
+            justify-content: flex-end;
+            padding-right: 50%;
+            position: relative;
+            margin-bottom: 60px;
+            animation: slideInLeft 0.6s ease both;
+        }
+
+        .timeline-item:nth-child(even) {
+            justify-content: flex-start;
+            padding-right: 0;
+            padding-left: 50%;
+            animation: slideInRight 0.6s ease both;
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .timeline-item:nth-child(1) { animation-delay: 0.5s; }
+        .timeline-item:nth-child(2) { animation-delay: 0.6s; }
+        .timeline-item:nth-child(3) { animation-delay: 0.7s; }
+        .timeline-item:nth-child(4) { animation-delay: 0.8s; }
+        .timeline-item:nth-child(5) { animation-delay: 0.9s; }
+
+        .timeline-marker {
+            position: absolute;
+            left: 50%;
+            top: 30px;
+            width: 24px;
+            height: 24px;
+            background: white;
+            border: 4px solid var(--primary);
+            border-radius: 50%;
+            transform: translateX(-50%);
+            z-index: 2;
+            box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.1);
+        }
+
+        .timeline-item.completed .timeline-marker {
+            background: var(--accent);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.1);
+        }
+
+        .timeline-item.in-progress .timeline-marker {
+            background: var(--warning);
+            border-color: var(--warning);
+            box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.1);
+            animation: pulse 2s ease infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.1);
+            }
+            50% {
+                box-shadow: 0 0 0 12px rgba(245, 158, 11, 0.2);
+            }
+        }
+
+        .timeline-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            width: calc(100% - 80px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .timeline-content:hover {
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+            border-color: var(--primary);
+            transform: scale(1.02);
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .timeline-title {
+            font-size: 1.6em;
+            color: var(--gray-900);
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .phase-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-in-progress {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-planned {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-future {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .timeline-meta {
+            display: flex;
+            gap: 25px;
+            margin: 20px 0;
+            padding: 15px;
+            background: var(--gray-50);
+            border-radius: 10px;
+            flex-wrap: wrap;
+        }
+
+        .timeline-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95em;
+            color: var(--gray-700);
+        }
+
+        .timeline-meta-item strong {
+            color: var(--gray-900);
+        }
+
+        .timeline-body {
+            margin-top: 20px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin: 15px 0;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 15px;
+            background: var(--gray-50);
+            border-radius: 8px;
+            font-size: 0.95em;
+            color: var(--gray-700);
+            transition: all 0.2s ease;
+        }
+
+        .feature-item:hover {
+            background: var(--primary);
+            color: white;
+            transform: translateX(5px);
+        }
+
+        .feature-item::before {
+            content: '→';
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        .feature-item:hover::before {
+            color: white;
+        }
+
+        .tech-stack {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--gray-200);
+        }
+
+        .tech-stack h4 {
+            font-size: 1em;
+            color: var(--gray-700);
+            margin-bottom: 15px;
+        }
+
+        .tech-details {
+            display: grid;
+            gap: 12px;
+        }
+
+        .tech-item {
+            display: flex;
+            gap: 15px;
+            padding: 15px;
+            background: var(--gray-50);
+            border-radius: 10px;
+            border-left: 3px solid var(--primary);
+            transition: all 0.3s ease;
+        }
+
+        .tech-item:hover {
+            background: #f0f7ff;
+            border-left-width: 5px;
+            transform: translateX(5px);
+        }
+
+        .tech-icon {
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .tech-content {
+            flex: 1;
+        }
+
+        .tech-name {
+            font-weight: 600;
+            color: var(--gray-900);
+            margin-bottom: 4px;
+            font-size: 0.95em;
+        }
+
+        .tech-purpose {
+            color: var(--gray-600);
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        .tech-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tech-badge {
+            padding: 6px 14px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+
+        /* 확장 계획 */
+        .expansion-section {
+            margin: 80px 0;
+            animation: fadeIn 0.6s ease 1s both;
+        }
+
+        .expansion-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+        }
+
+        .expansion-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            border-top: 4px solid;
+        }
+
+        .expansion-card:nth-child(1) { border-color: #3b82f6; }
+        .expansion-card:nth-child(2) { border-color: #8b5cf6; }
+        .expansion-card:nth-child(3) { border-color: #10b981; }
+        .expansion-card:nth-child(4) { border-color: #f59e0b; }
+        .expansion-card:nth-child(5) { border-color: #ef4444; }
+        .expansion-card:nth-child(6) { border-color: #06b6d4; }
+
+        .expansion-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .expansion-card h3 {
+            font-size: 1.4em;
+            color: var(--gray-900);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .expansion-card p {
+            color: var(--gray-600);
+            margin-bottom: 20px;
+            line-height: 1.7;
+        }
+
+        .expansion-card ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .expansion-card li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+            color: var(--gray-700);
+        }
+
+        .expansion-card li::before {
+            content: '▸';
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        /* 액션 플랜 */
+        .action-section {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            border-radius: 20px;
+            padding: 50px;
+            margin: 60px 0;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(37, 99, 235, 0.3);
+            animation: fadeIn 0.6s ease 1.2s both;
+        }
+
+        .action-section h2 {
+            font-size: 2.2em;
+            margin-bottom: 20px;
+        }
+
+        .action-section p {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            opacity: 0.95;
+        }
+
+        .action-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 40px;
+        }
+
+        .action-step {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .action-step:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-5px);
+        }
+
+        .action-step-number {
+            font-size: 2.5em;
+            font-weight: 700;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        .action-step h4 {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+
+        .action-step p {
+            font-size: 0.95em;
+            margin: 0;
+            opacity: 0.9;
+        }
+
+        /* 리소스 섹션 */
+        .resources-section {
+            background: white;
+            border-radius: 20px;
+            padding: 50px;
+            margin: 60px 0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            animation: fadeIn 0.6s ease 1.4s both;
+        }
+
+        .resources-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .resource-card {
+            padding: 25px;
+            background: var(--gray-50);
+            border-radius: 12px;
+            border-left: 4px solid var(--primary);
+        }
+
+        .resource-card h4 {
+            font-size: 1.2em;
+            color: var(--gray-900);
+            margin-bottom: 15px;
+        }
+
+        .resource-card ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .resource-card li {
+            padding: 6px 0;
+            color: var(--gray-700);
+            font-size: 0.95em;
+        }
+
+        /* 푸터 */
+        .footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--gray-600);
+            border-top: 1px solid var(--gray-200);
+            margin-top: 80px;
+        }
+
+        .footer p {
+            margin: 5px 0;
+        }
+
+        .footer strong {
+            color: var(--primary);
+        }
+
+        /* 프린트 스타일 */
+        @media print {
+            body {
+                background: white;
+            }
+
+            .timeline::before {
+                background: var(--gray-300);
+            }
+
+            .timeline-content:hover {
+                transform: none;
+            }
+
+            .action-section {
+                background: var(--gray-100);
+                color: var(--gray-900);
+            }
+
+            @page {
+                margin: 2cm;
+            }
+        }
+
+        /* 반응형 */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .header-meta {
+                gap: 20px;
+            }
+
+            .timeline::before {
+                left: 20px;
+            }
+
+            .timeline-item,
+            .timeline-item:nth-child(even) {
+                padding-left: 60px;
+                padding-right: 0;
+            }
+
+            .timeline-marker {
+                left: 20px;
+            }
+
+            .timeline-content {
+                width: 100%;
+            }
+
+            .action-section {
+                padding: 30px 20px;
+            }
+
+            .resources-section {
+                padding: 30px 20px;
+            }
+        }
+
+        /* 스크롤 애니메이션 */
+        .scroll-fade {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+
+        .scroll-fade.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+        <!-- 헤더 -->
+        <header class="header">
+            <div class="header-logo">
+                <div class="logo-icon">📚</div>
+            </div>
+            <h1>교리교육 시스템 개발 로드맵</h1>
+            <p class="header-subtitle">조배치 검색기에서 종합 관리 시스템으로의 진화</p>
+            
+            <div class="header-meta">
+                <div class="meta-item">
+                    <span class="meta-label">대상 인원</span>
+                    <span class="meta-value">291명</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">개발 기간</span>
+                    <span class="meta-value">4주</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">총 Phase</span>
+                    <span class="meta-value">5단계</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">예산</span>
+                    <span class="meta-value">무료</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 프로젝트 개요 -->
+        <section class="overview-section">
+            <div class="overview-card current">
+                <h3>
+                    <span class="overview-card-icon">✅</span>
+                    현재 상태
+                </h3>
+                <ul class="overview-list">
+                    <li>조배치 검색 시스템 구축 완료</li>
+                    <li>291명 성도 데이터 관리</li>
+                    <li>반응형 웹 디자인 적용</li>
+                    <li>관리자 모드 구현</li>
+                    <li>GitHub Pages 배포 완료</li>
+                </ul>
+            </div>
+
+            <div class="overview-card goal">
+                <h3>
+                    <span class="overview-card-icon">🎯</span>
+                    프로젝트 목표
+                </h3>
+                <ul class="overview-list">
+                    <li>조 변경 실시간 관리 시스템</li>
+                    <li>출석 체크 자동화</li>
+                    <li>과제 제출 및 취합 시스템</li>
+                    <li>통계 및 분석 대시보드</li>
+                    <li>알림 시스템 구축</li>
+                </ul>
+            </div>
+
+            <div class="overview-card timeline">
+                <h3>
+                    <span class="overview-card-icon">⏱️</span>
+                    예상 일정
+                </h3>
+                <ul class="overview-list">
+                    <li>Phase 1: 조 변경 관리 (3-4시간)</li>
+                    <li>Phase 2: 출석 시스템 (4-5시간)</li>
+                    <li>Phase 3: 과제 제출 (5-6시간)</li>
+                    <li>Phase 4: 통계 & 알림 (6-8시간)</li>
+                    <li>총 예상 시간: 18-23시간</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 로드맵 타임라인 -->
+        <section class="roadmap-section">
+            <div class="section-header">
+                <h2>개발 로드맵</h2>
+                <p>단계별 개발 계획 및 세부 사항</p>
+            </div>
+
+            <div class="timeline">
+                <!-- Phase 0 -->
+                <div class="timeline-item completed">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <h3 class="timeline-title">
+                                Phase 0: 조배치 검색기
+                            </h3>
+                            <span class="phase-badge badge-completed">✓ 완료</span>
+                        </div>
+
+                        <div class="timeline-meta">
+                            <div class="timeline-meta-item">
+                                <span>📅</span>
+                                <span>기간: <strong>완료됨</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>📈</span>
+                                <span>난이도: <strong>★★☆☆☆</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>👥</span>
+                                <span>사용자: <strong>291명</strong></span>
+                            </div>
+                        </div>
+
+                        <div class="timeline-body">
+                            <h4 style="color: var(--gray-800); margin-bottom: 15px;">구현 완료 기능</h4>
+                            <div class="feature-grid">
+                                <div class="feature-item">이름 + 전화번호 검색</div>
+                                <div class="feature-item">조/위치 정보 표시</div>
+                                <div class="feature-item">배치도 이미지 표시</div>
+                                <div class="feature-item">다크모드 전환</div>
+                                <div class="feature-item">60세+ 큰 글씨</div>
+                                <div class="feature-item">관리자 로그인</div>
+                                <div class="feature-item">반응형 디자인</div>
+                                <div class="feature-item">이미지 확대 보기</div>
+                            </div>
+
+                            <div class="tech-stack">
+                                <h4>핵심 기술 스택 및 역할</h4>
+                                <div class="tech-details">
+                                    <div class="tech-item">
+                                        <div class="tech-icon">H5</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">HTML5 (Semantic Markup)</div>
+                                            <div class="tech-purpose">검색 폼, 결과 표시, 모달 창 등 UI 구조 설계. SEO 최적화를 위한 시맨틱 태그 활용</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">C3</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">CSS3 (Flexbox & Grid)</div>
+                                            <div class="tech-purpose">반응형 레이아웃 구현 (모바일/태블릿/데스크톱 대응). 다크모드, 애니메이션, 60세 이상 큰 글씨 모드</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">JS</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">JavaScript ES6+ (Vanilla)</div>
+                                            <div class="tech-purpose">291명 데이터 검색 알고리즘 (Array.find), DOM 조작, 이벤트 핸들링, 입력 유효성 검증</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">{ }</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">JSON Data Format</div>
+                                            <div class="tech-purpose">성도 정보 구조화 저장 (name, phone, team, location, mapImage). 빠른 파싱 및 검색</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">GH</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">GitHub Pages (Static Hosting)</div>
+                                            <div class="tech-purpose">무료 호스팅, 자동 배포 (Git Push 시), HTTPS 자동 적용, CDN을 통한 빠른 로딩</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Phase 1 -->
+                <div class="timeline-item in-progress">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <h3 class="timeline-title">
+                                Phase 1: 조 변경 관리 시스템
+                            </h3>
+                            <span class="phase-badge badge-in-progress">▶ 진행 예정</span>
+                        </div>
+
+                        <div class="timeline-meta">
+                            <div class="timeline-meta-item">
+                                <span>📅</span>
+                                <span>기간: <strong>1주 (3-4시간)</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>📈</span>
+                                <span>난이도: <strong>★★★☆☆</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>💰</span>
+                                <span>비용: <strong>무료</strong></span>
+                            </div>
+                        </div>
+
+                        <div class="timeline-body">
+                            <h4 style="color: var(--gray-800); margin-bottom: 15px;">주요 기능</h4>
+                            <div class="feature-grid">
+                                <div class="feature-item">실시간 조 변경</div>
+                                <div class="feature-item">드래그 앤 드롭</div>
+                                <div class="feature-item">변경 이력 저장</div>
+                                <div class="feature-item">조 인원 자동 계산</div>
+                                <div class="feature-item">데이터 동기화</div>
+                                <div class="feature-item">충돌 방지</div>
+                            </div>
+
+                            <div class="tech-stack">
+                                <h4>추가 기술 스택 및 구현 목표</h4>
+                                <div class="tech-details">
+                                    <div class="tech-item">
+                                        <div class="tech-icon">SB</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Supabase (Backend as a Service)</div>
+                                            <div class="tech-purpose">실시간 데이터베이스 호스팅, 자동 REST API 생성, 변경 사항 실시간 구독(Realtime Subscribe). 무료 플랜으로 500MB DB 사용</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">PG</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">PostgreSQL 14+</div>
+                                            <div class="tech-purpose">291명 성도 데이터 저장, 조 변경 이력 추적, 트랜잭션 보장. JSON 필드로 유연한 데이터 구조 지원</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">API</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">REST API (CRUD Operations)</div>
+                                            <div class="tech-purpose">조 변경 요청(PUT), 데이터 조회(GET), 이력 저장(POST). HTTP 상태 코드로 명확한 에러 핸들링</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">⚡</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Async/Await (비동기 처리)</div>
+                                            <div class="tech-purpose">네트워크 요청 중 UI 블로킹 방지, 에러 핸들링(try-catch), 로딩 상태 표시. 사용자 경험 개선</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">🔄</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Realtime Subscription</div>
+                                            <div class="tech-purpose">관리자가 조 변경 시 다른 관리자 화면 자동 업데이트. WebSocket 기반 실시간 동기화</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Phase 2 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <h3 class="timeline-title">
+                                Phase 2: 출석 체크 시스템
+                            </h3>
+                            <span class="phase-badge badge-planned">📅 계획됨</span>
+                        </div>
+
+                        <div class="timeline-meta">
+                            <div class="timeline-meta-item">
+                                <span>📅</span>
+                                <span>기간: <strong>2주 (4-5시간)</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>📈</span>
+                                <span>난이도: <strong>★★★★☆</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>🎯</span>
+                                <span>우선순위: <strong>높음</strong></span>
+                            </div>
+                        </div>
+
+                        <div class="timeline-body">
+                            <h4 style="color: var(--gray-800); margin-bottom: 15px;">주요 기능</h4>
+                            <div class="feature-grid">
+                                <div class="feature-item">QR 코드 출석</div>
+                                <div class="feature-item">수동 출석 입력</div>
+                                <div class="feature-item">실시간 출석 현황</div>
+                                <div class="feature-item">조별 출석률</div>
+                                <div class="feature-item">결석자 알림</div>
+                                <div class="feature-item">출석 히스토리</div>
+                                <div class="feature-item">통계 차트</div>
+                                <div class="feature-item">엑셀 내보내기</div>
+                            </div>
+
+                            <div class="tech-stack">
+                                <h4>추가 기술 스택 및 구현 목표</h4>
+                                <div class="tech-details">
+                                    <div class="tech-item">
+                                        <div class="tech-icon">QR</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">QRCode.js (QR 코드 생성/스캔)</div>
+                                            <div class="tech-purpose">조별 고유 QR 코드 생성, 스마트폰 카메라로 스캔하여 자동 출석 처리. 오프라인 환경 대비 수동 입력 병행</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📷</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">MediaDevices API (카메라 액세스)</div>
+                                            <div class="tech-purpose">getUserMedia()로 기기 카메라 접근, QR 코드 실시간 스캔. 권한 요청 및 에러 핸들링</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📊</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Chart.js 4.0 (데이터 시각화)</div>
+                                            <div class="tech-purpose">주차별 출석률 라인 차트, 조별 출석률 막대 그래프, 실시간 업데이트. 색상 코딩으로 직관적 파악</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">🔴</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Supabase Realtime (실시간 구독)</div>
+                                            <div class="tech-purpose">출석 체크 즉시 관리자 대시보드 업데이트, PostgreSQL 변경 사항 자동 감지. 다중 관리자 환경 지원</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📅</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Date/Time API (시간 관리)</div>
+                                            <div class="tech-purpose">출석 시간 기록(timestamp), 지각 판단(시작 시간 +15분), 주차 자동 계산. Timezone 고려</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Phase 3 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <h3 class="timeline-title">
+                                Phase 3: 과제 제출 시스템
+                            </h3>
+                            <span class="phase-badge badge-planned">📅 계획됨</span>
+                        </div>
+
+                        <div class="timeline-meta">
+                            <div class="timeline-meta-item">
+                                <span>📅</span>
+                                <span>기간: <strong>2-3주 (5-6시간)</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>📈</span>
+                                <span>난이도: <strong>★★★★☆</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>📦</span>
+                                <span>용량: <strong>2GB 무료</strong></span>
+                            </div>
+                        </div>
+
+                        <div class="timeline-body">
+                            <h4 style="color: var(--gray-800); margin-bottom: 15px;">주요 기능</h4>
+                            <div class="feature-grid">
+                                <div class="feature-item">파일 업로드</div>
+                                <div class="feature-item">제출 현황 대시보드</div>
+                                <div class="feature-item">미제출자 확인</div>
+                                <div class="feature-item">일괄 다운로드</div>
+                                <div class="feature-item">제출 기한 관리</div>
+                                <div class="feature-item">파일 형식 검증</div>
+                                <div class="feature-item">진행률 표시</div>
+                                <div class="feature-item">평가 시스템</div>
+                            </div>
+
+                            <div class="tech-stack">
+                                <h4>추가 기술 스택 및 구현 목표</h4>
+                                <div class="tech-details">
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📁</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">File API & FormData (파일 처리)</div>
+                                            <div class="tech-purpose">브라우저에서 파일 선택, 크기/형식 검증(PDF/DOCX/HWP/JPG/PNG), Base64 인코딩. 10MB 크기 제한</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">💾</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Supabase Storage (파일 저장소)</div>
+                                            <div class="tech-purpose">주차별/조별 폴더 자동 생성, 파일명 충돌 방지(UUID), 2GB 무료 저장소. 파일 URL 자동 생성 및 다운로드 링크 제공</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📦</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">JSZip 3.10 (파일 압축)</div>
+                                            <div class="tech-purpose">조별 과제 일괄 다운로드 시 ZIP 압축, 브라우저 내 압축 처리로 서버 부하 감소. 파일명 한글 깨짐 방지</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📈</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Upload Progress Event (진행률)</div>
+                                            <div class="tech-purpose">XMLHttpRequest.upload.onprogress로 실시간 업로드 진행률 표시. 대용량 파일 업로드 중 사용자 이탈 방지</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">🔍</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">MIME Type Validation (파일 검증)</div>
+                                            <div class="tech-purpose">파일 확장자 위조 방지, 실제 파일 타입 검사. 악성 파일 업로드 차단. 허용 형식: application/pdf, image/*, .docx, .hwp</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Phase 4 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <h3 class="timeline-title">
+                                Phase 4: 통계 & 알림 시스템
+                            </h3>
+                            <span class="phase-badge badge-future">🔮 향후</span>
+                        </div>
+
+                        <div class="timeline-meta">
+                            <div class="timeline-meta-item">
+                                <span>📅</span>
+                                <span>기간: <strong>3-4주 (6-8시간)</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>📈</span>
+                                <span>난이도: <strong>★★★★★</strong></span>
+                            </div>
+                            <div class="timeline-meta-item">
+                                <span>🎯</span>
+                                <span>우선순위: <strong>중간</strong></span>
+                            </div>
+                        </div>
+
+                        <div class="timeline-body">
+                            <h4 style="color: var(--gray-800); margin-bottom: 15px;">주요 기능</h4>
+                            <div class="feature-grid">
+                                <div class="feature-item">통합 대시보드</div>
+                                <div class="feature-item">출석/과제 통계</div>
+                                <div class="feature-item">조별 분석</div>
+                                <div class="feature-item">이메일 알림</div>
+                                <div class="feature-item">카카오톡 알림</div>
+                                <div class="feature-item">자동 리포트</div>
+                                <div class="feature-item">데이터 시각화</div>
+                                <div class="feature-item">PDF 생성</div>
+                            </div>
+
+                            <div class="tech-stack">
+                                <h4>추가 기술 스택 및 구현 목표</h4>
+                                <div class="tech-details">
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📊</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">D3.js / Chart.js (고급 시각화)</div>
+                                            <div class="tech-purpose">출석률 히트맵, 과제 제출 트렌드 라인, 조별 비교 레이더 차트. 인터랙티브 차트로 드릴다운 분석 가능</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📧</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">SendGrid API / Nodemailer (이메일 발송)</div>
+                                            <div class="tech-purpose">과제 마감 48시간 전 자동 알림, 결석 3회 이상 개별 안내. HTML 템플릿 이메일, 월 100통 무료</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">💬</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Kakao Message API (알림톡)</div>
+                                            <div class="tech-purpose">카카오톡 친구톡으로 즉시 알림 전송, 템플릿 기반 메시지. 이메일보다 높은 확인율(95%+)</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">⏰</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">Supabase Edge Functions + Cron (스케줄링)</div>
+                                            <div class="tech-purpose">매주 월요일 08:00 자동 리포트 발송, 매일 23:00 미제출자 체크. PostgreSQL pg_cron 활용</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📄</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">jsPDF + html2canvas (PDF 생성)</div>
+                                            <div class="tech-purpose">주간 출석/과제 리포트 PDF 자동 생성, 차트 이미지 포함. 상부 보고용 문서 자동화</div>
+                                        </div>
+                                    </div>
+                                    <div class="tech-item">
+                                        <div class="tech-icon">📊</div>
+                                        <div class="tech-content">
+                                            <div class="tech-name">SQL Aggregation & Analytics</div>
+                                            <div class="tech-purpose">GROUP BY로 조별 통계, WINDOW 함수로 트렌드 분석, JOIN으로 출석-과제 상관관계. 효율적인 데이터 집계</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 확장 계획 -->
+        <section class="expansion-section">
+            <div class="section-header">
+                <h2>미래 확장 계획</h2>
+                <p>시스템 완성 후 확장 가능한 방향성</p>
+            </div>
+
+            <div class="expansion-grid">
+                <div class="expansion-card">
+                    <h3>🏢 타 교회 확장</h3>
+                    <p>현재 시스템을 SaaS 모델로 전환하여 다른 교회에서도 사용 가능하도록 확장</p>
+                    <ul>
+                        <li>멀티 테넌트 아키텍처</li>
+                        <li>교회별 데이터 분리</li>
+                        <li>커스터마이징 옵션</li>
+                        <li>월 구독 모델</li>
+                    </ul>
+                </div>
+
+                <div class="expansion-card">
+                    <h3>🤖 AI 기반 기능</h3>
+                    <p>인공지능을 활용한 스마트 관리 시스템으로 발전</p>
+                    <ul>
+                        <li>과제 자동 평가 (GPT-4)</li>
+                        <li>최적 조 편성 추천</li>
+                        <li>출석 패턴 분석</li>
+                        <li>이탈 위험 예측</li>
+                    </ul>
+                </div>
+
+                <div class="expansion-card">
+                    <h3>📱 모바일 앱</h3>
+                    <p>네이티브 앱으로 더 나은 사용자 경험 제공</p>
+                    <ul>
+                        <li>React Native 개발</li>
+                        <li>푸시 알림</li>
+                        <li>오프라인 모드</li>
+                        <li>앱스토어 배포</li>
+                    </ul>
+                </div>
+
+                <div class="expansion-card">
+                    <h3>💬 커뮤니티 기능</h3>
+                    <p>조원 간 소통을 위한 커뮤니티 플랫폼</p>
+                    <ul>
+                        <li>조별 게시판</li>
+                        <li>실시간 채팅</li>
+                        <li>기도 제목 공유</li>
+                        <li>사진 앨범</li>
+                    </ul>
+                </div>
+
+                <div class="expansion-card">
+                    <h3>🎓 다른 프로그램</h3>
+                    <p>교리교육 외 다른 교육 프로그램에도 적용</p>
+                    <ul>
+                        <li>새가족반</li>
+                        <li>리더십 스쿨</li>
+                        <li>제자훈련</li>
+                        <li>주일학교</li>
+                    </ul>
+                </div>
+
+                <div class="expansion-card">
+                    <h3>🌐 통합 시스템</h3>
+                    <p>교회 전체 시스템과의 통합</p>
+                    <ul>
+                        <li>주일학교 관리</li>
+                        <li>헌금 관리</li>
+                        <li>목장/구역 관리</li>
+                        <li>통합 대시보드</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 액션 플랜 -->
+        <section class="action-section">
+            <h2>다음 단계 액션 플랜</h2>
+            <p>즉시 시작할 수 있는 구체적인 실행 계획</p>
+
+            <div class="action-steps">
+                <div class="action-step">
+                    <div class="action-step-number">1</div>
+                    <h4>Supabase 설정</h4>
+                    <p>무료 계정 생성 및 프로젝트 초기화 (30분)</p>
+                </div>
+
+                <div class="action-step">
+                    <div class="action-step-number">2</div>
+                    <h4>DB 마이그레이션</h4>
+                    <p>data.json을 PostgreSQL로 이동 (1시간)</p>
+                </div>
+
+                <div class="action-step">
+                    <div class="action-step-number">3</div>
+                    <h4>조 변경 UI</h4>
+                    <p>관리자 페이지에 변경 기능 추가 (2시간)</p>
+                </div>
+
+                <div class="action-step">
+                    <div class="action-step-number">4</div>
+                    <h4>테스트 및 배포</h4>
+                    <p>기능 테스트 및 프로덕션 배포 (1시간)</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 리소스 -->
+        <section class="resources-section">
+            <div class="section-header">
+                <h2>필요 리소스 및 학습 자료</h2>
+                <p>프로젝트 진행에 필요한 자원과 학습 경로</p>
+            </div>
+
+            <div class="resources-grid">
+                <div class="resource-card">
+                    <h4>🛠️ 기술 스택</h4>
+                    <ul>
+                        <li>프론트엔드: HTML, CSS, JavaScript</li>
+                        <li>백엔드: Supabase (BaaS)</li>
+                        <li>데이터베이스: PostgreSQL</li>
+                        <li>스토리지: Supabase Storage</li>
+                        <li>배포: GitHub Pages / Vercel</li>
+                    </ul>
+                </div>
+
+                <div class="resource-card">
+                    <h4>💰 예산 (무료)</h4>
+                    <ul>
+                        <li>Supabase: 무료 플랜 (500MB DB)</li>
+                        <li>Storage: 1GB 무료</li>
+                        <li>API 요청: 50,000/월 무료</li>
+                        <li>배포: GitHub Pages 무료</li>
+                        <li>총 비용: ₩0</li>
+                    </ul>
+                </div>
+
+                <div class="resource-card">
+                    <h4>📚 학습 자료</h4>
+                    <ul>
+                        <li>JavaScript 기초: MDN Web Docs</li>
+                        <li>Supabase 튜토리얼: 공식 문서</li>
+                        <li>PostgreSQL: W3Schools</li>
+                        <li>API 통신: Fetch API Guide</li>
+                        <li>예상 학습 시간: 10-15시간</li>
+                    </ul>
+                </div>
+
+                <div class="resource-card">
+                    <h4>👥 팀 구성</h4>
+                    <ul>
+                        <li>개발자: 1명 (본인)</li>
+                        <li>디자이너: 필요 시</li>
+                        <li>테스터: 교역자 2-3명</li>
+                        <li>관리자: 교리교육 담당자</li>
+                        <li>협업 도구: GitHub, Notion</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 푸터 -->
+        <footer class="footer">
+            <p><strong>PL교회 교리교육 시스템 개발 로드맵</strong></p>
+            <p>작성일: 2025년 11월 | 문의: 교리교육 담당자</p>
+            <p style="margin-top: 20px; color: var(--gray-500);">
+                본 문서는 교리교육 시스템의 단계별 개발 계획을 담고 있습니다.
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // 스크롤 애니메이션
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.scroll-fade').forEach(el => {
+            observer.observe(el);
+        });
+
+        // 프린트 기능
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'p') {
+                window.print();
+            }
+        });
+    </script>
+</body>
+</html>

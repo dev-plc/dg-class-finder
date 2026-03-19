@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PL교회 교리교육 조배치 검색</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        <header class="header">
+            <!-- 우측 상단 버튼들 -->
+            <div class="header-buttons">
+                <button class="icon-btn" id="adminBtn" aria-label="관리자 모드" title="관리자 모드">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                </button>
+                <div class="theme-toggle-wrapper">
+                    <svg class="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <button class="theme-toggle" id="themeToggle" aria-label="테마 전환">
+                        <div class="toggle-track">
+                            <div class="toggle-thumb"></div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="logo-container">
+                <div class="logo-text">PLC</div>
+                <div class="logo-subtitle">PRACTICAL LEADERSHIP CHURCH</div>
+            </div>
+            <h1 class="title">교리교육 조배치 검색</h1>
+            <p class="subtitle">이름과 전화번호 뒷 4자리를 입력해주세요</p>
+        </header>
+
+        <!-- 검색 폼 -->
+        <div class="search-box">
+            <div class="input-group">
+                <label for="name">이름</label>
+                <input 
+                    type="text" 
+                    id="name" 
+                    placeholder="홍길동"
+                    autocomplete="off"
+                >
+            </div>
+            
+            <div class="input-group">
+                <label for="phone">전화번호 뒷 4자리</label>
+                <input 
+                    type="tel" 
+                    id="phone" 
+                    placeholder="1234"
+                    maxlength="4"
+                    pattern="[0-9]{4}"
+                    autocomplete="off"
+                >
+            </div>
+
+            <button class="search-btn" id="searchBtn">
+                <span class="btn-text">조 확인하기</span>
+            </button>
+        </div>
+
+        <!-- 결과 표시 영역 -->
+        <div class="result-container" id="resultContainer" style="display: none;">
+            <div class="result-card">
+                <div class="result-header">
+                    <h2 class="result-title">배치 정보</h2>
+                    <button class="close-btn" id="closeBtn">✕</button>
+                </div>
+                
+                <div class="result-content">
+                    <div class="info-row">
+                        <span class="info-label">이름</span>
+                        <span class="info-value" id="resultName">-</span>
+                    </div>
+                    
+                    <div class="info-row">
+                        <span class="info-label">조</span>
+                        <span class="info-value highlight" id="resultTeam">-</span>
+                    </div>
+                    
+                    <div class="info-row">
+                        <span class="info-label">위치</span>
+                        <span class="info-value" id="resultLocation">-</span>
+                    </div>
+                </div>
+
+                <!-- 배치도 이미지 -->
+                <div class="map-container" id="mapContainer" style="display: none;">
+                    <h3 class="map-title">조 배치도</h3>
+                    <img id="mapImage" src="" alt="조 배치도" class="map-image">
+                </div>
+            </div>
+        </div>
+
+        <!-- 에러 메시지 -->
+        <div class="error-message" id="errorMessage" style="display: none;">
+            <span class="error-icon">⚠</span>
+            <span class="error-text" id="errorText"></span>
+        </div>
+
+        <!-- 푸터 -->
+        <footer class="footer">
+            <p class="footer-title">PL교회 12주 교리교육</p>
+            <div class="footer-buttons">
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSex87UOQx7C9-9H1MJtrY-rLfNh_wfQWVVQ66-1XnY6YJ2M9A/viewform" target="_blank" class="footer-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                        <polyline points="22,6 12,13 2,6"></polyline>
+                    </svg>
+                    문의
+                </a>
+                <span class="footer-divider">|</span>
+                <a href="https://docs.google.com/forms/d/e/1FAIpQLSex87UOQx7C9-9H1MJtrY-rLfNh_wfQWVVQ66-1XnY6YJ2M9A/viewform" target="_blank" class="footer-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    오류 신고
+                </a>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 이미지 전체화면 모달 -->
+    <div class="image-modal" id="imageModal">
+        <button class="image-modal-close" id="modalClose">✕</button>
+        <img id="modalImage" src="" alt="배치도 확대">
+        <div class="image-modal-hint">클릭하거나 ESC를 눌러 닫기</div>
+    </div>
+
+    <!-- 관리자 로그인 모달 -->
+    <div class="admin-login-modal" id="adminLoginModal">
+        <div class="admin-login-content">
+            <div class="admin-login-header">
+                <h2>관리자 로그인</h2>
+                <button class="admin-login-close" id="adminLoginClose">✕</button>
+            </div>
+            <form class="admin-login-form" id="adminLoginForm">
+                <div class="input-group">
+                    <label for="adminId">아이디</label>
+                    <input type="text" id="adminId" autocomplete="username" required>
+                </div>
+                <div class="input-group">
+                    <label for="adminPassword">비밀번호</label>
+                    <input type="password" id="adminPassword" autocomplete="current-password" required>
+                </div>
+                <button type="submit" class="admin-login-btn">로그인</button>
+                <div class="admin-login-error" id="adminLoginError" style="display: none;"></div>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+
+    <!-- 휴강 공지 모달 (필요시 아래 주석을 해제하세요) -->
+    <!--
+    <div id="breakNoticeModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000; animation: fadeIn 0.3s ease;">
+        <div style="background: white; border-radius: 20px; padding: 40px; max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.3); animation: slideUp 0.4s ease;">
+            <div style="text-align: center;">
+                <div style="font-size: 60px; margin-bottom: 20px;">📢</div>
+                <h2 style="font-size: 28px; color: #333; margin-bottom: 15px; font-weight: 700;">교리교육 휴강 안내</h2>
+                <div style="background: #f0f7ff; padding: 25px; border-radius: 12px; margin: 25px 0;">
+                    <p style="font-size: 18px; color: #1e40af; font-weight: 600; margin-bottom: 10px;">12월 28일 (토)</p>
+                    <p style="font-size: 16px; color: #555; line-height: 1.6;">연말 행사로 인해<br>이번 주 교리교육은 휴강합니다</p>
+                </div>
+                <p style="font-size: 14px; color: #666; margin-bottom: 25px;">다음 주에 뵙겠습니다 🙏</p>
+                <button onclick="closeBreakNotice()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 40px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+                    확인
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { 
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to { 
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        #breakNoticeModal button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+    </style>
+
+    <script>
+        function closeBreakNotice() {
+            document.getElementById('breakNoticeModal').style.display = 'none';
+        }
+        
+        // ESC 키로도 닫을 수 있게
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeBreakNotice();
+            }
+        });
+    </script>
+    -->
+</body>
+</html>

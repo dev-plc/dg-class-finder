@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PL교회 교리교육 종료 안내</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', '맑은 고딕', sans-serif;
+            background: linear-gradient(135deg, #F5F1E8 0%, #EDE6D6 100%);
+            min-height: 100vh;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            animation: fadeIn 1s ease;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            font-size: clamp(48px, 10vw, 72px);
+            font-weight: 700;
+            color: #1B3B6F;
+            margin-bottom: 12px;
+            letter-spacing: 4px;
+        }
+
+        .church-name {
+            font-size: clamp(12px, 2vw, 15px);
+            color: #2C4875;
+            letter-spacing: clamp(2px, 1vw, 5px);
+            margin-bottom: clamp(30px, 8vh, 60px);
+            opacity: 0.8;
+            font-weight: 500;
+        }
+
+        .content-box {
+            background: white;
+            padding: clamp(40px, 8vw, 70px) clamp(20px, 5vw, 40px);
+            border-radius: 24px;
+            box-shadow: 0 15px 45px rgba(27, 59, 111, 0.12);
+            animation: float 4s ease-in-out infinite;
+            width: 100%;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .title {
+            font-size: clamp(24px, 5.5vw, 42px);
+            font-weight: 800;
+            color: #1B3B6F;
+            margin-bottom: clamp(30px, 6vw, 45px);
+            letter-spacing: -0.5px;
+            word-break: keep-all;
+        }
+
+        .message {
+            font-size: clamp(16px, 3.5vw, 22px);
+            color: #4B5563;
+            line-height: 1.6;
+            font-weight: 500;
+            margin-bottom: clamp(30px, 6vw, 45px);
+            word-break: keep-all;
+        }
+
+        .thanks {
+            font-size: clamp(18px, 4vw, 24px);
+            color: #1B3B6F;
+            line-height: 1.6;
+            font-weight: 700;
+            word-break: keep-all;
+        }
+
+        /* 반응형 미세 조정 */
+        @media (max-width: 480px) {
+            .content-box {
+                padding: 45px 20px;
+            }
+
+            .logo {
+                letter-spacing: 2px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="logo">PLC</div>
+        <div class="church-name">PRACTICAL LEADERSHIP CHURCH</div>
+
+        <div class="content-box">
+            <h1 class="title">교리교육이 종료되었습니다</h1>
+
+            <p class="message">12주 간의 교리교육이 모두 마무리되었습니다</p>
+
+            <p class="thanks">함께 해주신 모든 분들께 감사드립니다 ❤️</p>
+        </div>
+    </div>
+</body>
+
+</html>

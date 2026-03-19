@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>주문 상태 - PL Cafe</title>
+    <link rel="stylesheet" href="styles/order-status.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        <header class="header">
+            <h1 class="cafe-name">☕ PL Cafe</h1>
+            <p class="cafe-subtitle">주문 상태 확인</p>
+        </header>
+
+        <!-- 주문 정보 -->
+        <section class="order-info-section">
+            <div class="order-number">
+                <span class="label">주문 번호</span>
+                <span class="value" id="orderNumber">-</span>
+            </div>
+            <div class="customer-name">
+                <span id="customerName">-</span>님의 주문
+            </div>
+        </section>
+
+        <!-- 주문 상태 -->
+        <section class="status-section">
+            <div class="status-timeline">
+                <div class="status-step" id="step-pending">
+                    <div class="status-icon">⏳</div>
+                    <div class="status-label">대기중</div>
+                </div>
+                <div class="status-connector"></div>
+                <div class="status-step" id="step-preparing">
+                    <div class="status-icon">👨‍🍳</div>
+                    <div class="status-label">제조중</div>
+                </div>
+                <div class="status-connector"></div>
+                <div class="status-step" id="step-completed">
+                    <div class="status-icon">✅</div>
+                    <div class="status-label">완료</div>
+                </div>
+            </div>
+            
+            <div class="status-message" id="statusMessage">
+                주문이 접수되었습니다. 잠시만 기다려주세요!
+            </div>
+        </section>
+
+        <!-- 주문 내역 -->
+        <section class="order-items-section">
+            <h2 class="section-title">📋 주문 내역</h2>
+            <div id="orderItems" class="order-items-list">
+                <!-- 동적으로 추가됨 -->
+            </div>
+        </section>
+
+        <!-- 피드백 섹션 (완료 후 표시) -->
+        <section class="feedback-section" id="feedbackSection" style="display: none;">
+            <h2 class="section-title">⭐ 만족도를 알려주세요!</h2>
+            <div class="feedback-form">
+                <div class="rating-group">
+                    <div class="stars" id="starRating">
+                        <span class="star" data-rating="1">☆</span>
+                        <span class="star" data-rating="2">☆</span>
+                        <span class="star" data-rating="3">☆</span>
+                        <span class="star" data-rating="4">☆</span>
+                        <span class="star" data-rating="5">☆</span>
+                    </div>
+                </div>
+                <div class="comment-group">
+                    <textarea id="feedbackComment" placeholder="맛이나 서비스에 대한 의견을 남겨주세요 (선택사항)" rows="4"></textarea>
+                </div>
+                <button class="btn-feedback" id="btnSubmitFeedback">피드백 제출하기</button>
+            </div>
+        </section>
+
+        <!-- 완료 후 홈으로 -->
+        <div class="home-link">
+            <a href="index.html">🏠 처음으로 돌아가기</a>
+        </div>
+    </div>
+
+    <script type="module" src="scripts/order-status.js"></script>
+</body>
+</html>

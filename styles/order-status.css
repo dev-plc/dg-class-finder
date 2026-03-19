@@ -1,0 +1,354 @@
+/* 전체 레이아웃 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* 헤더 */
+.header {
+    text-align: center;
+    padding: 30px 20px;
+    background: white;
+    border-radius: 30px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+    animation: fadeInDown 0.6s ease;
+}
+
+.cafe-name {
+    font-size: 2.5em;
+    color: #ff6b9d;
+    text-shadow: 2px 2px 4px rgba(255, 107, 157, 0.2);
+    margin-bottom: 10px;
+}
+
+.cafe-subtitle {
+    color: #999;
+    font-size: 1.1em;
+}
+
+/* 주문 정보 */
+.order-info-section {
+    background: white;
+    padding: 25px;
+    border-radius: 20px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    text-align: center;
+    animation: fadeIn 0.6s ease 0.1s both;
+}
+
+.order-number {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.order-number .label {
+    color: #999;
+    font-size: 0.9em;
+}
+
+.order-number .value {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #ff6b9d;
+}
+
+.customer-name {
+    font-size: 1.2em;
+    color: #555;
+}
+
+/* 상태 타임라인 */
+.status-section {
+    background: white;
+    padding: 30px 25px;
+    border-radius: 20px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    animation: fadeIn 0.6s ease 0.2s both;
+}
+
+.status-timeline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 25px;
+}
+
+.status-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+.status-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: #f0f0f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2em;
+    transition: all 0.5s ease;
+}
+
+.status-step.active .status-icon {
+    background: linear-gradient(135deg, #ff6b9d 0%, #ffa6c1 100%);
+    transform: scale(1.1);
+    box-shadow: 0 5px 20px rgba(255, 107, 157, 0.4);
+    animation: pulse 1.5s ease infinite;
+}
+
+.status-step.completed .status-icon {
+    background: #4caf50;
+}
+
+.status-label {
+    font-size: 0.9em;
+    color: #999;
+    font-weight: 600;
+}
+
+.status-step.active .status-label {
+    color: #ff6b9d;
+    font-weight: bold;
+}
+
+.status-step.completed .status-label {
+    color: #4caf50;
+}
+
+.status-connector {
+    flex: 1;
+    height: 3px;
+    background: #f0f0f0;
+    margin: 0 10px;
+    margin-bottom: 30px;
+    transition: all 0.5s ease;
+}
+
+.status-connector.completed {
+    background: linear-gradient(to right, #ff6b9d, #ffa6c1);
+}
+
+.status-message {
+    text-align: center;
+    font-size: 1.1em;
+    color: #555;
+    padding: 20px;
+    background: #fff5f8;
+    border-radius: 12px;
+}
+
+/* 주문 내역 */
+.order-items-section {
+    background: white;
+    padding: 25px;
+    border-radius: 20px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    animation: fadeIn 0.6s ease 0.3s both;
+}
+
+.section-title {
+    font-size: 1.3em;
+    color: #ff6b9d;
+    margin-bottom: 15px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.order-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.order-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: #fff5f8;
+    border-radius: 12px;
+}
+
+.item-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.item-quantity {
+    color: #999;
+}
+
+/* 피드백 섹션 */
+.feedback-section {
+    background: white;
+    padding: 25px;
+    border-radius: 20px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    animation: fadeIn 0.6s ease;
+}
+
+.feedback-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.rating-group {
+    text-align: center;
+}
+
+.stars {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    font-size: 2.5em;
+}
+
+.star {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #ddd;
+}
+
+.star:hover,
+.star.active {
+    color: #ffd700;
+    transform: scale(1.2);
+}
+
+.comment-group textarea {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #ffe0ec;
+    border-radius: 12px;
+    font-size: 1em;
+    font-family: inherit;
+    resize: vertical;
+    transition: all 0.3s ease;
+}
+
+.comment-group textarea:focus {
+    outline: none;
+    border-color: #ff6b9d;
+    box-shadow: 0 0 0 3px rgba(255, 107, 157, 0.1);
+}
+
+.btn-feedback {
+    padding: 15px;
+    background: linear-gradient(135deg, #ff6b9d 0%, #ffc3a0 100%);
+    color: white;
+    border: none;
+    border-radius: 15px;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(255, 107, 157, 0.3);
+}
+
+.btn-feedback:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(255, 107, 157, 0.4);
+}
+
+.btn-feedback:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* 홈 링크 */
+.home-link {
+    text-align: center;
+    margin-top: 20px;
+    animation: fadeIn 0.6s ease 0.4s both;
+}
+
+.home-link a {
+    color: white;
+    text-decoration: none;
+    font-size: 1em;
+    padding: 12px 25px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 20px;
+    display: inline-block;
+    transition: all 0.3s ease;
+}
+
+.home-link a:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+/* 애니메이션 */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1.1);
+    }
+    50% {
+        transform: scale(1.15);
+    }
+}
+
+/* 반응형 */
+@media (max-width: 600px) {
+    .cafe-name {
+        font-size: 2em;
+    }
+    
+    .status-icon {
+        width: 50px;
+        height: 50px;
+        font-size: 1.5em;
+    }
+    
+    .stars {
+        font-size: 2em;
+    }
+}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PL Cafe - 직원 화면</title>
+    <link rel="stylesheet" href="styles/staff.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        <header class="header">
+            <h1 class="cafe-name">👨‍💼 PL Cafe 주문 관리</h1>
+            <p class="cafe-subtitle">실시간 주문 현황</p>
+        </header>
+
+        <!-- 통계 -->
+        <section class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="pendingCount">0</div>
+                <div class="stat-label">대기중</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="preparingCount">0</div>
+                <div class="stat-label">준비중</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="completedCount">0</div>
+                <div class="stat-label">완료</div>
+            </div>
+        </section>
+
+        <!-- 주문 목록 -->
+        <section class="orders-section">
+            <h2 class="section-title">📋 주문 목록</h2>
+            
+            <div class="filter-buttons">
+                <button class="filter-btn active" data-filter="all">전체</button>
+                <button class="filter-btn" data-filter="pending">대기중</button>
+                <button class="filter-btn" data-filter="preparing">준비중</button>
+                <button class="filter-btn" data-filter="completed">완료</button>
+            </div>
+
+            <div id="ordersList" class="orders-list">
+                <p class="empty-orders">주문이 없습니다</p>
+            </div>
+        </section>
+
+        <!-- 고객 화면 링크 -->
+        <div class="customer-link">
+            <a href="index.html">🏠 고객 화면으로</a>
+        </div>
+    </div>
+
+    <script type="module" src="scripts/staff.js"></script>
+</body>
+</html>
+
