@@ -14,8 +14,8 @@ const locationMapImages = {
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbz1tpAmZB0NEHX0TppV-wrq7ud4IG5PmwukVNuZNT5y46tucKpSyRDnfjLosAyno90r2A/exec";
 
 const locationMapImages = {
-    "웨슬리": "https://drive.google.com/thumbnail?authuser=0&sz=w1000&id=1-lINYh9FSFffxWn-G66xCE4mI9wp49mH",
-    "칼빈": "https://drive.google.com/thumbnail?authuser=0&sz=w1000&id=1TKKEIrej8kwfFINw4j1GQRbUUhCgV-DV",
+    "웨슬리": "https://drive.google.com/thumbnail?authuser=0&sz=w1000&id=1arEQNNRYyHbXtNWsU1HtsdRCER86s7GI",
+    "칼빈": "https://drive.google.com/thumbnail?authuser=0&sz=w1000&id=1uEdPmapbCINzD36wrRbgZefdHM4KuSnu",
     "자모영아실": "https://drive.google.com/thumbnail?authuser=0&sz=w1000&id=13EovQWAnk9bT6Jt6wo2KBc-Y2TdlldK2"
 };
 let memberData = [];
