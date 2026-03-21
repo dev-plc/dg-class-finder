@@ -224,16 +224,16 @@ function renderTeamMembers(members, teamName, role) {
         const isChecked = (m.attendance && m.attendance.toUpperCase() === 'O') ? 'checked' : '';
 
         return `
-            <div class="team-member-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 8px; ${borderStyle}">
+            <div class="team-member-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <input type="checkbox" ${isChecked} 
                         style="width: 18px; height: 18px; cursor: pointer;"
                         onclick="toggleAttendanceUI('${m.name}', '${m.phone}', this.checked, this)">
-                    <span style="font-weight: bold; font-size: 15px; color: var(--text-color);">
+                    <span class="member-name">
                         ${m.name}(${m.phone}) ${lunchIcon}
                     </span>
                 </div>
-                <span style="font-size: 11px; color: #666; background: #f0f0f0; padding: 2px 6px; border-radius: 4px;">
+                <span class="member-role-tag">
                     ${m.role || '조원'}
                 </span>
             </div>
