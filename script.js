@@ -11,7 +11,7 @@ const locationMapImages = {
 */
 
 // 발급받은 구글 스크립트 웹앱 URL을 아래에 붙여넣으세요.
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyyk-BXGlQc14jgCP4rOmnrwEBnp7fb6f42r3-WxvizrkZDY-s3KQw6j4FzTulZ7WrAXw/exec";
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbz1tpAmZB0NEHX0TppV-wrq7ud4IG5PmwukVNuZNT5y46tucKpSyRDnfjLosAyno90r2A/exec";
 
 const locationMapImages = {
     "웨슬리": "https://drive.google.com/thumbnail?authuser=0&sz=w1000&id=1-lINYh9FSFffxWn-G66xCE4mI9wp49mH",
