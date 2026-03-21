@@ -159,7 +159,7 @@ function displayResult(member) {
 
     // 튜터 권한 확인 (member.role 인자 추가 전달)
     const isTutor = member.role && (
-        member.role.includes('튜터') || 
+        member.role.includes('조장') || 
         member.role.includes('서브튜터') || 
         member.role.includes('관리자')
     );
@@ -175,7 +175,7 @@ function displayResult(member) {
 // 6. 직책별 우선순위 설정 (숫자가 낮을수록 상단 노출)
 const rolePriority = {
     "관리자": 1,
-    "튜터": 2,
+    "조장": 2,
     "서브튜터": 3,
     "조원": 4,
     "": 4 // 직책이 없는 경우
