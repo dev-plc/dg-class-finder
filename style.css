@@ -851,3 +851,34 @@ body.large-text .map-image {
     background: #444;
     color: #ccc;
 }
+
+/* ✈️ 텔레그램 안내방 버튼 (dg버전 - 조회하기 버튼과 반전된 색상 적용) */
+.telegram-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--white); /* 배경은 밝게 (다크모드에선 어둡게) */
+    color: var(--midnight-blue); /* 글자는 남색 (다크모드에선 밝게) */
+    border: 2px solid var(--midnight-blue); /* 테두리를 남색으로 둘러서 버튼 모양 강조 */
+    padding: 8px 16px;
+    border-radius: 12px;
+    text-decoration: none !important;
+    font-weight: 700;
+    font-size: 14px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    word-break: keep-all;
+}
+
+.telegram-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    background: var(--milk-beige); /* 마우스 오버 시 살짝 배경색 변경 */
+    color: var(--midnight-blue);
+}
+
+.telegram-btn:active {
+    transform: translateY(0);
+}
