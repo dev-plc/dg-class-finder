@@ -101,6 +101,43 @@ function displayResult(member) {
     const lunchStatus = (member.lunch && String(member.lunch).trim().toUpperCase() === 'O') ? 'O' : 'X';
     toggleRow(lunchRow, lunchStatus, elements.resultLunch);
 
+    // =========================================================
+    // ✨ 텔레그램 링크 동적 렌더링 (조 정보 아래에 추가)
+    // =========================================================
+    let telegramRow = document.getElementById('telegramRow');
+    if (!telegramRow && teamRow) {
+        // 기존 팀(조) 행을 복제하여 텔레그램 행 생성
+        telegramRow = teamRow.cloneNode(true); 
+        telegramRow.id = 'telegramRow';
+        
+        if (telegramRow.children.length >= 2) {
+            // 1. 라벨 변경
+            const label = telegramRow.children[0];
+            if(label) label.textContent = '안내방';
+
+            // 2. 값(링크) 요소 변경
+            const valueContainer = telegramRow.children[1];
+            if(valueContainer) {
+                valueContainer.innerHTML = '<a id="resultTelegramLink" href="" target="_blank" style="color: #0088cc; text-decoration: underline; font-weight: bold; cursor: pointer;"></a>';
+                valueContainer.id = ''; // 복제된 id 제거
+            }
+        }
+        // 팀 행 바로 다음 위치에 삽입
+        teamRow.parentNode.insertBefore(telegramRow, teamRow.nextSibling);
+    }
+
+    const telegramLinkEl = document.getElementById('resultTelegramLink');
+    if (telegramRow && telegramLinkEl) {
+        if (member.telegramLink && member.team) {
+            telegramLinkEl.href = member.telegramLink;
+            telegramLinkEl.textContent = `${member.team}조 텔레그램방`;
+            telegramRow.style.display = 'flex'; // 보이게 처리
+        } else {
+            telegramRow.style.display = 'none'; // 링크가 없으면 숨김
+        }
+    }
+    // =========================================================
+
     const pureLocation = member.location ? member.location.trim() : "";
     const mapUrl = locationMapImages[pureLocation];
     if (mapUrl) {
