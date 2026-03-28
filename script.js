@@ -120,12 +120,7 @@ function displayResult(member) {
             if(valueContainer) {
                 valueContainer.innerHTML = `
                     <a id="resultTelegramLink" href="" target="_blank" 
-                       style="display: inline-flex; align-items: center; gap: 6px; 
-                              background-color: #2AABEE; color: white; 
-                              padding: 8px 16px; border-radius: 20px; 
-                              text-decoration: none; font-weight: bold; font-size: 0.9em; 
-                              box-shadow: 0 3px 6px rgba(0,0,0,0.15); 
-                              cursor: pointer; word-break: keep-all;">
+                       class="telegram-btn">
                         <span style="font-size: 1.1em;">✈️</span> 
                         <span id="telegramLinkText"></span>
                     </a>
