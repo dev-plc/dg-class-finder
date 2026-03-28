@@ -1,11 +1,16 @@
 // 1. 설정 데이터
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbz1tpAmZB0NEHX0TppV-wrq7ud4IG5PmwukVNuZNT5y46tucKpSyRDnfjLosAyno90r2A/exec";
 
+/*
 const locationMapImages = {
     "웨슬리": "https://drive.google.com/thumbnail?authuser=0&sz=w1000&id=1arEQNNRYyHbXtNWsU1HtsdRCER86s7GI",
     "칼빈": "https://drive.google.com/thumbnail?authuser=0&sz=w1000&id=1uEdPmapbCINzD36wrRbgZefdHM4KuSnu",
     "자모영아실": "https://drive.google.com/thumbnail?authuser=0&sz=w1000&id=13EovQWAnk9bT6Jt6wo2KBc-Y2TdlldK2"
 };
+let memberData = [];
+*/
+
+let locationMapImages = {}; // 하드코딩된 주소를 지우고 빈 객체로 변경, 구글시트와 연동
 let memberData = [];
 
 // 2. DOM 요소 선택
@@ -41,6 +46,9 @@ async function loadData() {
         
         if (result.success) {
             memberData = result.data;
+            if (result.locationMap) {
+                locationMapImages = result.locationMap;
+            }
             console.log("✅ Live Data Loaded:", memberData.length, "members");
         } else {
             throw new Error(result.message);
