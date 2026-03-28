@@ -101,7 +101,7 @@ function displayResult(member) {
     const lunchStatus = (member.lunch && String(member.lunch).trim().toUpperCase() === 'O') ? 'O' : 'X';
     toggleRow(lunchRow, lunchStatus, elements.resultLunch);
 
-    // =========================================================
+// =========================================================
     // ✨ 텔레그램 링크 동적 렌더링 (조 정보 아래에 추가)
     // =========================================================
     let telegramRow = document.getElementById('telegramRow');
@@ -115,10 +115,21 @@ function displayResult(member) {
             const label = telegramRow.children[0];
             if(label) label.textContent = '안내방';
 
-            // 2. 값(링크) 요소 변경
+            // 2. 값(링크) 요소 변경 (✅ 버튼 디자인으로 스타일 전면 수정)
             const valueContainer = telegramRow.children[1];
             if(valueContainer) {
-                valueContainer.innerHTML = '<a id="resultTelegramLink" href="" target="_blank" style="color: #0088cc; text-decoration: underline; font-weight: bold; cursor: pointer;"></a>';
+                valueContainer.innerHTML = `
+                    <a id="resultTelegramLink" href="" target="_blank" 
+                       style="display: inline-flex; align-items: center; gap: 6px; 
+                              background-color: #2AABEE; color: white; 
+                              padding: 8px 16px; border-radius: 20px; 
+                              text-decoration: none; font-weight: bold; font-size: 0.9em; 
+                              box-shadow: 0 3px 6px rgba(0,0,0,0.15); 
+                              cursor: pointer; word-break: keep-all;">
+                        <span style="font-size: 1.1em;">✈️</span> 
+                        <span id="telegramLinkText"></span>
+                    </a>
+                `;
                 valueContainer.id = ''; // 복제된 id 제거
             }
         }
@@ -127,10 +138,12 @@ function displayResult(member) {
     }
 
     const telegramLinkEl = document.getElementById('resultTelegramLink');
-    if (telegramRow && telegramLinkEl) {
+    const telegramTextEl = document.getElementById('telegramLinkText');
+    if (telegramRow && telegramLinkEl && telegramTextEl) {
         if (member.telegramLink && member.team) {
             telegramLinkEl.href = member.telegramLink;
-            telegramLinkEl.textContent = `${member.team}조 텔레그램방`;
+            // ✅ 텍스트를 버튼 느낌이 나도록 변경
+            telegramTextEl.textContent = `${member.team}조 방 입장하기`; 
             telegramRow.style.display = 'flex'; // 보이게 처리
         } else {
             telegramRow.style.display = 'none'; // 링크가 없으면 숨김
