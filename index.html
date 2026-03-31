@@ -47,7 +47,6 @@
         </header>
 
         <!-- 검색 폼 -->
-        <!-- 검색 폼 -->
         <div class="search-box">
             <div class="input-group">
                 <label for="name">이름</label>
@@ -71,8 +70,9 @@
                 >
             </div>
 
-            <button class="search-btn" id="searchBtn">
-                <span class="btn-text">조 확인하기</span>
+            <!-- 💡 버튼을 처음에 비활성화(disabled)하여 로딩 전 오작동 방지 -->
+            <button class="search-btn" id="searchBtn" disabled>
+                <span class="btn-text">로딩중...</span>
             </button>
         </div>
 
@@ -100,7 +100,6 @@
                         <span class="info-value" id="resultLocation">-</span>
                     </div>
 
-                    <!-- 🍙 새로 추가할 부분 -->
                     <div class="info-row">
                         <span class="info-label">김밥</span>
                         <span class="info-value" id="resultLunch"></span>
@@ -181,65 +180,5 @@
     </div>
 
     <script src="script.js"></script>
-
-    <!-- 휴강 공지 모달 (필요시 아래 주석을 해제하세요) -->
-    <!--
-    <div id="breakNoticeModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10000; animation: fadeIn 0.3s ease;">
-        <div style="background: white; border-radius: 20px; padding: 40px; max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.3); animation: slideUp 0.4s ease;">
-            <div style="text-align: center;">
-                <div style="font-size: 60px; margin-bottom: 20px;">📢</div>
-                <h2 style="font-size: 28px; color: #333; margin-bottom: 15px; font-weight: 700;">교리교육 휴강 안내</h2>
-                <div style="background: #f0f7ff; padding: 25px; border-radius: 12px; margin: 25px 0;">
-                    <p style="font-size: 18px; color: #1e40af; font-weight: 600; margin-bottom: 10px;">12월 28일 (토)</p>
-                    <p style="font-size: 16px; color: #555; line-height: 1.6;">연말 행사로 인해<br>이번 주 교리교육은 휴강합니다</p>
-                </div>
-                <p style="font-size: 14px; color: #666; margin-bottom: 25px;">다음 주에 뵙겠습니다 🙏</p>
-                <button onclick="closeBreakNotice()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 15px 40px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
-                    확인
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <style>
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        @keyframes slideUp {
-            from { 
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to { 
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        #breakNoticeModal button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-        }
-    </style>
-
-    <script>
-        function closeBreakNotice() {
-            document.getElementById('breakNoticeModal').style.display = 'none';
-        }
-        
-        // ESC 키로도 닫을 수 있게
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeBreakNotice();
-            }
-        });
-    </script>
-    -->
 </body>
 </html>
-
-
-
-
-
-
