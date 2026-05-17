@@ -31,6 +31,23 @@ const elements = {
     adminForm: document.getElementById('adminLoginForm')
 };
 
+// 서버에서 최신 데이터를 받아와 memberData와 캐시를 갱신
+async function fetchLatestData() {
+    const noCacheUrl = GAS_API_URL + "?t=" + new Date().getTime();
+    const res = await fetch(noCacheUrl);
+    const result = await res.json();
+
+    if (result.success) {
+        memberData = result.data;
+        if (result.locationMap) locationMapImages = result.locationMap;
+
+        localStorage.setItem(CACHE_KEY_DATA, JSON.stringify(memberData));
+        localStorage.setItem(CACHE_KEY_MAP, JSON.stringify(locationMapImages));
+        return true;
+    }
+    return false;
+}
+
 // 3. 데이터 로드 (✨ 캐싱 및 UI 차단 기능 포함)
 async function loadData() {
     try {
@@ -59,30 +76,21 @@ async function loadData() {
         }
 
         // [3] 백그라운드에서 최신 데이터 가져와서 동기화
-        const noCacheUrl = GAS_API_URL + "?t=" + new Date().getTime();
-        
-        const fetchPromise = fetch(noCacheUrl)
-            .then(res => res.json())
-            .then(result => {
-                if (result.success) {
-                    memberData = result.data;
-                    if (result.locationMap) locationMapImages = result.locationMap;
-                    
-                    // 새 데이터를 캐시에 덮어쓰기
-                    localStorage.setItem(CACHE_KEY_DATA, JSON.stringify(memberData));
-                    localStorage.setItem(CACHE_KEY_MAP, JSON.stringify(locationMapImages));
-                    
+        const syncPromise = fetchLatestData()
+            .then(synced => {
+                if (synced) {
                     console.log("✅ Live Data Synced (백그라운드 최신화 완료)");
-                    
+
                     // 만약 캐시가 없어서 비활성화 상태였다면 이제 활성화
                     elements.searchBtn.disabled = false;
                     if (elements.searchBtnText) elements.searchBtnText.textContent = "조 확인하기";
                 }
-            });
+            })
+            .catch(err => console.error("❌ Background Sync Error:", err));
 
         // 💡 만약 캐시가 없었다면 (최초 접속), fetch가 완료될 때까지 await로 대기
         if (!cachedDataStr) {
-            await fetchPromise;
+            await syncPromise;
         }
 
     } catch (error) {
@@ -95,7 +103,7 @@ async function loadData() {
 }
 
 // 4. 검색 로직
-function searchMember() {
+async function searchMember() {
     const name = elements.nameInput.value.trim().replace(/\s/g, '');
     const phone = elements.phoneInput.value.trim().replace(/[^0-9]/g, '');
     const searchTarget = name + phone;
@@ -105,7 +113,23 @@ function searchMember() {
         return;
     }
 
-    const member = memberData.find(m => 
+    // 조회할 때마다 서버에서 최신 데이터를 받아와 동기화 (지난주 출석 캐시 방지)
+    elements.searchBtn.disabled = true;
+    const prevBtnText = elements.searchBtnText ? elements.searchBtnText.textContent : "";
+    if (elements.searchBtnText) elements.searchBtnText.textContent = "조회중...";
+
+    try {
+        await fetchLatestData();
+    } catch (error) {
+        console.warn("최신 데이터 조회 실패, 캐시 데이터로 검색합니다.", error);
+    } finally {
+        elements.searchBtn.disabled = false;
+        if (elements.searchBtnText) {
+            elements.searchBtnText.textContent = prevBtnText || "조 확인하기";
+        }
+    }
+
+    const member = memberData.find(m =>
         String(m.id).replace(/\s/g, '') === searchTarget
     );
 
