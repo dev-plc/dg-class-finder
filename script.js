@@ -4,10 +4,8 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbz1tpAmZB0NEHX0TppV
 // 💡 로컬 스토리지 캐시 키 정의 (DG 전용)
 const CACHE_KEY_DATA = "dg_member_data_v17";
 const CACHE_KEY_MAP = "dg_location_map_v17";
-const CACHE_KEY_LINKS = "dg_team_link_map_v17";
 
 let locationMapImages = {}; // 구글시트와 연동
-let teamLinkMap = {}; // 조/그룹명 → 텔레그램 링크 (Link 탭)
 let memberData = [];
 
 // 2. DOM 요소 선택
@@ -42,11 +40,9 @@ async function fetchLatestData() {
     if (result.success) {
         memberData = result.data;
         if (result.locationMap) locationMapImages = result.locationMap;
-        if (result.teamLinkMap) teamLinkMap = result.teamLinkMap;
 
         localStorage.setItem(CACHE_KEY_DATA, JSON.stringify(memberData));
         localStorage.setItem(CACHE_KEY_MAP, JSON.stringify(locationMapImages));
-        localStorage.setItem(CACHE_KEY_LINKS, JSON.stringify(teamLinkMap));
         return true;
     }
     return false;
@@ -64,12 +60,10 @@ async function loadData() {
         // [2] 로컬 캐시에서 데이터 먼저 꺼내오기
         const cachedDataStr = localStorage.getItem(CACHE_KEY_DATA);
         const cachedMapStr = localStorage.getItem(CACHE_KEY_MAP);
-        const cachedLinksStr = localStorage.getItem(CACHE_KEY_LINKS);
 
         if (cachedDataStr) {
             memberData = JSON.parse(cachedDataStr);
             if (cachedMapStr) locationMapImages = JSON.parse(cachedMapStr);
-            if (cachedLinksStr) teamLinkMap = JSON.parse(cachedLinksStr);
             
             console.log("⚡ Cached Data Loaded: 즉시 활성화 됨");
             
@@ -240,12 +234,9 @@ function displayResult(member) {
         }
 
         if (matchedGroup) {
-            // 1순위: API가 teamLinkMap을 제공하면 사용 (Link 탭 직접 매핑)
-            // 2순위: memberData에서 해당 팀명 멤버의 telegramLink로 폴백
-            const groupLink = teamLinkMap[matchedGroup] ||
-                (memberData.find(m => m.team === matchedGroup && m.telegramLink) || {}).telegramLink;
-            if (groupLink) {
-                groupTelegramLinkEl.href = groupLink;
+            const groupMember = memberData.find(m => m.team === matchedGroup && m.telegramLink);
+            if (groupMember) {
+                groupTelegramLinkEl.href = groupMember.telegramLink;
                 groupTelegramTextEl.textContent = `${matchedGroup} 방 입장하기`;
                 groupTelegramLinkEl.style.display = '';
             } else {
