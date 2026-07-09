@@ -171,9 +171,9 @@ function displayResult(member) {
     // ✨ 텔레그램 링크 동적 렌더링
     let telegramRow = document.getElementById('telegramRow');
     if (!telegramRow && teamRow) {
-        telegramRow = teamRow.cloneNode(true); 
+        telegramRow = teamRow.cloneNode(true);
         telegramRow.id = 'telegramRow';
-        
+
         if (telegramRow.children.length >= 2) {
             const label = telegramRow.children[0];
             if(label) label.textContent = '안내방';
@@ -181,12 +181,18 @@ function displayResult(member) {
             const valueContainer = telegramRow.children[1];
             if(valueContainer) {
                 valueContainer.innerHTML = `
-                    <a id="resultTelegramLink" href="" target="_blank" class="telegram-btn">
-                        <span style="font-size: 1.1em;">✈️</span> 
-                        <span id="telegramLinkText"></span>
-                    </a>
+                    <div style="display: flex; flex-direction: column; gap: 8px; align-items: stretch;">
+                        <a id="resultTelegramLink" href="" target="_blank" class="telegram-btn">
+                            <span style="font-size: 1.1em;">✈️</span>
+                            <span id="telegramLinkText"></span>
+                        </a>
+                        <a id="resultGroupTelegramLink" href="" target="_blank" class="telegram-btn" style="display: none;">
+                            <span style="font-size: 1.1em;">✈️</span>
+                            <span id="groupTelegramLinkText"></span>
+                        </a>
+                    </div>
                 `;
-                valueContainer.id = ''; 
+                valueContainer.id = '';
             }
         }
         teamRow.parentNode.insertBefore(telegramRow, teamRow.nextSibling);
@@ -197,10 +203,47 @@ function displayResult(member) {
     if (telegramRow && telegramLinkEl && telegramTextEl) {
         if (member.telegramLink && member.team) {
             telegramLinkEl.href = member.telegramLink;
-            telegramTextEl.textContent = `${member.team}조 방 입장하기`; 
-            telegramRow.style.display = 'flex'; 
+            telegramTextEl.textContent = `${member.team}조 방 입장하기`;
+            telegramRow.style.display = 'flex';
         } else {
-            telegramRow.style.display = 'none'; 
+            telegramRow.style.display = 'none';
+        }
+    }
+
+    // 조 이름 앞 접두사에 따라 소속 그룹 안내방 버튼 추가
+    const GROUP_PREFIX_MAP = [
+        { prefix: 'Y', group: '청년부' },
+        { prefix: 'O', group: '온라인' },
+        { prefix: 'C', group: '청년부부' },
+        { prefix: '남', group: '남장년부' },
+        { prefix: '여', group: '여장년부' }
+    ];
+
+    const groupTelegramLinkEl = document.getElementById('resultGroupTelegramLink');
+    const groupTelegramTextEl = document.getElementById('groupTelegramLinkText');
+    if (groupTelegramLinkEl && groupTelegramTextEl) {
+        let matchedGroup = null;
+        const teamName = member.team ? member.team.trim() : '';
+        if (teamName) {
+            for (const { prefix, group } of GROUP_PREFIX_MAP) {
+                if (teamName.startsWith(prefix) && teamName !== group) {
+                    matchedGroup = group;
+                    break;
+                }
+            }
+        }
+
+        if (matchedGroup) {
+            const groupMember = memberData.find(m => m.team === matchedGroup && m.telegramLink);
+            if (groupMember) {
+                groupTelegramLinkEl.href = groupMember.telegramLink;
+                groupTelegramTextEl.textContent = `${matchedGroup} 방 입장하기`;
+                groupTelegramLinkEl.style.display = '';
+            } else {
+                groupTelegramLinkEl.style.display = 'none';
+            }
+        } else {
+            groupTelegramLinkEl.style.display = 'none';
         }
     }
 
