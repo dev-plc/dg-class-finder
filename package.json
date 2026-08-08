@@ -1,0 +1,14 @@
+{
+  "name": "dg-class-finder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DG 조 배치 조회 웹앱",
+  "scripts": {
+    "sync": "node scripts/sync-sheet-to-db.mjs",
+    "sync:dry": "node scripts/sync-sheet-to-db.mjs --dry-run"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

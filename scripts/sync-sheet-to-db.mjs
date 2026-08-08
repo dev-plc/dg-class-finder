@@ -1,0 +1,291 @@
+// 시트(GAS) → Supabase 동기화. GitHub Actions 에서 돈다.
+//
+// 사용법
+//   node scripts/sync-sheet-to-db.mjs --dry-run     쓰기 없이 확인만
+//   node scripts/sync-sheet-to-db.mjs               실제 반영
+//   node scripts/sync-sheet-to-db.mjs --cohort=DG-2026
+//
+// 환경변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GAS_API_URL
+//
+// 이 스크립트는 upsert 만 한다. 시트에서 지운 행은 DB 에 남는다.
+// 인원은 지우지 않고 status='inactive' 로 내린다 — 이력을 잃지 않으려는 것.
+
+import { createClient } from '@supabase/supabase-js';
+
+const args = process.argv.slice(2);
+const getArg = (name) => {
+  const hit = args.find(a => a.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : null;
+};
+
+const DRY_RUN = args.includes('--dry-run');
+const COHORT_ARG = (getArg('cohort') || process.env.COHORT_ID || '').trim();
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const GAS_API_URL = process.env.GAS_API_URL;
+
+for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY, GAS_API_URL })) {
+  if (!v) {
+    console.log(`❌ 환경변수 ${k} 가 없습니다.`);
+    process.exit(1);
+  }
+}
+
+// URL 은 로그에 그대로 남기지 않는다 (배포 ID 가 드러난다).
+const maskGas = (url) => String(url).replace(/\/s\/[^/]+\//, '/s/***/');
+
+const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false },
+});
+
+const trim = (v) => (v == null ? '' : String(v).trim());
+const toInt = (v) => {
+  const n = parseInt(String(v ?? '').replace(/[^0-9-]/g, ''), 10);
+  return Number.isFinite(n) ? n : null;
+};
+
+console.log(`🔧 mode: ${DRY_RUN ? 'DRY RUN (쓰기 없음)' : 'LIVE'}`);
+console.log(`🔗 GAS:  ${maskGas(GAS_API_URL)}\n`);
+
+// ---------------------------------------------------------------- 시트 읽기
+console.log('▶ 시트 읽기');
+const res = await fetch(`${GAS_API_URL}?t=${Date.now()}`, { redirect: 'follow' });
+if (!res.ok) {
+  console.log(`❌ GAS 응답 ${res.status}.`);
+  if (res.status === 404) {
+    console.log('   URL 이 /exec 로 끝나는지 확인하세요. /dev 는 본인만 접근할 수 있어 Actions 에서 404 입니다.');
+    console.log('   배포를 새로 만들면 URL 이 바뀝니다. "배포 관리 → ✏️ → 새 버전" 으로 올리면 URL 이 유지됩니다.');
+  }
+  process.exit(1);
+}
+const gas = await res.json();
+if (!gas.success) {
+  console.log(`❌ GAS 오류: ${gas.message}`);
+  process.exit(1);
+}
+
+const rows = gas.data || [];
+console.log(`   인원 ${rows.length}명`);
+console.log(`   locationMap ${Object.keys(gas.locationMap || {}).length}건`);
+console.log(`   teamLinkMap ${Object.keys(gas.teamLinkMap || {}).length}건`);
+
+// ------------------------------------------------------------ 대상(기수) 결정
+//
+// 시트가 스스로 어느 대상인지 밝히게 하고, 지정값과 다르면 아무것도 쓰지 않는다.
+// 엉뚱한 대상에 명단을 밀어넣으면 기존 인원이 통째로 inactive 가 된다.
+const sheetCohort = trim(gas.cohortHint);
+
+if (COHORT_ARG && sheetCohort && COHORT_ARG !== sheetCohort) {
+  console.log(`❌ 시트는 '${sheetCohort}' 인데 '${COHORT_ARG}' 로 동기화하려 합니다. 중단합니다.`);
+  console.log(`   그대로 진행하면 '${sheetCohort}' 명단이 '${COHORT_ARG}' 로 들어가고,`);
+  console.log(`   '${COHORT_ARG}' 의 기존 인원은 전부 inactive 가 됩니다.`);
+  console.log(`   시트대로 넣으려면 대상을 비우거나 '${sheetCohort}' 로 지정하세요.`);
+  process.exit(1);
+}
+
+let COHORT_ID = COHORT_ARG || sheetCohort;
+if (!COHORT_ID) {
+  console.log('❌ 대상을 정할 수 없습니다.');
+  console.log('   시트 상단(윗 6행 안)에 \'DG-2026\' 같은 표식을 적고 GAS 가 cohortHint 로 반환하게 하거나,');
+  console.log('   워크플로 입력에서 대상을 직접 지정하세요.');
+  console.log('   (표식 없이 진행하면 엉뚱한 대상을 덮어쓰는 사고를 막을 수 없습니다.)');
+  process.exit(1);
+}
+console.log(`🏷️  대상: ${COHORT_ID}${sheetCohort ? ' (시트 표식)' : ' (직접 지정)'}\n`);
+
+// ---------------------------------------------------------------- 인원 정리
+const members = [];
+const skipped = [];
+const seen = new Set();
+
+for (const r of rows) {
+  const name = trim(r.name);
+  const phone = trim(r.phone);
+
+  if (!name) {
+    skipped.push(`(이름없음, id='${trim(r.id)}')`);
+    continue;
+  }
+
+  const key = `${name}|${phone}`;
+  if (seen.has(key)) {
+    skipped.push(`${name}${phone} (중복)`);
+    continue;
+  }
+  seen.add(key);
+
+  members.push({
+    _id: `${name}${phone}`,
+    cohort_id: COHORT_ID,
+    name,
+    // null 로 두면 unique (cohort_id, name, phone) 가 걸리지 않아
+    // 동기화할 때마다 같은 사람의 새 행이 쌓인다.
+    phone,
+    team: trim(r.team),
+    team_no: toInt(r['no.'] ?? r.team_no),
+    location: trim(r.location),
+    role: trim(r.role),
+    lunch: trim(r.lunch),
+    status: 'active',
+  });
+}
+
+console.log(`▶ 인원 ${members.length}명 정리`);
+if (skipped.length) {
+  // 이름 없이 건수만 찍으면 누구인지 몰라 원인을 못 찾는다.
+  console.log(`   ⚠️ 건너뜀 ${skipped.length}명: ${skipped.join(', ')}`);
+}
+
+// ------------------------------------------------------------------ 위치·링크
+const locations = Object.entries(gas.locationMap || {})
+  .filter(([loc]) => trim(loc) && !loc.endsWith('링크'))
+  .map(([loc, url]) => ({
+    location: trim(loc),
+    image_url: trim(url),
+    detail_url: trim((gas.locationMap || {})[`${loc}링크`]) || null,
+  }));
+
+const teamLinks = Object.entries(gas.teamLinkMap || {})
+  .filter(([team]) => trim(team))
+  .map(([team, url]) => ({
+    cohort_id: COHORT_ID,
+    team: trim(team),
+    chat_url: trim(url),
+  }));
+
+console.log(`▶ 위치 ${locations.length}건 · 안내방 ${teamLinks.length}건`);
+
+// -------------------------------------------------------------------- 출석
+//
+// GAS 가 회차별 출석을 주면 전부, 오늘치만 주면 오늘 것만 반영한다.
+// 어느 쪽도 없으면 출석은 건너뛴다 (조회 기능에는 지장 없다).
+const MMDD = /^(\d{1,2})\/(\d{1,2})$/;
+
+// 'MM/DD' → 'YYYY-MM-DD'. Date 로 파싱하기 전에 형태를 먼저 확인한다
+// (형태를 안 보고 new Date(값).toISOString() 을 부르면 RangeError 로 죽는다).
+function toISODate(mmdd, year) {
+  const m = String(mmdd || '').trim().match(MMDD);
+  if (!m) return null;
+  const mm = String(m[1]).padStart(2, '0');
+  const dd = String(m[2]).padStart(2, '0');
+  const iso = `${year}-${mm}-${dd}`;
+  return Number.isNaN(Date.parse(iso)) ? null : iso;
+}
+
+const YEAR = toInt(getArg('year')) || new Date().getFullYear();
+const attendanceBySheetId = [];
+
+if (Array.isArray(gas.sessionDates) && gas.sessionDates.length) {
+  for (const r of rows) {
+    const id = `${trim(r.name)}${trim(r.phone)}`;
+    const map = r.attendanceByDate || {};
+    for (const key of gas.sessionDates) {
+      const iso = toISODate(key, YEAR);
+      if (!iso) continue;
+      const status = trim(map[key]);
+      if (!status) continue;
+      attendanceBySheetId.push({ _id: id, session_date: iso, status });
+    }
+  }
+  console.log(`▶ 출석 ${attendanceBySheetId.length}건 (회차 ${gas.sessionDates.length}개)`);
+} else if (trim(gas.todayKey)) {
+  const iso = toISODate(gas.todayKey, YEAR);
+  if (iso) {
+    for (const r of rows) {
+      const status = trim(r.attendance);
+      if (!status) continue;
+      attendanceBySheetId.push({ _id: `${trim(r.name)}${trim(r.phone)}`, session_date: iso, status });
+    }
+    console.log(`▶ 출석 ${attendanceBySheetId.length}건 (오늘 ${gas.todayKey} 만)`);
+  }
+} else {
+  console.log('▶ 출석 건너뜀 — GAS 가 sessionDates·todayKey 중 아무것도 주지 않았습니다.');
+}
+
+console.log('');
+
+// -------------------------------------------------------------------- 쓰기
+async function upsert(table, data, onConflict) {
+  if (!data.length) return [];
+
+  // 같은 배치에 conflict 키가 중복되면 Postgres 가 거부한다.
+  // 뒤에 오는 행을 최신으로 보고 앞의 것을 덮어쓴다.
+  if (onConflict) {
+    const cols = onConflict.split(',').map(c => c.trim());
+    const byKey = new Map();
+    for (const row of data) byKey.set(cols.map(c => row[c] ?? '').join('||'), row);
+    if (byKey.size !== data.length) {
+      console.log(`   ℹ️ ${table}: 배치 내 중복 ${data.length - byKey.size}건 제거`);
+      data = [...byKey.values()];
+    }
+  }
+
+  const out = [];
+  for (let i = 0; i < data.length; i += 500) {
+    const batch = data.slice(i, i + 500).map(({ _id, ...rest }) => rest);
+    const { data: ret, error } = await sb.from(table).upsert(batch, { onConflict }).select();
+    if (error) throw new Error(`${table}: ${error.message}`);
+    out.push(...(ret || []));
+  }
+  return out;
+}
+
+if (DRY_RUN) {
+  console.log('🔍 DRY RUN — 아무것도 쓰지 않았습니다. 위 건수가 맞는지 확인하세요.');
+  const sample = members[0];
+  if (sample) {
+    // 실명이 로그에 남지 않도록 필드 이름만 보여준다.
+    console.log(`   인원 레코드 필드: ${Object.keys(sample).filter(k => k !== '_id').join(', ')}`);
+  }
+  process.exit(0);
+}
+
+console.log('▶ dg_members');
+const saved = await upsert('dg_members', members, 'cohort_id,name,phone');
+console.log(`   ${saved.length}명 반영`);
+
+// 시트에서 사라진 인원은 지우지 않고 내린다.
+const activeIds = new Set(members.map(m => `${m.name}|${m.phone}`));
+const { data: existing, error: exErr } = await sb
+  .from('dg_members').select('id,name,phone,status').eq('cohort_id', COHORT_ID);
+if (exErr) throw new Error(`기존 인원 조회 실패: ${exErr.message}`);
+
+const toDeactivate = (existing || [])
+  .filter(m => m.status === 'active' && !activeIds.has(`${m.name}|${m.phone || ''}`));
+if (toDeactivate.length) {
+  const { error } = await sb.from('dg_members')
+    .update({ status: 'inactive' })
+    .in('id', toDeactivate.map(m => m.id));
+  if (error) throw new Error(`inactive 처리 실패: ${error.message}`);
+  console.log(`   ⚠️ 시트에 없어 inactive 처리 ${toDeactivate.length}명: ` +
+              toDeactivate.map(m => `${m.name}${m.phone || ''}`).join(', '));
+}
+
+console.log('▶ dg_locations');
+await upsert('dg_locations', locations, 'location');
+console.log(`   ${locations.length}건 반영`);
+
+console.log('▶ dg_team_links');
+await upsert('dg_team_links', teamLinks, 'cohort_id,team');
+console.log(`   ${teamLinks.length}건 반영`);
+
+if (attendanceBySheetId.length) {
+  console.log('▶ dg_attendance');
+  const uuidById = new Map(saved.map(m => [`${m.name}${m.phone || ''}`, m.id]));
+  const attRows = [];
+  const orphans = [];
+  for (const a of attendanceBySheetId) {
+    const uuid = uuidById.get(a._id);
+    if (!uuid) { orphans.push(a._id); continue; }
+    attRows.push({ member_id: uuid, session_date: a.session_date, status: a.status });
+  }
+  if (orphans.length) {
+    const uniq = [...new Set(orphans)];
+    console.log(`   ⚠️ 명단에 없어 무시 ${uniq.length}명: ${uniq.join(', ')}`);
+  }
+  await upsert('dg_attendance', attRows, 'member_id,session_date');
+  console.log(`   ${attRows.length}건 반영`);
+}
+
+console.log('\n✅ 동기화 완료');
