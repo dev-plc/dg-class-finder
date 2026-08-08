@@ -1,0 +1,7 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+# 명단 원본 — 실명·전화번호가 들어 있다. 저장소가 public 이므로 커밋 금지.
+*.csv

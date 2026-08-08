@@ -1,14 +1,15 @@
-// 1. 설정 데이터
-const GAS_API_URL = "https://script.google.com/macros/s/AKfycbz1tpAmZB0NEHX0TppV-wrq7ud4IG5PmwukVNuZNT5y46tucKpSyRDnfjLosAyno90r2A/exec";
-
-// 💡 로컬 스토리지 캐시 키 정의 (DG 전용)
-const CACHE_KEY_DATA = "dg_member_data_v17";
-const CACHE_KEY_MAP = "dg_location_map_v17";
-const CACHE_KEY_LINKS = "dg_team_link_map_v17";
-
-let locationMapImages = {}; // 구글시트와 연동
-let teamLinkMap = {}; // 조/그룹명 → 텔레그램 링크 (Link 탭)
-let memberData = [];
+// 1. 데이터 계층
+//
+// 화면은 아래 함수들만 쓴다. 어디서 데이터가 오는지(Supabase·시트)는 알지 못한다.
+import {
+    ensureLoaded,
+    findMember,
+    getTeamMembers,
+    getLocationImage,
+    getTeamLink,
+    refreshAttendance,
+    setAttendance,
+} from './scripts/members-data.js?v=6';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -33,111 +34,41 @@ const elements = {
     adminForm: document.getElementById('adminLoginForm')
 };
 
-// 서버에서 최신 데이터를 받아와 memberData와 캐시를 갱신
-async function fetchLatestData() {
-    const noCacheUrl = GAS_API_URL + "?t=" + new Date().getTime();
-    const res = await fetch(noCacheUrl);
-    const result = await res.json();
-
-    if (result.success) {
-        memberData = result.data;
-        if (result.locationMap) locationMapImages = result.locationMap;
-        if (result.teamLinkMap) teamLinkMap = result.teamLinkMap;
-
-        localStorage.setItem(CACHE_KEY_DATA, JSON.stringify(memberData));
-        localStorage.setItem(CACHE_KEY_MAP, JSON.stringify(locationMapImages));
-        localStorage.setItem(CACHE_KEY_LINKS, JSON.stringify(teamLinkMap));
-        return true;
-    }
-    return false;
-}
-
-// 3. 데이터 로드 (✨ 캐싱 및 UI 차단 기능 포함)
+// 3. 데이터 로드
+//
+// 캐시가 있으면 즉시 버튼을 열고 뒤에서 갱신한다.
+// 처음 들어온 사람만 받아올 때까지 기다린다.
 async function loadData() {
     try {
-        // [1] 초기 버튼 상태: 서버 통신 대기
         elements.searchBtn.disabled = true;
-        if (elements.searchBtnText) {
-            elements.searchBtnText.textContent = "로딩중...";
-        }
+        if (elements.searchBtnText) elements.searchBtnText.textContent = "로딩중...";
 
-        // [2] 로컬 캐시에서 데이터 먼저 꺼내오기
-        const cachedDataStr = localStorage.getItem(CACHE_KEY_DATA);
-        const cachedMapStr = localStorage.getItem(CACHE_KEY_MAP);
-        const cachedLinksStr = localStorage.getItem(CACHE_KEY_LINKS);
+        const { cacheHit } = await ensureLoaded({
+            onBackgroundRefreshError: (err) => console.log("백그라운드 갱신 실패:", err),
+        });
 
-        if (cachedDataStr) {
-            memberData = JSON.parse(cachedDataStr);
-            if (cachedMapStr) locationMapImages = JSON.parse(cachedMapStr);
-            if (cachedLinksStr) teamLinkMap = JSON.parse(cachedLinksStr);
-            
-            console.log("⚡ Cached Data Loaded: 즉시 활성화 됨");
-            
-            // 캐시 데이터가 있으면 사용자 대기 없이 버튼 즉시 활성화
-            elements.searchBtn.disabled = false;
-            if (elements.searchBtnText) elements.searchBtnText.textContent = "조 확인하기";
-        } else {
-            // 캐시가 없을 때만 로딩 문구 명시
-            if (elements.searchBtnText) elements.searchBtnText.textContent = "데이터 로딩중... (최초 1회)";
-        }
+        console.log(cacheHit ? "⚡ 캐시로 즉시 활성화" : "✅ 최신 데이터 로드 완료");
 
-        // [3] 백그라운드에서 최신 데이터 가져와서 동기화
-        const syncPromise = fetchLatestData()
-            .then(synced => {
-                if (synced) {
-                    console.log("✅ Live Data Synced (백그라운드 최신화 완료)");
-
-                    // 만약 캐시가 없어서 비활성화 상태였다면 이제 활성화
-                    elements.searchBtn.disabled = false;
-                    if (elements.searchBtnText) elements.searchBtnText.textContent = "조 확인하기";
-                }
-            })
-            .catch(err => console.error("❌ Background Sync Error:", err));
-
-        // 💡 만약 캐시가 없었다면 (최초 접속), fetch가 완료될 때까지 await로 대기
-        if (!cachedDataStr) {
-            await syncPromise;
-        }
-
+        elements.searchBtn.disabled = false;
+        if (elements.searchBtnText) elements.searchBtnText.textContent = "조 확인하기";
     } catch (error) {
-        console.error("❌ Fetch Error:", error);
-        if (memberData.length === 0) {
-            alert("데이터를 불러오는 중 오류가 발생했습니다. 인터넷 연결을 확인해주세요.");
-            if (elements.searchBtnText) elements.searchBtnText.textContent = "오류 발생";
-        }
+        console.log("❌ 데이터 로드 실패:", error);
+        alert("데이터를 불러오는 중 오류가 발생했습니다. 인터넷 연결을 확인해주세요.");
+        if (elements.searchBtnText) elements.searchBtnText.textContent = "오류 발생";
     }
 }
 
 // 4. 검색 로직
-async function searchMember() {
+function searchMember() {
     const name = elements.nameInput.value.trim().replace(/\s/g, '');
     const phone = elements.phoneInput.value.trim().replace(/[^0-9]/g, '');
-    const searchTarget = name + phone;
 
     if (!name || !phone) {
         showError("이름과 번호 4자리를 입력해주세요.");
         return;
     }
 
-    // 조회할 때마다 서버에서 최신 데이터를 받아와 동기화 (지난주 출석 캐시 방지)
-    elements.searchBtn.disabled = true;
-    const prevBtnText = elements.searchBtnText ? elements.searchBtnText.textContent : "";
-    if (elements.searchBtnText) elements.searchBtnText.textContent = "조회중...";
-
-    try {
-        await fetchLatestData();
-    } catch (error) {
-        console.warn("최신 데이터 조회 실패, 캐시 데이터로 검색합니다.", error);
-    } finally {
-        elements.searchBtn.disabled = false;
-        if (elements.searchBtnText) {
-            elements.searchBtnText.textContent = prevBtnText || "조 확인하기";
-        }
-    }
-
-    const member = memberData.find(m =>
-        String(m.id).replace(/\s/g, '') === searchTarget
-    );
+    const member = findMember(name, phone);
 
     if (member) {
         displayResult(member);
@@ -240,10 +171,7 @@ function displayResult(member) {
         }
 
         if (matchedGroup) {
-            // 1순위: API가 teamLinkMap을 제공하면 사용 (Link 탭 직접 매핑)
-            // 2순위: memberData에서 해당 팀명 멤버의 telegramLink로 폴백
-            const groupLink = teamLinkMap[matchedGroup] ||
-                (memberData.find(m => m.team === matchedGroup && m.telegramLink) || {}).telegramLink;
+            const groupLink = getTeamLink(matchedGroup);
             if (groupLink) {
                 groupTelegramLinkEl.href = groupLink;
                 groupTelegramTextEl.textContent = `${matchedGroup} 방 입장하기`;
@@ -256,8 +184,7 @@ function displayResult(member) {
         }
     }
 
-    const pureLocation = member.location ? member.location.trim() : "";
-    const mapUrl = locationMapImages[pureLocation];
+    const mapUrl = getLocationImage(member.location);
     if (mapUrl) {
         elements.mapImage.src = mapUrl;
         elements.mapContainer.style.display = 'block';
@@ -266,14 +193,19 @@ function displayResult(member) {
     }
 
     const isTutor = member.role && (
-        member.role.includes('조장') || 
-        member.role.includes('서브튜터') || 
+        member.role.includes('조장') ||
+        member.role.includes('서브튜터') ||
         member.role.includes('관리자')
     );
-    
+
     if (isTutor && member.team && memberListContainer) {
-        const teamMembers = memberData.filter(m => m.team === member.team);
-        renderTeamMembers(teamMembers, member.team, member.role);
+        renderTeamMembers(getTeamMembers(member.team), member.team, member.role);
+
+        // 출석은 하루 한 번 동기화라 DB 값이 그날 안에 뒤처진다.
+        // 조원 명단을 열 때는 원본에서 다시 읽어 방금 체크한 것이 보이게 한다.
+        refreshAttendance()
+            .then(() => renderTeamMembers(getTeamMembers(member.team), member.team, member.role))
+            .catch(err => console.log("출석 최신화 실패, 마지막 값 표시:", err));
     }
 
     elements.resultContainer.style.display = 'block';
@@ -318,82 +250,47 @@ function renderTeamMembers(members, teamName, role) {
         return a.name.localeCompare(b.name, 'ko');
     });
 
-    listElement.innerHTML = sortedMembers.map((m, index) => {
+    listElement.innerHTML = sortedMembers.map((m) => {
         const lunchIcon = (m.lunch && m.lunch.toUpperCase() === 'O') ? '<span style="margin-left:4px;" title="김밥 대상자">🍙</span>' : '';
         const isChecked = (m.attendance && m.attendance.toUpperCase() === 'O') ? 'checked' : '';
 
         return `
             <div class="team-member-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" ${isChecked} 
-                        style="width: 18px; height: 18px; cursor: pointer;"
-                        onclick="toggleAttendanceUI('${m.name}', '${m.phone}', this.checked, this)">
+                    <input type="checkbox" ${isChecked}
+                        class="attendance-check"
+                        data-name="${escapeAttr(m.name)}" data-phone="${escapeAttr(m.phone)}"
+                        style="width: 18px; height: 18px; cursor: pointer;">
                     <span class="member-name">
-                        ${m.name}(${m.phone}) ${lunchIcon}
+                        ${escapeHtml(m.name)}(${escapeHtml(m.phone)}) ${lunchIcon}
                     </span>
                 </div>
                 <span class="member-role-tag">
-                    ${m.role || '조원'}
+                    ${escapeHtml(m.role || '조원')}
                 </span>
             </div>
         `;
     }).join('');
 }
 
-// ✨ 낙관적 업데이트 적용: 대기 시간 0.01초
+function escapeHtml(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+const escapeAttr = escapeHtml;
+
+// ✨ 낙관적 업데이트: 체크는 바로 반영하고, 실패하면 되돌린다
 async function toggleAttendanceUI(name, phone, checked, checkboxElement) {
     const status = checked ? 'O' : 'X';
-    console.log(`[출석 변경 요청] ${name}(${phone}) -> ${status}`);
+    const originalStatus = checked ? 'X' : 'O';
 
-    // [1] 서버 응답 기다리지 않고 데이터 및 캐시 즉시 업데이트 (낙관적 UI)
-    const memberIndex = memberData.findIndex(m => m.name === name && m.phone === phone);
-    let originalStatus = 'X'; 
-    
-    if (memberIndex !== -1) {
-        originalStatus = memberData[memberIndex].attendance || 'X';
-        memberData[memberIndex].attendance = status;
-        localStorage.setItem(CACHE_KEY_DATA, JSON.stringify(memberData));
-    }
-
-    // [2] 백그라운드 서버 전송
     try {
-        const response = await fetch(GAS_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'text/plain;charset=utf-8',
-            },
-            body: JSON.stringify({
-                name: name,
-                phone: phone,
-                status: status
-            })
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            console.log('업데이트 최종 성공:', result.message);
-        } else {
-            console.error('업데이트 실패:', result.message);
-            alert('출석 처리에 실패하여 원래 상태로 되돌립니다: ' + result.message);
-            rollbackAttendance(name, phone, originalStatus, checkboxElement);
-        }
+        await setAttendance(name, phone, status);
     } catch (error) {
-        console.error('네트워크 오류:', error);
-        alert('서버 통신 중 문제가 발생하여 체크가 원래 상태로 되돌아갑니다.');
-        rollbackAttendance(name, phone, originalStatus, checkboxElement);
-    }
-}
-
-// 실패 시 롤백 함수
-function rollbackAttendance(name, phone, originalStatus, checkboxElement) {
-    const memberIndex = memberData.findIndex(m => m.name === name && m.phone === phone);
-    if (memberIndex !== -1) {
-        memberData[memberIndex].attendance = originalStatus;
-        localStorage.setItem(CACHE_KEY_DATA, JSON.stringify(memberData));
-    }
-    if (checkboxElement) {
-        checkboxElement.checked = (originalStatus === 'O');
+        console.log('출석 저장 실패:', error);
+        alert('출석 처리에 실패하여 원래 상태로 되돌립니다: ' + error.message);
+        if (checkboxElement) checkboxElement.checked = (originalStatus === 'O');
     }
 }
 
@@ -425,9 +322,19 @@ function initEventListeners() {
             errorElement.textContent = "아이디 또는 비밀번호가 틀렸습니다.";
         }
     });
-    elements.phoneInput.addEventListener('keypress', (e) => { 
-        if (e.key === 'Enter' && !elements.searchBtn.disabled) searchMember(); 
+    elements.phoneInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !elements.searchBtn.disabled) searchMember();
     });
+
+    // 조원 명단은 다시 그려지므로 목록 자체에 한 번만 걸어 둔다.
+    const teamList = document.getElementById('teamMemberList');
+    if (teamList) {
+        teamList.addEventListener('change', (e) => {
+            const box = e.target.closest('.attendance-check');
+            if (!box) return;
+            toggleAttendanceUI(box.dataset.name, box.dataset.phone, box.checked, box);
+        });
+    }
 }
 
 function initModal() {

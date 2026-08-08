@@ -1,0 +1,49 @@
+name: 시트 → DB 동기화
+
+on:
+  workflow_dispatch:
+    inputs:
+      cohort:
+        description: '대상 ID (비우면 시트의 표식을 따라감)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'dry-run (쓰기 없이 확인만)'
+        type: boolean
+        required: false
+        default: false
+  schedule:
+    # 매일 03:00 UTC = 12:00 KST. Supabase 7일 pause 방지 겸용
+    - cron: '0 3 * * *'
+
+concurrency:
+  group: sync-db
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: 의존성 설치
+        run: npm ci || npm install
+
+      - name: 동기화 실행
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GAS_API_URL: ${{ secrets.GAS_API_URL }}
+          COHORT_ID: ${{ github.event.inputs.cohort }}
+        run: |
+          FLAGS=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            FLAGS="$FLAGS --dry-run"
+          fi
+          echo "flags:${FLAGS:-(없음)}"
+          node scripts/sync-sheet-to-db.mjs $FLAGS
