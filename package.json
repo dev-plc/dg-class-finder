@@ -6,7 +6,9 @@
   "description": "DG 조 배치 조회 웹앱",
   "scripts": {
     "sync": "node scripts/sync-sheet-to-db.mjs",
-    "sync:dry": "node scripts/sync-sheet-to-db.mjs --dry-run"
+    "sync:dry": "node scripts/sync-sheet-to-db.mjs --dry-run",
+    "bump": "node scripts/bump-version.mjs",
+    "bump:check": "node scripts/bump-version.mjs --check"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

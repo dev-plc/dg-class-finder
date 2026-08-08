@@ -72,9 +72,17 @@ Actions → **시트 → DB 동기화** → Run workflow
 `dg_attendance` 는 시트를 비추기만 한다. 동기화가 하루 한 번이라 DB 값은
 그날 안에 뒤처지므로, 조원 명단을 열 때는 시트에서 다시 읽는다.
 
-**캐시 버전.** `script.js` · `style.css` 를 고치면 `index.html` 의 `?v=` 를 올린다.
-`scripts/` 아래 모듈을 고쳤다면 그 파일을 import 하는 쪽의 `?v=` 도 함께 올려야 한다
-(`script.js` → `members-data.js`, `members-data.js` → `hangul.js` · `supabase-config.js`).
+**캐시 버전.** 프론트엔드 파일을 고쳤으면 배포 전에 이것 하나만 돌린다.
+
+```
+npm run bump
+```
+
+저장소 전체의 `?v=` 와 `sw.js` 의 `CACHE_VERSION` 을 한 번에 올리고, 빠진 곳이
+없는지 스스로 확인한다. **손으로 고치지 말 것** — 한 곳만 빠뜨려도 그 파일만
+옛것이 나오고, 원인을 찾는 데 오래 걸린다.
+
+`npm run bump:check` 는 올리지 않고 어긋난 곳만 알려준다.
 
 **저장소가 public 이다.** 실명·전화번호가 든 파일을 커밋하지 않는다.
 Actions 로그도 누구나 볼 수 있다는 점을 감안할 것.

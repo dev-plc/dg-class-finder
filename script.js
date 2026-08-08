@@ -9,7 +9,7 @@ import {
     getTeamLink,
     refreshAttendance,
     setAttendance,
-} from './scripts/members-data.js?v=8';
+} from './scripts/members-data.js?v=13';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -359,7 +359,96 @@ function initModal() {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 }
 
-// 10. 실행
+// 10. 자동 업데이트
+//
+// 사용자는 아무것도 누르지 않는다. 새 버전이 감지되면 짧게 알리고 스스로 리로드한다.
+// "새로고침 하세요" 안내를 두지 않는 이유: 고령 사용자가 많아 누르지 않는다.
+
+function showUpdateToast(message) {
+    let toast = document.getElementById('swUpdateToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'swUpdateToast';
+        toast.className = 'sw-update-toast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add('visible');
+}
+
+// 우리가 갱신을 적용시켰는지. controllerchange 가 '첫 설치의 claim' 인지
+// '새 버전 적용' 인지 가르는 기준이다.
+let updateApplied = false;
+
+function applyUpdate(worker) {
+    updateApplied = true;
+    showUpdateToast('🎉 새 버전을 적용하는 중이에요…');
+    // 잠깐 보여준 뒤 적용 (controllerchange → 자동 리로드)
+    setTimeout(() => worker.postMessage({ type: 'SKIP_WAITING' }), 600);
+}
+
+function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    if (location.protocol !== 'https:'
+        && location.hostname !== 'localhost'
+        && location.hostname !== '127.0.0.1') return;
+
+    window.addEventListener('load', async () => {
+        // 지금 이 페이지가 SW 의 제어를 받고 있었는가.
+        // 첫 방문이면 false 다 — activate 의 clients.claim() 이 controllerchange 를
+        // 일으키는데, 그때 리로드하면 처음 들어온 사람 화면이 이유 없이 깜빡인다.
+        const hadController = !!navigator.serviceWorker.controller;
+
+        try {
+            const registration = await navigator.serviceWorker.register('sw.js');
+
+            // 이미 대기 중인 새 버전이 있으면 바로 적용
+            if (registration.waiting && navigator.serviceWorker.controller) {
+                applyUpdate(registration.waiting);
+            }
+
+            registration.addEventListener('updatefound', () => {
+                const newSW = registration.installing;
+                if (!newSW) return;
+                newSW.addEventListener('statechange', () => {
+                    // controller 가 있어야 '갱신'이다. null 이면 첫 방문이라
+                    // 여기서 리로드하면 처음 들어온 사람 화면이 이유 없이 깜빡인다.
+                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                        applyUpdate(newSW);
+                    }
+                });
+            });
+
+            // sw.js 자체도 캐시되므로 주기적으로 확인한다.
+            // registration.update() 는 브라우저 HTTP 캐시를 우회한다.
+            setInterval(() => registration.update(), 30 * 60 * 1000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') registration.update();
+            });
+
+            // 새 SW 가 페이지를 넘겨받으면 리로드.
+            // 플래그가 없으면 리로드 → 또 넘겨받음 → 리로드 로 무한히 돈다.
+            let reloading = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                // 첫 설치의 clients.claim() 도 이 이벤트를 일으킨다. 그때는 갱신이
+                // 아니라 첫 방문이므로 리로드하지 않는다.
+                //
+                // updateApplied  우리가 새 버전을 적용시킨 경우 (첫 방문 세션 중
+                //                배포가 나가도 여기에 걸린다)
+                // hadController  다른 탭이 적용시켜 넘어온 경우
+                if (!updateApplied && !hadController) return;
+                if (reloading) return;
+                reloading = true;
+                window.location.reload();
+            });
+        } catch (err) {
+            console.log('SW 등록 실패:', err);
+        }
+    });
+}
+registerServiceWorker();
+
+// 11. 실행
 window.addEventListener('load', () => {
     loadData();
     initEventListeners();
