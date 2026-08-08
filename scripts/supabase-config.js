@@ -1,14 +1,22 @@
 // Supabase 접속 설정 (DGfinder).
 //
+// DGfinder 는 plc-class-finder 와 별개의 Supabase 프로젝트를 쓴다.
+// 교육과정도 시트도 다르고, 무엇보다 한쪽의 service_role 키가 새더라도
+// 다른 쪽 명단·출석에 닿지 않게 하려는 것이다.
+//
 // anon 키는 공개돼도 안전하다 — RLS 정책이 실제 접근을 제어한다.
 // dg_* 테이블은 select 만 열려 있고 쓰기 정책이 없어 이 키로는 아무것도 못 쓴다.
 //
-// ⚠️ plc-class-finder 와 같은 Supabase 프로젝트를 쓴다는 전제의 값이다.
-//    별도 프로젝트를 팠다면 아래 두 상수만 바꾸면 된다.
+// ⚠️ 새 프로젝트를 만든 뒤 Settings → API 에서 두 값을 복사해 여기에 넣는다.
+//    (service_role 키는 여기에 넣지 않는다. GitHub Secrets 에만 둔다.)
 
-export const SUPABASE_URL = 'https://wvpqdicsqjozhxtxsnin.supabase.co';
-export const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2cHFkaWNzcWpvemh4dHhzbmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2OTA3OTMsImV4cCI6MjEwMDI2Njc5M30.-_vV9lQYoWMZMqEahveSz4fT5psTbF3feKfBZ28qG0w';
+export const SUPABASE_URL = 'https://YOUR-DG-PROJECT.supabase.co';
+export const SUPABASE_ANON_KEY = 'PASTE_DG_ANON_KEY_HERE';
+
+if (SUPABASE_URL.includes('YOUR-DG-PROJECT') || SUPABASE_ANON_KEY.startsWith('PASTE_')) {
+  // 조용히 실패하면 "왜 아무것도 안 뜨지" 로 한참 헤맨다.
+  console.log('❌ scripts/supabase-config.js 의 SUPABASE_URL·SUPABASE_ANON_KEY 가 아직 비어 있습니다.');
+}
 
 // 시트가 대상을 밝히지 않았을 때만 쓰이는 폴백.
 // 평소에는 DB 에 실제로 들어있는 cohort_id 를 따라간다.
