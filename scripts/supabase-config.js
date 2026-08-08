@@ -7,16 +7,11 @@
 // anon 키는 공개돼도 안전하다 — RLS 정책이 실제 접근을 제어한다.
 // dg_* 테이블은 select 만 열려 있고 쓰기 정책이 없어 이 키로는 아무것도 못 쓴다.
 //
-// ⚠️ 새 프로젝트를 만든 뒤 Settings → API 에서 두 값을 복사해 여기에 넣는다.
-//    (service_role 키는 여기에 넣지 않는다. GitHub Secrets 에만 둔다.)
+// service_role 키는 여기에 넣지 않는다. GitHub Secrets 에만 둔다.
 
-export const SUPABASE_URL = 'https://YOUR-DG-PROJECT.supabase.co';
-export const SUPABASE_ANON_KEY = 'PASTE_DG_ANON_KEY_HERE';
-
-if (SUPABASE_URL.includes('YOUR-DG-PROJECT') || SUPABASE_ANON_KEY.startsWith('PASTE_')) {
-  // 조용히 실패하면 "왜 아무것도 안 뜨지" 로 한참 헤맨다.
-  console.log('❌ scripts/supabase-config.js 의 SUPABASE_URL·SUPABASE_ANON_KEY 가 아직 비어 있습니다.');
-}
+export const SUPABASE_URL = 'https://fcoqnyqykfuyhzatzoif.supabase.co';
+export const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjb3FueXF5a2Z1eWh6YXR6b2lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxNzkzNTcsImV4cCI6MjEwMTc1NTM1N30.7YhVaSon-h1sg7Fbt1HzsVospx8PmdGRUF9nJrNhFVg';
 
 // 시트가 대상을 밝히지 않았을 때만 쓰이는 폴백.
 // 평소에는 DB 에 실제로 들어있는 cohort_id 를 따라간다.

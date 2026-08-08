@@ -9,7 +9,7 @@ import {
     getTeamLink,
     refreshAttendance,
     setAttendance,
-} from './scripts/members-data.js?v=7';
+} from './scripts/members-data.js?v=8';
 
 // 2. DOM 요소 선택
 const elements = {
