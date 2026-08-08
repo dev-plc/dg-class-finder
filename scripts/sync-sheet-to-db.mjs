@@ -137,6 +137,21 @@ if (skipped.length) {
   console.log(`   ⚠️ 건너뜀 ${skipped.length}명: ${skipped.join(', ')}`);
 }
 
+// ID 열은 '이름 + 전화 뒷4자리' 여야 한다. 여기에 역할이나 메모가 섞이면
+// 건너뛰지 않고 조용히 잘못 쪼개진다 ('이민재6550 서브튜터' → phone='터').
+// 그대로 넣으면 아무도 조회되지 않으므로 반영 전에 잡는다.
+const badPhone = members.filter(m => !/^\d{4}$/.test(m.phone));
+if (badPhone.length) {
+  console.log(`   ⚠️ 전화 4자리가 아닌 ${badPhone.length}명: ` +
+              badPhone.map(m => `${m.name}[${m.phone}]`).join(', '));
+  console.log('      ID 열에 역할·메모가 섞이면 이름/전화가 어긋납니다. 시트를 고친 뒤 다시 돌리세요.');
+}
+
+const noTeam = members.filter(m => !m.team);
+if (noTeam.length) {
+  console.log(`   ⚠️ 조 없음 ${noTeam.length}명: ${noTeam.map(m => `${m.name}${m.phone}`).join(', ')}`);
+}
+
 // ------------------------------------------------------------------ 위치·링크
 const locations = Object.entries(gas.locationMap || {})
   .filter(([loc]) => trim(loc) && !loc.endsWith('링크'))
