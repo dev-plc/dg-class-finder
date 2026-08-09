@@ -188,24 +188,56 @@ function toISODate(mmdd, year) {
   return Number.isNaN(Date.parse(iso)) ? null : iso;
 }
 
-const YEAR = toInt(getArg('year')) || new Date().getFullYear();
+// 회차마다 연도를 붙인다.
+//
+// 시트 헤더에는 MM/DD 뿐이라 연도가 없다. 전부 같은 해로 찍으면 11월에 시작해
+// 1월에 끝나는 학기가 뒤집힌다 (01/25 가 11/02 보다 앞서고, 11·12월이 미래가 된다).
+// 열 순서를 시간순으로 보고, 달이 작아지는 지점에서 해가 바뀐 것으로 본다.
+function buildSessionDates(keys, startYear) {
+  const out = new Map();
+  let year = startYear;
+  let prevMonth = null;
+  for (const key of keys) {
+    const m = String(key || '').trim().match(MMDD);
+    if (!m) continue;
+    const month = parseInt(m[1], 10);
+    const day = parseInt(m[2], 10);
+    if (prevMonth !== null && month < prevMonth) year++;   // 12 → 01
+    prevMonth = month;
+    const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    // 형태를 확인하고 쓴다. 안 보고 Date 로 넘기면 엉뚱한 값에서 죽는다.
+    if (!Number.isNaN(Date.parse(iso))) out.set(key, iso);
+  }
+  return out;
+}
+
+const START_YEAR = toInt(getArg('start-year')) || toInt(process.env.START_YEAR)
+  || new Date().getFullYear();
 const attendanceBySheetId = [];
 
 if (Array.isArray(gas.sessionDates) && gas.sessionDates.length) {
+  const dateOf = buildSessionDates(gas.sessionDates, START_YEAR);
+  const isoList = [...dateOf.values()];
+
+  // 연도를 잘못 잡으면 출석이 통째로 엉뚱한 날짜에 들어간다.
+  // 로그에 범위를 남겨 눈으로 바로 확인할 수 있게 한다.
+  console.log(`▶ 회차 ${dateOf.size}개: ${isoList[0]} ~ ${isoList[isoList.length - 1]}`);
+  console.log(`   (시작 연도 ${START_YEAR}. 틀리면 --start-year=YYYY 로 지정하세요)`);
+
   for (const r of rows) {
     const id = `${trim(r.name)}${trim(r.phone)}`;
     const map = r.attendanceByDate || {};
     for (const key of gas.sessionDates) {
-      const iso = toISODate(key, YEAR);
+      const iso = dateOf.get(key);
       if (!iso) continue;
       const status = trim(map[key]);
       if (!status) continue;
       attendanceBySheetId.push({ _id: id, session_date: iso, status });
     }
   }
-  console.log(`▶ 출석 ${attendanceBySheetId.length}건 (회차 ${gas.sessionDates.length}개)`);
+  console.log(`▶ 출석 ${attendanceBySheetId.length}건`);
 } else if (trim(gas.todayKey)) {
-  const iso = toISODate(gas.todayKey, YEAR);
+  const iso = toISODate(gas.todayKey, START_YEAR);
   if (iso) {
     for (const r of rows) {
       const status = trim(r.attendance);

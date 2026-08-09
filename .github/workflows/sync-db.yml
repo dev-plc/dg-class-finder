@@ -7,6 +7,10 @@ on:
         description: '대상 ID (비우면 시트의 표식을 따라감)'
         required: false
         default: ''
+      start_year:
+        description: '첫 회차의 연도 (비우면 올해). 학기가 11월 시작 1월 종료면 시작 연도를 적을 것'
+        required: false
+        default: ''
       dry_run:
         description: 'dry-run (쓰기 없이 확인만)'
         type: boolean
@@ -40,6 +44,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GAS_API_URL: ${{ secrets.GAS_API_URL }}
           COHORT_ID: ${{ github.event.inputs.cohort }}
+          START_YEAR: ${{ github.event.inputs.start_year }}
         run: |
           FLAGS=""
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then

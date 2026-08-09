@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=13';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=13';
+import { matches as hangulMatches } from './hangul.js?v=14';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=14';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -102,6 +102,11 @@ function buildMemberRow(m, teamLinks, attByMember) {
 // ============================================================================
 // 서버 통신
 // ============================================================================
+// 'YYYY-MM-DD' (로컬 기준). 시트도 같은 시간대를 쓴다.
+function todayISO() {
+  return new Date().toLocaleDateString('sv-SE');
+}
+
 async function fetchFromServer(cohortId) {
   const enc = encodeURIComponent(cohortId);
 
@@ -109,10 +114,15 @@ async function fetchFromServer(cohortId) {
     sbSelect(`dg_members?select=*&cohort_id=eq.${enc}&status=eq.active&order=team,team_no`),
     sbSelect(`dg_team_links?select=team,chat_url&cohort_id=eq.${enc}`),
     sbSelect('dg_locations?select=location,image_url,detail_url'),
-    // 가장 최근 회차의 출석만 있으면 된다. 화면은 오늘치만 쓴다.
-    sbSelect(`dg_attendance?select=member_id,session_date,status,` +
+    // 오늘 회차의 출석만 가져온다.
+    //
+    // 전 회차를 받아 '멤버별 가장 최근 행' 을 쓰면 안 된다. 동기화가 빈 값을
+    // 건너뛰기 때문에 각자 마지막으로 출석한 회차의 O 가 남아, 오늘 아무도
+    // 체크하지 않았는데 전원 출석한 것처럼 보인다.
+    // 체크박스가 뜻하는 것은 언제나 '오늘' 이다.
+    sbSelect(`dg_attendance?select=member_id,status,` +
              `dg_members!inner(cohort_id)&dg_members.cohort_id=eq.${enc}` +
-             `&order=session_date.desc`),
+             `&session_date=eq.${todayISO()}`),
   ]);
 
   const teamLinks = {};
@@ -125,11 +135,10 @@ async function fetchFromServer(cohortId) {
     if (l.detail_url) locationMap[`${l.location}링크`] = l.detail_url;
   }
 
-  // 최신 회차 한 개만 남긴다 (내림차순이라 멤버별 첫 행이 최신).
+  // 위에서 오늘 회차로 좁혀 왔으므로 멤버당 한 행이다.
+  // 오늘 회차가 없으면 비어 있고, 체크박스는 전부 해제된 상태로 뜬다 (그게 맞다).
   const attByMember = new Map();
-  for (const a of attendance) {
-    if (!attByMember.has(a.member_id)) attByMember.set(a.member_id, a.status ?? '');
-  }
+  for (const a of attendance) attByMember.set(a.member_id, a.status ?? '');
 
   return {
     members: members.map(m => buildMemberRow(m, teamLinks, attByMember)),
