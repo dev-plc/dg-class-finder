@@ -1188,21 +1188,33 @@ body.large-text .map-image {
 }
 .my-attendance-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
     gap: 6px;
 }
 .att-chip {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: 1px;
     padding: 6px 4px;
     border-radius: 8px;
     border: 1px solid rgba(0, 0, 0, 0.08);
     background: var(--white);
+    min-height: 62px;
+    justify-content: center;
 }
 .att-date { font-size: 10px; opacity: 0.7; }
-.att-mark { font-size: 14px; font-weight: 700; line-height: 1; }
+.att-name {
+    font-size: 9px;
+    opacity: 0.6;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.att-mark { font-size: 14px; font-weight: 700; line-height: 1.1; }
+/* 김밥·과제는 아이콘으로. 자리가 비어도 칸 높이는 유지된다. */
+.att-badges { font-size: 10px; line-height: 1; min-height: 11px; }
 .att-chip.present { background: rgba(16, 185, 129, 0.16); }
 .att-chip.absent  { background: rgba(239, 68, 68, 0.12); }
 .att-chip.special { background: rgba(59, 130, 246, 0.14); }

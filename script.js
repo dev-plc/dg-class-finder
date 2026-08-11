@@ -15,7 +15,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=23';
+} from './scripts/members-data.js?v=24';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -283,17 +283,32 @@ async function renderMyAttendance(member) {
     const present = rows.filter(r => r.status.toUpperCase() === 'O').length;
     const absent = rows.filter(r => r.status.toUpperCase() === 'X').length;
     const other = rows.length - present - absent;
+    const lunchCount = rows.filter(r => r.lunch).length;
+    const hwCount = rows.filter(r => r.homework).length;
 
     if (summary) {
-        summary.textContent = `출석 ${present} · 결석 ${absent}`
-            + (other ? ` · 그 외 ${other}` : '');
+        summary.textContent = [
+            `총 ${rows.length}회차`,
+            `출석 ${present}`,
+            `결석 ${absent}`,
+            other ? `그 외 ${other}` : '',
+            lunchCount ? `🍙 ${lunchCount}회 신청` : '',
+            hwCount ? `📝 ${hwCount}건 제출` : '',
+        ].filter(Boolean).join(' · ');
     }
 
     grid.innerHTML = rows.map(r => {
         const st = classifyStatus(r.status);
-        return `<div class="att-chip ${st.cls}" title="${escapeAttr(r.key)} · ${escapeAttr(st.title)}">
+        const badges = (r.lunch ? '🍙' : '') + (r.homework ? '📝' : '');
+        const tip = [r.key, r.name, st.title,
+                     r.lunch ? '🍙 김밥 신청' : '', r.homework ? '📝 과제 제출' : '']
+                    .filter(Boolean).join(' · ');
+
+        return `<div class="att-chip ${st.cls}" title="${escapeAttr(tip)}">
                     <span class="att-date">${escapeHtml(r.key)}</span>
+                    ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}
                     <span class="att-mark">${escapeHtml(st.label)}</span>
+                    <span class="att-badges">${badges}</span>
                 </div>`;
     }).join('');
 

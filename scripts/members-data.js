@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=23';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=23';
+import { matches as hangulMatches } from './hangul.js?v=24';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=24';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -132,7 +132,7 @@ async function fetchFromServer(cohortId) {
              `&session_date=eq.${todayISO()}&order=member_id`),
     // 회차 목록. 조원 화면이 본인 출석 그리드를 그릴 때 쓴다.
     // 조장은 뒤에 GAS 에서 더 최신인 것으로 덮어쓴다.
-    sbSelect(`dg_sessions?select=session_date,label&cohort_id=eq.${enc}&order=session_date`),
+    sbSelect(`dg_sessions?select=session_date,label,name&cohort_id=eq.${enc}&order=session_date`),
   ]);
 
   const teamLinks = {};
@@ -153,6 +153,7 @@ async function fetchFromServer(cohortId) {
   const sessions = (sessionRows || []).map(s => ({
     date: s.session_date,
     key: s.label || String(s.session_date).slice(5).replace('-', '/'),
+    name: s.name || '',
   }));
 
   return {
@@ -263,7 +264,15 @@ export async function refreshAttendance() {
   if (!result.success) throw new Error(result.message || '출결 조회 실패');
 
   // 회차 — 연도는 GAS 가 확정해서 준다. 여기서 추측하지 않는다.
-  state.sessions = (result.sessions || []).map(s => ({ key: s.key, date: s.date }));
+  //
+  // GAS 의 label 이 강의명('18강')이고 key 가 'MM/DD' 다. Supabase 쪽은 이름이
+  // 반대(label=MM/DD, name=강의명)라 여기서 맞춰 준다. 안 맞추면 조장 화면에서
+  // 강의명이 통째로 사라지고 과제가 회차에 붙지 않는다.
+  state.sessions = (result.sessions || []).map(s => ({
+    key: s.key,
+    date: s.date,
+    name: s.label || '',
+  }));
   state.today = result.today || todayISO();
   if (!state.session || !state.sessions.some(s => s.date === state.session)) {
     state.session = result.currentSession || '';
@@ -296,15 +305,37 @@ export async function refreshAttendance() {
 export async function getMyAttendance(member) {
   if (!member || !member._uuid) return [];
 
-  const rows = await sbSelect(
-    `dg_attendance?select=session_date,status&member_id=eq.${member._uuid}&order=session_date`);
+  const [attRows, lunchRows, hwRows] = await Promise.all([
+    sbSelect(`dg_attendance?select=session_date,status&member_id=eq.${member._uuid}&order=session_date`),
+    sbSelect(`dg_lunch?select=session_date,applied&member_id=eq.${member._uuid}&order=session_date`)
+      .catch(() => []),
+    sbSelect(`dg_homework?select=lecture&member_id=eq.${member._uuid}&order=lecture`)
+      .catch(() => []),
+  ]);
 
-  const byDate = new Map(rows.map(r => [r.session_date, r.status ?? '']));
+  const byDate = new Map(attRows.map(r => [r.session_date, r.status ?? '']));
+  const lunchSet = new Set(lunchRows.filter(r => r.applied).map(r => r.session_date));
+
+  // 과제는 '몇 강' 이라 날짜가 없다. 회차에 이름이 적혀 있을 때만 붙인다.
+  // 이름이 없으면 순서로 짐작해야 하는데, 그러면 엉뚱한 회차에 붙는다.
+  const hwNames = new Set(hwRows.map(r => normalizeLecture(r.lecture)).filter(Boolean));
   const today = state.today || todayISO();
 
   return state.sessions
     .filter(s => s.date <= today)
-    .map(s => ({ date: s.date, key: s.key, status: byDate.get(s.date) || '' }));
+    .map(s => ({
+      date: s.date,
+      key: s.key,
+      name: s.name || '',
+      status: byDate.get(s.date) || '',
+      lunch: lunchSet.has(s.date),
+      homework: !!(s.name && hwNames.has(normalizeLecture(s.name))),
+    }));
+}
+
+// '1강' · '1 강' · '교리1' 을 견주기 좋게 다듬는다.
+function normalizeLecture(v) {
+  return String(v || '').replace(/\s/g, '').toLowerCase();
 }
 
 /**

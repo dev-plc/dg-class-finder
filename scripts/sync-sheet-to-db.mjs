@@ -223,8 +223,17 @@ if (Array.isArray(gas.sessions) && gas.sessions.length) {
   console.log(`▶ 회차 ${isoList.length}개: ${isoList[0]} ~ ${isoList[isoList.length - 1]} (GAS 확정)`);
 
   for (const s of gas.sessions) {
-    sessionRows.push({ cohort_id: COHORT_ID, session_date: s.date, label: trim(s.key) });
+    sessionRows.push({
+      cohort_id: COHORT_ID,
+      session_date: s.date,
+      label: trim(s.key),
+      // 시트 날짜 헤더 윗줄의 강의명. 없으면 빈 값이다.
+      name: trim(s.label) || null,
+    });
   }
+  const named = sessionRows.filter(s => s.name).length;
+  console.log(`   강의명이 적힌 회차 ${named}/${sessionRows.length}개`
+    + (named ? '' : ' — 날짜 헤더 윗줄에 강의명이 없어 과제를 회차에 붙이지 않습니다'));
 
   for (const r of rows) {
     const id = `${trim(r.name)}${trim(r.phone)}`;
@@ -344,6 +353,29 @@ if (sessionRows.length) {
   console.log('▶ dg_sessions');
   await upsert('dg_sessions', sessionRows, 'cohort_id,session_date');
   console.log(`   ${sessionRows.length}건 반영`);
+}
+
+// -------------------------------------------------------------------- 김밥
+{
+  const uuidById = new Map(saved.map(m => [`${m.name}${m.phone || ''}`, m.id]));
+  const lunchRows = [];
+  for (const r of rows) {
+    const uuid = uuidById.get(`${trim(r.name)}${trim(r.phone)}`);
+    if (!uuid) continue;
+    for (const [date, val] of Object.entries(r.lunchByDate || {})) {
+      if (!trim(val)) continue;
+      lunchRows.push({
+        cohort_id: COHORT_ID, member_id: uuid, session_date: date, applied: true,
+      });
+    }
+  }
+  if (lunchRows.length) {
+    console.log('▶ dg_lunch');
+    await upsert('dg_lunch', lunchRows, 'cohort_id,member_id,session_date');
+    console.log(`   ${lunchRows.length}건 반영`);
+  } else {
+    console.log('▶ 김밥 건너뜀 — GAS 가 lunchByDate 를 주지 않았습니다 (v21 로 재배포 필요)');
+  }
 }
 
 // -------------------------------------------------------------------- 과제

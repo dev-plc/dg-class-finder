@@ -38,7 +38,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 20;
+var DG_VERSION = 21;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -191,6 +191,74 @@ function DG_buildSessions(headerRow, tz) {
 
 function DG_todayISO(tz) {
   return Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+}
+
+/**
+ * 강의명 행 — 날짜 헤더 바로 윗줄에 '1강' · '교리1' 처럼 적어 두면 그대로 읽는다.
+ *
+ * 이것이 있어야 과제의 '몇 강' 을 회차에 정확히 붙일 수 있다.
+ * 없으면 빈 객체를 돌려주고, 과제는 회차에 붙이지 않는다 —
+ * 순서로 짐작하면 엉뚱한 회차에 붙기 때문이다.
+ *
+ * @returns { '2026-08-09': '18강', ... }
+ */
+function DG_readSessionLabels(values, headerRowIdx, sessions) {
+  var out = {};
+  if (headerRowIdx <= 0) return out;
+
+  var above = values[headerRowIdx - 1];
+  if (!above) return out;
+
+  for (var i = 0; i < sessions.length; i++) {
+    var v = above[sessions[i].col];
+    var label = String(v == null ? '' : v).trim();
+    if (label) out[sessions[i].date] = label;
+  }
+  return out;
+}
+
+/**
+ * 김밥 신청 — 전 회차.
+ *
+ * 예전에는 '오늘 이후 가장 가까운 열' 하나만 읽었다. 결과 카드에 한 줄
+ * 띄우는 데는 충분했지만, 회차별 이력을 보여주려면 전부 필요하다.
+ *
+ * @returns { '이민재6550': { '2026-08-09': 'O' }, ... }
+ */
+function DG_readLunchByDate(ss, tz) {
+  var sheet = ss.getSheetByName(DG_TAB_LUNCH);
+  var out = {};
+  if (!sheet) return out;
+
+  var values = sheet.getDataRange().getValues();
+  var headerIdx = DG_findHeaderRow(values);
+  if (headerIdx === -1) return out;
+
+  var header = values[headerIdx];
+  var idIdx = header.map(function (h) {
+    return String(h).trim().toLowerCase();
+  }).indexOf('id');
+  if (idIdx === -1) return out;
+
+  // 날짜 열은 출석부와 같은 방식으로 읽는다 (연도까지 확정).
+  var cols = DG_buildSessions(header, tz);
+  if (!cols.length) return out;
+
+  for (var r = headerIdx + 1; r < values.length; r++) {
+    var id = String(values[r][idIdx]).replace(/[^a-zA-Z0-9가-힣]/g, '');
+    if (!id) continue;
+
+    var map = {};
+    for (var c = 0; c < cols.length; c++) {
+      var cell = values[r][cols[c].col];
+      var val = cell instanceof Date
+        ? Utilities.formatDate(cell, tz, 'yyyy-MM-dd')
+        : String(cell == null ? '' : cell).trim();
+      if (val) map[cols[c].date] = 'O';   // 값이 있으면 신청한 것으로 본다
+    }
+    out[id] = map;
+  }
+  return out;
 }
 
 /**
@@ -770,6 +838,12 @@ function doGet(e) {
     var todayISO = DG_todayISO(tz);
     var sessions = DG_buildSessions(originalHeadersRaw, tz);
 
+    // 날짜 헤더 윗줄의 강의명. 있으면 과제의 '몇 강' 을 회차에 붙일 수 있다.
+    var sessionLabels = DG_readSessionLabels(data, headerRowIdx, sessions);
+
+    // 김밥 — 회차별. 결과 카드의 한 줄(kimbapMap) 은 그대로 두고 이력을 더한다.
+    var lunchByDate = DG_readLunchByDate(ss, tz);
+
     // 대상 표식
     var cohortHint = '';
     for (var cr = 0; cr < Math.min(6, data.length) && !cohortHint; cr++) {
@@ -830,6 +904,7 @@ function doGet(e) {
       }
       obj['attendanceByDate'] = att;
       obj['attendance'] = att[currentSession] || '';
+      obj['lunchByDate'] = lunchByDate[obj['id']] || {};
 
       jsonData.push(obj);
     }
@@ -844,7 +919,9 @@ function doGet(e) {
       today: todayISO,
       currentSession: currentSession,
       // [{ key:'11/02', date:'2025-11-02' }, ...] — 연도는 GAS 가 확정한다
-      sessions: sessions.map(function (s) { return { key: s.key, date: s.date }; }),
+      sessions: sessions.map(function (s) {
+        return { key: s.key, date: s.date, label: sessionLabels[s.date] || '' };
+      }),
       // 과제 제출 목록. 인원마다 넣지 않고 따로 둔다 (대부분 몇 건 없다).
       homework: DG_readHomework(ss, tz),
       // 옛 동기화 스크립트 호환
