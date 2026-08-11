@@ -1218,35 +1218,42 @@ body.large-text .map-image {
     border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 .my-homework-list {
-    display: flex;
-    flex-direction: column;
+    border-left: 3px solid var(--midnight-blue);
+    padding: 4px 10px;
+    background: var(--milk-beige);
+    border-radius: 0 8px 8px 0;
+}
+/* 한 줄에 하나. 강 · 종류 · 날짜 · 링크 */
+.hw-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     gap: 8px;
-}
-.hw-item {
-    padding: 10px 12px;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 10px;
-    background: var(--white);
-}
-.hw-head {
-    display: flex;
     align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+    padding: 5px 0;
+    border-bottom: 1px dotted rgba(0, 0, 0, 0.12);
 }
+.hw-row:last-child { border-bottom: none; }
 .hw-lecture {
     font-weight: 700;
     font-size: 13px;
     color: var(--midnight-blue);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .hw-kind {
     font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    background: var(--milk-beige);
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    opacity: 0.75;
+    white-space: nowrap;
 }
-.hw-when { font-size: 11px; opacity: 0.6; margin-left: auto; }
-.hw-body { margin-top: 6px; }
-.hw-link { font-size: 13px; font-weight: 600; }
-.hw-text { font-size: 12px; opacity: 0.85; word-break: break-word; }
+.hw-when {
+    font-size: 11px;
+    opacity: 0.55;
+    white-space: nowrap;
+}
+/* 링크는 글씨 대신 아이콘 — 다크모드에서 파란 글씨가 배경에 묻힌다 */
+.hw-links a, .hw-links span {
+    text-decoration: none;
+    font-size: 15px;
+    line-height: 1;
+}

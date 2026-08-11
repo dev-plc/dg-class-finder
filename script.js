@@ -15,7 +15,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=22';
+} from './scripts/members-data.js?v=23';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -322,23 +322,25 @@ async function renderMyHomework(member) {
     if (!rows.length) return;
     if (!shownMember || shownMember.id !== member.id) return;
 
-    if (summary) summary.textContent = `${rows.length}건`;
+    if (summary) summary.textContent = `총 ${rows.length}건 제출`;
 
+    // 한 줄에 하나씩. 18건이 카드로 쌓이면 화면이 통째로 밀린다.
+    // 링크는 글씨 대신 🔗 로 — 다크모드에서 파란 글씨가 배경에 묻힌다.
     list.innerHTML = rows.map(r => {
         const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
         const isLink = /^https?:\/\//i.test(r.content);
-        const body = isLink
-            ? `<a href="${escapeAttr(r.content)}" target="_blank" rel="noopener" class="hw-link">제출물 열기</a>`
-            : (r.content ? `<span class="hw-text">${escapeHtml(r.content)}</span>` : '');
 
         return `
-            <div class="hw-item">
-                <div class="hw-head">
-                    ${r.lecture ? `<span class="hw-lecture">${escapeHtml(r.lecture)}</span>` : ''}
-                    ${r.kind ? `<span class="hw-kind">${escapeHtml(r.kind)}</span>` : ''}
-                    ${when ? `<span class="hw-when">${escapeHtml(when)}</span>` : ''}
-                </div>
-                ${body ? `<div class="hw-body">${body}</div>` : ''}
+            <div class="hw-row">
+                <span class="hw-lecture">${escapeHtml(r.lecture || '(미기재)')}</span>
+                <span class="hw-kind">${escapeHtml(r.kind || '')}</span>
+                <span class="hw-when">${escapeHtml(when)}</span>
+                <span class="hw-links">${
+                    isLink
+                        ? `<a href="${escapeAttr(r.content)}" target="_blank" rel="noopener"
+                              title="제출물 열기" aria-label="제출물 열기">🔗</a>`
+                        : (r.content ? `<span title="${escapeAttr(r.content)}">📄</span>` : '')
+                }</span>
             </div>
         `;
     }).join('');
