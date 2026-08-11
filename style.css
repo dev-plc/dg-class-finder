@@ -1269,3 +1269,60 @@ body.large-text .map-image {
     font-size: 15px;
     line-height: 1;
 }
+
+/* ============================================================
+   출석 그리드 범례
+   ============================================================ */
+.grid-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 11px;
+    opacity: 0.65;
+}
+.grid-legend b { font-weight: 700; }
+
+/* ============================================================
+   김밥 신청 요약
+   ============================================================ */
+.my-lunch {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.lunch-total { margin-bottom: 8px; }
+.lunch-total-badge {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 16px;
+    background: rgba(217, 119, 6, 0.14);
+    border: 1px solid rgba(217, 119, 6, 0.35);
+    color: #b45309;
+    font-size: 13px;
+    font-weight: 700;
+}
+.lunch-total-badge.none {
+    background: transparent;
+    border-color: rgba(0, 0, 0, 0.12);
+    color: inherit;
+    opacity: 0.55;
+    font-weight: 600;
+}
+.lunch-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.lunch-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: rgba(217, 119, 6, 0.10);
+    border: 1px solid rgba(217, 119, 6, 0.22);
+    font-size: 12px;
+}
+.lunch-chip b { font-weight: 700; }
+.lunch-chip-date { font-size: 11px; opacity: 0.7; }

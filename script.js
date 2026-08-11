@@ -15,7 +15,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=25';
+} from './scripts/members-data.js?v=26';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -311,6 +311,34 @@ async function renderMyAttendance(member) {
                     <span class="att-badges">${badges}</span>
                 </div>`;
     }).join('');
+
+    section.style.display = 'block';
+    renderMyLunch(rows);
+}
+
+// 5-1-1. 김밥 신청 요약
+//
+// 그리드의 🍙 만으로는 "몇 번 신청했는지" 가 한눈에 안 들어온다.
+// 출석 조회에서 이미 받아온 값을 다시 쓰므로 통신이 늘지 않는다.
+function renderMyLunch(rows) {
+    const section = document.getElementById('myLunchSection');
+    const badge = document.getElementById('myLunchBadge');
+    const list = document.getElementById('myLunchList');
+    if (!section || !badge || !list) return;
+
+    const applied = rows.filter(r => r.lunch);
+
+    badge.innerHTML = applied.length
+        ? `<span class="lunch-total-badge">🍙 총 ${applied.length}회 신청</span>`
+        : `<span class="lunch-total-badge none">신청 내역 없음</span>`;
+
+    // 최근 회차가 앞으로 (조회하는 사람은 대개 최근 것을 궁금해한다)
+    list.innerHTML = [...applied].reverse().map(r => `
+        <span class="lunch-chip">
+            ${r.name ? `<b>${escapeHtml(r.name)}</b>` : ''}
+            <span class="lunch-chip-date">${escapeHtml(r.key)}</span>
+        </span>
+    `).join('');
 
     section.style.display = 'block';
 }
