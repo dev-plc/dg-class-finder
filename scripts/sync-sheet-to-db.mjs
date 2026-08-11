@@ -215,14 +215,30 @@ const START_YEAR = toInt(getArg('start-year')) || toInt(process.env.START_YEAR)
   || new Date().getFullYear();
 const attendanceBySheetId = [];
 
-if (Array.isArray(gas.sessionDates) && gas.sessionDates.length) {
+if (Array.isArray(gas.sessions) && gas.sessions.length) {
+  // GAS v19+ — 연도까지 확정된 회차를 준다. 여기서 추측하지 않는다.
+  // 판단이 두 곳에 있으면 반드시 갈라지므로 GAS 한 곳으로 모았다.
+  const isoList = gas.sessions.map(s => s.date);
+  console.log(`▶ 회차 ${isoList.length}개: ${isoList[0]} ~ ${isoList[isoList.length - 1]} (GAS 확정)`);
+
+  for (const r of rows) {
+    const id = `${trim(r.name)}${trim(r.phone)}`;
+    const map = r.attendanceByDate || {};
+    for (const iso of isoList) {
+      const status = trim(map[iso]);
+      if (!status) continue;
+      attendanceBySheetId.push({ _id: id, session_date: iso, status });
+    }
+  }
+  console.log(`▶ 출석 ${attendanceBySheetId.length}건`);
+} else if (Array.isArray(gas.sessionDates) && gas.sessionDates.length) {
+  // GAS v18 이하 — MM/DD 만 준다. 연도를 여기서 붙인다.
   const dateOf = buildSessionDates(gas.sessionDates, START_YEAR);
   const isoList = [...dateOf.values()];
 
-  // 연도를 잘못 잡으면 출석이 통째로 엉뚱한 날짜에 들어간다.
-  // 로그에 범위를 남겨 눈으로 바로 확인할 수 있게 한다.
   console.log(`▶ 회차 ${dateOf.size}개: ${isoList[0]} ~ ${isoList[isoList.length - 1]}`);
   console.log(`   (시작 연도 ${START_YEAR}. 틀리면 --start-year=YYYY 로 지정하세요)`);
+  console.log('   GAS 를 v19 로 올리면 연도를 GAS 가 확정해 줍니다.');
 
   for (const r of rows) {
     const id = `${trim(r.name)}${trim(r.phone)}`;

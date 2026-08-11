@@ -25,17 +25,54 @@ const baseHeaders = {
   Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
 };
 
+const PAGE_SIZE = 1000;
+
 /**
  * PostgREST 조회.
+ *
+ * PostgREST 는 한 번에 1000행만 준다. **조용히 잘린다** — 오류도 안 나서
+ * 화면은 "출석 0" 인데 DB 는 값이 있는 앞뒤 안 맞는 상태가 된다.
+ * 인원 × 회차는 금방 1000을 넘으므로 끝까지 나눠 받는다.
+ *
+ * order 가 없으면 페이지마다 순서가 흔들려 행이 빠지거나 겹친다.
+ * 호출부가 order 를 안 넣었으면 여기서 넣어 준다.
+ *
  * @param {string} path 테이블 이름과 쿼리스트링 (예: 'dg_members?select=*&cohort_id=eq.DG-2026')
  */
 export async function sbSelect(path) {
-  const res = await fetch(`${REST}/${path}`, { headers: baseHeaders });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Supabase 조회 실패 (${res.status}): ${body.slice(0, 200)}`);
+  // 나눠 받으려면 정렬 기준이 있어야 한다. 테이블마다 어떤 열이 있는지는
+  // 여기서 알 수 없으므로 (dg_attendance 에는 id 가 없다) 호출부가 정한다.
+  // limit 을 직접 지정했다면 호출부의 뜻을 존중해 한 번만 받는다.
+  const paginate = /[?&]order=/.test(path) && !/[?&]limit=/.test(path);
+
+  if (!paginate) {
+    const res = await fetch(`${REST}/${path}`, { headers: baseHeaders });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Supabase 조회 실패 (${res.status}): ${body.slice(0, 200)}`);
+    }
+    const rows = await res.json();
+    if (rows.length === PAGE_SIZE) {
+      console.log(`⚠️ ${path.split('?')[0]} 가 정확히 ${PAGE_SIZE}행입니다 — ` +
+                  '잘렸을 수 있습니다. order 를 넣어 나눠 받으세요.');
+    }
+    return rows;
   }
-  return res.json();
+
+  const out = [];
+  let offset = 0;
+  for (;;) {
+    const res = await fetch(`${REST}/${path}&limit=${PAGE_SIZE}&offset=${offset}`,
+                            { headers: baseHeaders });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Supabase 조회 실패 (${res.status}): ${body.slice(0, 200)}`);
+    }
+    const rows = await res.json();
+    out.push(...rows);
+    if (rows.length < PAGE_SIZE) return out;
+    offset += PAGE_SIZE;
+  }
 }
 
 export function getCachedCohortId() {

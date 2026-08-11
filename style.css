@@ -910,3 +910,26 @@ body.large-text .map-image {
     transform: translate(-50%, 0);
     opacity: 1;
 }
+
+/* 회차 선택 — 조원 명단 위에 놓인다 */
+.session-picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.session-picker label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--midnight-blue);
+}
+.session-picker select {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--midnight-blue);
+    background: var(--white);
+    color: var(--midnight-blue);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}

@@ -7,9 +7,13 @@ import {
     getTeamMembers,
     getLocationImage,
     getTeamLink,
+    getSessions,
+    getSession,
+    setSession,
     refreshAttendance,
-    setAttendance,
-} from './scripts/members-data.js?v=14';
+    saveAttendance,
+    subscribe,
+} from './scripts/members-data.js?v=15';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -199,17 +203,68 @@ function displayResult(member) {
     );
 
     if (isTutor && member.team && memberListContainer) {
+        // 지금 누구를 보고 있는지 기억해 둔다. 배경 갱신이 끝나면 이 값으로 다시 그린다.
+        shownMember = member;
         renderTeamMembers(getTeamMembers(member.team), member.team, member.role);
 
-        // 출석은 하루 한 번 동기화라 DB 값이 그날 안에 뒤처진다.
-        // 조원 명단을 열 때는 원본에서 다시 읽어 방금 체크한 것이 보이게 한다.
+        // 출결의 원본은 시트다. DB 는 동기화 간격만큼 뒤처지므로, 조원 명단을
+        // 열 때는 원본을 읽어 방금 체크한 것이 보이게 한다.
+        // 회차 목록도 같이 오므로 왕복은 한 번이면 된다.
         refreshAttendance()
             .then(() => renderTeamMembers(getTeamMembers(member.team), member.team, member.role))
-            .catch(err => console.log("출석 최신화 실패, 마지막 값 표시:", err));
+            .catch(err => console.log("출결 최신화 실패, 마지막 값 표시:", err));
+    } else {
+        shownMember = member;
     }
 
     elements.resultContainer.style.display = 'block';
     elements.resultContainer.scrollIntoView({ behavior: 'smooth' });
+}
+
+// 지금 결과 카드에 떠 있는 사람. 배경 갱신이 끝나면 이 값으로 다시 그린다.
+let shownMember = null;
+
+// 6-1. 회차 선택
+//
+// 회차를 앱이 정해서 보낸다. 서버 시계에 맡기면 10일에 9일 출석을 찍을 때
+// 10일 열이 새로 생긴다. 목록은 시트에 이미 있는 회차만이고,
+// 아직 지나지 않은 회차는 데이터 계층이 걸러 준다.
+function renderSessionPicker() {
+    const title = document.getElementById('teamListTitle');
+    if (!title) return;
+
+    const sessions = getSessions();
+    let row = document.getElementById('sessionPickerRow');
+
+    if (!sessions.length) {
+        if (row) row.style.display = 'none';
+        return;
+    }
+
+    if (!row) {
+        row = document.createElement('div');
+        row.id = 'sessionPickerRow';
+        row.className = 'session-picker';
+        row.innerHTML = `
+            <label for="sessionPicker">회차</label>
+            <select id="sessionPicker"></select>
+        `;
+        title.parentNode.insertBefore(row, title.nextSibling);
+
+        row.querySelector('#sessionPicker').addEventListener('change', (e) => {
+            setSession(e.target.value);
+            if (shownMember) {
+                renderTeamMembers(getTeamMembers(shownMember.team), shownMember.team, shownMember.role);
+            }
+        });
+    }
+
+    row.style.display = 'flex';
+    const select = row.querySelector('#sessionPicker');
+    const current = getSession();
+    select.innerHTML = sessions.map(s =>
+        `<option value="${escapeAttr(s.date)}"${s.date === current ? ' selected' : ''}>${escapeHtml(s.key)}</option>`
+    ).join('');
 }
 
 // 6. 직책별 우선순위 설정
@@ -235,11 +290,13 @@ function renderTeamMembers(members, teamName, role) {
     }
 
     container.style.display = 'block';
-    
+
     const kimbapCount = members.filter(m => m.lunch && m.lunch.toUpperCase() === 'O').length;
-    
+
     titleElement.textContent = `👥 ${teamName} 조원 명단 (총 ${members.length}명 / 🍙 김밥 ${kimbapCount}개)`;
-    
+
+    renderSessionPicker();
+
     const sortedMembers = [...members].sort((a, b) => {
         const priorityA = rolePriority[a.role] || 4;
         const priorityB = rolePriority[b.role] || 4;
@@ -280,16 +337,30 @@ function escapeHtml(v) {
 }
 const escapeAttr = escapeHtml;
 
-// ✨ 낙관적 업데이트: 체크는 바로 반영하고, 실패하면 되돌린다
+// ✨ 낙관적 업데이트: 체크는 바로 반영하고, 실패하면 되돌린다.
+//
+// 방금 누른 한 사람만 보낸다. 전원을 O/X 로 보내면 사람이 시트에 직접 넣은
+// 다른 표기가 한 번에 지워진다.
 async function toggleAttendanceUI(name, phone, checked, checkboxElement) {
     const status = checked ? 'O' : 'X';
     const originalStatus = checked ? 'X' : 'O';
+    const session = getSession();
+
+    if (!session) {
+        alert('회차를 알 수 없어 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        if (checkboxElement) checkboxElement.checked = (originalStatus === 'O');
+        return;
+    }
 
     try {
-        await setAttendance(name, phone, status);
+        const { saved, missing } = await saveAttendance(session, [{ name, phone, status }]);
+        if (!saved) {
+            throw new Error(missing.length ? `명단에서 찾지 못했습니다: ${missing.join(', ')}`
+                                           : '저장된 항목이 없습니다.');
+        }
     } catch (error) {
-        console.log('출석 저장 실패:', error);
-        alert('출석 처리에 실패하여 원래 상태로 되돌립니다: ' + error.message);
+        console.log('출결 저장 실패:', error);
+        alert('출결 처리에 실패하여 원래 상태로 되돌립니다: ' + error.message);
         if (checkboxElement) checkboxElement.checked = (originalStatus === 'O');
     }
 }
@@ -448,7 +519,24 @@ function registerServiceWorker() {
 }
 registerServiceWorker();
 
-// 11. 실행
+// 11. 갱신되면 화면을 다시 그린다
+//
+// 캐시로 먼저 그리고 뒤에서 새로 받아오는 구조라, 갱신이 끝났을 때 다시 그리지
+// 않으면 화면에는 옛 값이 남는다. 조원 명단처럼 로드 시점 값을 붙들고 있는
+// 화면이 특히 위험하다 — 보는 사람은 그게 옛 데이터인 줄 모른다.
+function rerenderShown() {
+    if (!shownMember || elements.resultContainer.style.display === 'none') return;
+
+    // 갱신된 목록에서 같은 사람을 다시 찾는다 (조·역할이 바뀌었을 수 있다).
+    const fresh = findMember(shownMember.name, shownMember.phone) || shownMember;
+    displayResult(fresh);
+}
+
+subscribe((event) => {
+    if (event.type === 'refresh' || event.type === 'cohort-changed') rerenderShown();
+});
+
+// 12. 실행
 window.addEventListener('load', () => {
     loadData();
     initEventListeners();

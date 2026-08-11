@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=14';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=14';
+import { matches as hangulMatches } from './hangul.js?v=15';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=15';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -28,6 +28,7 @@ const CK = {
   members:     `dg_members_v${CACHE_VERSION}`,
   locationMap: `dg_location_map_v${CACHE_VERSION}`,
   teamLinks:   `dg_team_links_v${CACHE_VERSION}`,
+  sessions:    `dg_sessions_v${CACHE_VERSION}`,
   cohort:      `dg_cohort_v${CACHE_VERSION}`,
 };
 
@@ -36,6 +37,9 @@ const state = {
   members: [],
   locationMap: {},
   teamLinks: {},
+  sessions: [],     // [{ key:'11/02', date:'2025-11-02' }] — 연도는 GAS 가 확정한다
+  session: '',      // 지금 보고 있는 회차 (YYYY-MM-DD)
+  today: '',        // GAS 기준 오늘. 미래 회차를 거르는 데 쓴다.
   loaded: false,
 };
 const subscribers = new Set();
@@ -57,6 +61,7 @@ function readCacheSync() {
     state.members     = JSON.parse(m);
     state.locationMap = get(CK.locationMap, {});
     state.teamLinks   = get(CK.teamLinks, {});
+    state.sessions    = get(CK.sessions, []);
     state.cohortId    = localStorage.getItem(CK.cohort) || getCachedCohortId();
     state.loaded = true;
     return true;
@@ -71,6 +76,7 @@ function writeCacheSync() {
     localStorage.setItem(CK.members,     JSON.stringify(state.members));
     localStorage.setItem(CK.locationMap, JSON.stringify(state.locationMap));
     localStorage.setItem(CK.teamLinks,   JSON.stringify(state.teamLinks));
+    localStorage.setItem(CK.sessions,    JSON.stringify(state.sessions));
     if (state.cohortId) localStorage.setItem(CK.cohort, state.cohortId);
   } catch (e) {
     console.log('캐시 쓰기 실패, 무시:', e);
@@ -112,8 +118,9 @@ async function fetchFromServer(cohortId) {
 
   const [members, teamLinkRows, locationRows, attendance] = await Promise.all([
     sbSelect(`dg_members?select=*&cohort_id=eq.${enc}&status=eq.active&order=team,team_no`),
-    sbSelect(`dg_team_links?select=team,chat_url&cohort_id=eq.${enc}`),
-    sbSelect('dg_locations?select=location,image_url,detail_url'),
+    // order 가 있어야 sbSelect 가 1000행 넘게 나눠 받는다.
+    sbSelect(`dg_team_links?select=team,chat_url&cohort_id=eq.${enc}&order=team`),
+    sbSelect('dg_locations?select=location,image_url,detail_url&order=location'),
     // 오늘 회차의 출석만 가져온다.
     //
     // 전 회차를 받아 '멤버별 가장 최근 행' 을 쓰면 안 된다. 동기화가 빈 값을
@@ -122,7 +129,7 @@ async function fetchFromServer(cohortId) {
     // 체크박스가 뜻하는 것은 언제나 '오늘' 이다.
     sbSelect(`dg_attendance?select=member_id,status,` +
              `dg_members!inner(cohort_id)&dg_members.cohort_id=eq.${enc}` +
-             `&session_date=eq.${todayISO()}`),
+             `&session_date=eq.${todayISO()}&order=member_id`),
   ]);
 
   const teamLinks = {};
@@ -227,52 +234,104 @@ export function getTeamLink(teamName) {
 }
 
 // ============================================================================
-// 공개 API — 출석
+// 공개 API — 출결
 //
-// 이번 범위에서 출석은 손대지 않는다. 원본은 시트이고 쓰기는 GAS 로 간다.
-// 화면은 아래 두 함수만 쓰고 그 사실을 알 필요가 없다.
+// 출결의 원본은 시트다. 쓰기는 GAS 를 거쳐 시트로 가고, DB 는 비추기만 한다.
+// 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라지기 때문이다.
+// 화면은 아래 함수들만 쓰고 그 사실을 알 필요가 없다.
 // ============================================================================
 
 /**
- * 시트에서 오늘 출석을 다시 읽어 메모리 상태에 덮어쓴다.
- * DB 동기화는 하루 한 번이라, 조원 명단을 열 때는 이쪽이 최신이다.
+ * 시트에서 회차 목록과 출결을 통째로 다시 읽는다.
+ *
+ * 조장이 조원 명단을 열 때 한 번 부른다. DB 는 동기화 간격만큼 뒤처지므로
+ * 방금 체크한 것을 보이게 하려면 원본을 읽어야 한다.
+ * 회차 목록도 같이 오므로 GAS 왕복은 한 번이면 된다.
  */
 export async function refreshAttendance() {
   const res = await fetch(`${GAS_API_URL}?t=${Date.now()}`);
   const result = await res.json();
-  if (!result.success) throw new Error(result.message || '출석 조회 실패');
+  if (!result.success) throw new Error(result.message || '출결 조회 실패');
 
+  // 회차 — 연도는 GAS 가 확정해서 준다. 여기서 추측하지 않는다.
+  state.sessions = (result.sessions || []).map(s => ({ key: s.key, date: s.date }));
+  state.today = result.today || todayISO();
+  if (!state.session || !state.sessions.some(s => s.date === state.session)) {
+    state.session = result.currentSession || '';
+  }
+
+  // 인원별 회차 출결
   const byId = new Map();
   for (const r of result.data || []) {
     const id = String(r.id || `${r.name || ''}${r.phone || ''}`).replace(/\s/g, '');
-    if (id) byId.set(id, r.attendance || '');
+    if (id) byId.set(id, r.attendanceByDate || {});
   }
   for (const m of state.members) {
-    if (byId.has(m.id)) m.attendance = byId.get(m.id);
+    m.attendanceByDate = byId.get(m.id) || {};
+    m.attendance = m.attendanceByDate[state.session] || '';
   }
+
   writeCacheSync();
   notify({ type: 'attendance-refresh' });
 }
 
 /**
- * 출석 저장. 성공하면 true, 실패하면 예외를 던진다.
- * 호출부가 낙관적 UI 를 쓰고 있어 되돌리기는 화면 쪽에서 한다.
+ * 회차 목록. 아직 지나지 않은 회차는 뺀다 —
+ * 미래 회차에 O/X 가 들어가면 결석 수가 부풀려진다.
  */
-export async function setAttendance(name, phone, status) {
+export function getSessions() {
+  const today = state.today || todayISO();
+  return state.sessions.filter(s => s.date <= today);
+}
+
+/** 지금 화면이 보고 있는 회차 (YYYY-MM-DD). */
+export function getSession() {
+  return state.session;
+}
+
+/** 회차를 바꾸고 각 인원의 표시값을 그 회차 것으로 맞춘다. */
+export function setSession(date) {
+  if (!state.sessions.some(s => s.date === date)) return false;
+  state.session = date;
+  for (const m of state.members) {
+    m.attendance = (m.attendanceByDate || {})[date] || '';
+  }
+  notify({ type: 'session-changed', session: date });
+  return true;
+}
+
+/**
+ * 출결 저장. **바뀐 사람만** 넘길 것.
+ *
+ * 전원을 present ? 'O' : 'X' 로 보내면 사람이 시트에 직접 넣은 다른 표기가
+ * 한 번에 지워진다. 손대지 않은 사람은 목록에서 빼야 한다.
+ *
+ * @param {string} session  'YYYY-MM-DD'
+ * @param {Array}  changes  [{ name, phone, status }, ...]
+ */
+export async function saveAttendance(session, changes) {
+  if (!session) throw new Error('회차가 지정되지 않았습니다.');
+  if (!changes || !changes.length) return { saved: 0, missing: [] };
+
   const res = await fetch(GAS_API_URL, {
     method: 'POST',
+    // application/json 으로 보내면 preflight 때문에 CORS 로 막힌다.
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ name, phone, status }),
+    body: JSON.stringify({ session, batch: changes }),
   });
   const result = await res.json();
-  if (!result.success) throw new Error(result.message || '출석 저장 실패');
+  if (!result.success) throw new Error(result.message || '출결 저장 실패');
 
-  const m = state.members.find(x => x.name === name && x.phone === phone);
-  if (m) {
-    m.attendance = status;
-    writeCacheSync();
+  for (const c of changes) {
+    const m = state.members.find(x => x.name === c.name && x.phone === c.phone);
+    if (!m) continue;
+    m.attendanceByDate = m.attendanceByDate || {};
+    m.attendanceByDate[session] = c.status;
+    if (session === state.session) m.attendance = c.status;
   }
-  return true;
+  writeCacheSync();
+
+  return { saved: result.saved || 0, missing: result.missing || [] };
 }
 
 // ============================================================================
