@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=20';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=20';
+import { matches as hangulMatches } from './hangul.js?v=21';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=21';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -305,6 +305,29 @@ export async function getMyAttendance(member) {
   return state.sessions
     .filter(s => s.date <= today)
     .map(s => ({ date: s.date, key: s.key, status: byDate.get(s.date) || '' }));
+}
+
+/**
+ * 본인이 낸 과제 목록.
+ *
+ * '몇 강' 은 회차 날짜로 바꾸지 않는다 — 몇 번째 회차가 몇 강인지 시트가
+ * 말해주지 않아서, 순서로 짐작하면 엉뚱한 회차에 붙는다. 적힌 그대로 보여준다.
+ *
+ * @returns [{ lecture, kind, content, submittedAt }] — 최근 낸 것부터
+ */
+export async function getMyHomework(member) {
+  if (!member || !member._uuid) return [];
+
+  const rows = await sbSelect(
+    `dg_homework?select=lecture,kind,content,submitted_at` +
+    `&member_id=eq.${member._uuid}&order=submitted_at.desc.nullslast`);
+
+  return rows.map(r => ({
+    lecture: r.lecture || '',
+    kind: r.kind || '',
+    content: r.content || '',
+    submittedAt: r.submitted_at || '',
+  }));
 }
 
 /**

@@ -9,12 +9,13 @@ import {
     getTeamLink,
     getSessions,
     getMyAttendance,
+    getMyHomework,
     getSession,
     setSession,
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=20';
+} from './scripts/members-data.js?v=21';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -220,6 +221,7 @@ function displayResult(member) {
 
     // 본인 출석 현황은 조장·조원 모두에게 보여준다.
     renderMyAttendance(member);
+    renderMyHomework(member);
 
     elements.resultContainer.style.display = 'block';
     elements.resultContainer.scrollIntoView({ behavior: 'smooth' });
@@ -293,6 +295,52 @@ async function renderMyAttendance(member) {
                     <span class="att-date">${escapeHtml(r.key)}</span>
                     <span class="att-mark">${escapeHtml(st.label)}</span>
                 </div>`;
+    }).join('');
+
+    section.style.display = 'block';
+}
+
+// 5-2. 본인 과제 제출
+//
+// '몇 강' 을 회차 날짜에 짝지우지 않는다. 시트가 그 대응을 말해주지 않아서
+// 순서로 짐작하면 엉뚱한 회차에 붙는다. 적힌 그대로 보여준다.
+async function renderMyHomework(member) {
+    const section = document.getElementById('myHomeworkSection');
+    const list = document.getElementById('myHomeworkList');
+    const summary = document.getElementById('myHomeworkSummary');
+    if (!section || !list) return;
+
+    section.style.display = 'none';
+
+    let rows;
+    try {
+        rows = await getMyHomework(member);
+    } catch (err) {
+        console.log('본인 과제 조회 실패:', err);
+        return;
+    }
+    if (!rows.length) return;
+    if (!shownMember || shownMember.id !== member.id) return;
+
+    if (summary) summary.textContent = `${rows.length}건`;
+
+    list.innerHTML = rows.map(r => {
+        const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
+        const isLink = /^https?:\/\//i.test(r.content);
+        const body = isLink
+            ? `<a href="${escapeAttr(r.content)}" target="_blank" rel="noopener" class="hw-link">제출물 열기</a>`
+            : (r.content ? `<span class="hw-text">${escapeHtml(r.content)}</span>` : '');
+
+        return `
+            <div class="hw-item">
+                <div class="hw-head">
+                    ${r.lecture ? `<span class="hw-lecture">${escapeHtml(r.lecture)}</span>` : ''}
+                    ${r.kind ? `<span class="hw-kind">${escapeHtml(r.kind)}</span>` : ''}
+                    ${when ? `<span class="hw-when">${escapeHtml(when)}</span>` : ''}
+                </div>
+                ${body ? `<div class="hw-body">${body}</div>` : ''}
+            </div>
+        `;
     }).join('');
 
     section.style.display = 'block';

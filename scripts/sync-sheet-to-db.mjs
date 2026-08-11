@@ -346,6 +346,37 @@ if (sessionRows.length) {
   console.log(`   ${sessionRows.length}건 반영`);
 }
 
+// -------------------------------------------------------------------- 과제
+if (Array.isArray(gas.homework) && gas.homework.length) {
+  console.log('▶ dg_homework');
+  const uuidById = new Map(saved.map(m => [`${m.name}${m.phone || ''}`, m.id]));
+
+  const rows = [];
+  const unknown = [];
+  for (const h of gas.homework) {
+    const uuid = uuidById.get(trim(h.id));
+    if (!uuid) { unknown.push(trim(h.id)); continue; }
+    rows.push({
+      cohort_id: COHORT_ID,
+      member_id: uuid,
+      lecture: trim(h.lecture),
+      kind: trim(h.kind),
+      content: trim(h.content) || null,
+      // 형태를 확인하고 넣는다. 날짜가 아니면 비워 둔다.
+      submitted_at: Date.parse(trim(h.submittedAt)) ? trim(h.submittedAt) : null,
+    });
+  }
+
+  if (unknown.length) {
+    const uniq = [...new Set(unknown)];
+    console.log(`   ⚠️ 명단에 없어 무시 ${uniq.length}명: ${uniq.join(', ')}`);
+    console.log('      폼에 적은 이름·연락처가 명단과 다르면 여기 나옵니다.');
+  }
+
+  await upsert('dg_homework', rows, 'cohort_id,member_id,lecture,kind');
+  console.log(`   ${rows.length}건 반영`);
+}
+
 if (attendanceBySheetId.length) {
   console.log('▶ dg_attendance');
   const uuidById = new Map(saved.map(m => [`${m.name}${m.phone || ''}`, m.id]));

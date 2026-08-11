@@ -1208,3 +1208,45 @@ body.large-text .map-image {
 .att-chip.special { background: rgba(59, 130, 246, 0.14); }
 .att-chip.special .att-mark { font-size: 11px; }
 .att-chip.empty   { opacity: 0.4; }
+
+/* ============================================================
+   본인 과제 제출
+   ============================================================ */
+.my-homework {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.my-homework-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.hw-item {
+    padding: 10px 12px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 10px;
+    background: var(--white);
+}
+.hw-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.hw-lecture {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--midnight-blue);
+}
+.hw-kind {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--milk-beige);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+.hw-when { font-size: 11px; opacity: 0.6; margin-left: auto; }
+.hw-body { margin-top: 6px; }
+.hw-link { font-size: 13px; font-weight: 600; }
+.hw-text { font-size: 12px; opacity: 0.85; word-break: break-word; }

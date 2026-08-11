@@ -38,12 +38,13 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 19;
+var DG_VERSION = 20;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
 var DG_TAB_LINKS = "DG링크";
 var DG_TAB_LUNCH = "김밥";
+var DG_TAB_HOMEWORK = "과제제출";
 
 // 앱이 쓸 수 있는 상태값. 여기 없는 값은 거부한다.
 //
@@ -147,6 +148,82 @@ function DG_buildSessions(headerRow, tz) {
 
 function DG_todayISO(tz) {
   return Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+}
+
+/**
+ * 과제 제출 목록.
+ *
+ * 폼 응답 시트라 헤더 문구가 조금씩 바뀔 수 있어 부분 일치로 찾는다.
+ *   타임스탬프 | Team | 아이디 | 연락처 | 성별 | 몇 강인가요? | 어떤 과제인가요? | 과제 및 소감문 제출
+ *
+ * '몇 강' 은 회차 날짜로 바꾸지 않는다. 39회차 중 몇 번째가 몇 강인지 시트가
+ * 말해주지 않아서, 순서로 짐작하면 엉뚱한 회차에 붙는다. 적힌 그대로 넘긴다.
+ *
+ * @returns [{ id, lecture, kind, content, submittedAt }, ...]
+ */
+function DG_readHomework(ss, tz) {
+  var sheet = ss.getSheetByName(DG_TAB_HOMEWORK);
+  if (!sheet) return [];
+
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  var header = values[0].map(function (h) { return String(h).trim().toLowerCase(); });
+  var find = function (needles) {
+    for (var i = 0; i < header.length; i++) {
+      for (var n = 0; n < needles.length; n++) {
+        if (header[i].indexOf(needles[n]) !== -1) return i;
+      }
+    }
+    return -1;
+  };
+
+  var iTime = find(['타임스탬프', 'timestamp']);
+  var iId = find(['아이디']);
+  var iPhone = find(['연락처']);
+  var iLecture = find(['몇 강', '몇강']);
+  var iKind = find(['어떤 과제', '과제 종류']);
+  var iContent = find(['제출']);
+
+  if (iId === -1) return [];
+
+  var out = [];
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+
+    // 아이디는 '이름+전화뒷4' 형태를 기대한다. 공백·전각이 섞여 오므로 정규화한다.
+    var id = String(row[iId] == null ? '' : row[iId]).replace(/[^a-zA-Z0-9가-힣]/g, '');
+    if (!id) continue;
+
+    // 아이디에 번호가 안 붙어 있으면 연락처 뒷 4자리로 보완한다.
+    if (iPhone !== -1 && !/\d{4}$/.test(id)) {
+      var tail = String(row[iPhone] == null ? '' : row[iPhone]).replace(/[^0-9]/g, '').slice(-4);
+      if (tail) id = id + tail;
+    }
+
+    var when = '';
+    if (iTime !== -1) {
+      var t = row[iTime];
+      if (t instanceof Date) {
+        when = Utilities.formatDate(t, tz, "yyyy-MM-dd'T'HH:mm:ss");
+      } else {
+        // 날짜가 아닌 값이 올 수 있다. 형태를 확인하고 쓴다.
+        var parsed = new Date(String(t));
+        if (String(t).trim() && !isNaN(parsed.getTime())) {
+          when = Utilities.formatDate(parsed, tz, "yyyy-MM-dd'T'HH:mm:ss");
+        }
+      }
+    }
+
+    out.push({
+      id: id,
+      lecture: iLecture !== -1 ? String(row[iLecture] == null ? '' : row[iLecture]).trim() : '',
+      kind: iKind !== -1 ? String(row[iKind] == null ? '' : row[iKind]).trim() : '',
+      content: iContent !== -1 ? String(row[iContent] == null ? '' : row[iContent]).trim() : '',
+      submittedAt: when
+    });
+  }
+  return out;
 }
 
 // ===========================================================================
@@ -733,6 +810,8 @@ function doGet(e) {
       currentSession: currentSession,
       // [{ key:'11/02', date:'2025-11-02' }, ...] — 연도는 GAS 가 확정한다
       sessions: sessions.map(function (s) { return { key: s.key, date: s.date }; }),
+      // 과제 제출 목록. 인원마다 넣지 않고 따로 둔다 (대부분 몇 건 없다).
+      homework: DG_readHomework(ss, tz),
       // 옛 동기화 스크립트 호환
       sessionDates: sessions.map(function (s) { return s.key; })
     });

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PLC DG 조배치 검색</title>
-    <link rel="stylesheet" href="style.css?v=20">
+    <link rel="stylesheet" href="style.css?v=21">
 </head>
 <body class="dark-mode">
     <div class="container">
@@ -112,6 +112,15 @@
                             <span id="myAttendanceSummary" class="my-attendance-summary"></span>
                         </div>
                         <div id="myAttendanceGrid" class="my-attendance-grid"></div>
+                    </div>
+
+                    <!-- 본인이 낸 과제 -->
+                    <div id="myHomeworkSection" class="my-homework" style="display: none;">
+                        <div class="my-attendance-head">
+                            <h3 class="my-attendance-title">📝 내 과제 제출</h3>
+                            <span id="myHomeworkSummary" class="my-attendance-summary"></span>
+                        </div>
+                        <div id="myHomeworkList" class="my-homework-list"></div>
                     </div>
 
                     <div id="teamMemberListContainer" style="display: none; margin-top: 20px;">
@@ -225,6 +234,6 @@
         </div>
     </div>
 
-    <script type="module" src="script.js?v=20"></script>
+    <script type="module" src="script.js?v=21"></script>
 </body>
 </html>
