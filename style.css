@@ -1326,3 +1326,18 @@ body.large-text .map-image {
 }
 .lunch-chip b { font-weight: 700; }
 .lunch-chip-date { font-size: 11px; opacity: 0.7; }
+
+/* 기억한 조회 지우기 */
+.clear-remembered-btn {
+    display: block;
+    margin: 12px auto 0;
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    opacity: 0.6;
+    font-size: 13px;
+    cursor: pointer;
+    min-height: 40px;
+}
+.clear-remembered-btn:hover { opacity: 0.9; text-decoration: underline; }

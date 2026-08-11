@@ -15,7 +15,50 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=26';
+} from './scripts/members-data.js?v=27';
+
+// 1-1. 내 정보 기억
+//
+// 매번 이름·번호를 다시 치는 게 번거롭다. 마지막 조회를 기억해 채워 둔다.
+//
+// 저장은 이 브라우저 안(localStorage)에만 한다. DB 에 두면 누가 언제 누구를
+// 조회했는지가 서버에 남는데, 편의 하나 때문에 그런 기록을 만들 이유가 없다.
+// 공용 기기를 생각해 90일이 지나면 스스로 지운다.
+const LAST_SEARCH_KEY = 'dg_last_search_v1';
+const LAST_SEARCH_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+
+function saveLastSearch(name, phone) {
+    try {
+        localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify({ name, phone, ts: Date.now() }));
+    } catch { /* 무시 */ }
+}
+
+function loadLastSearch() {
+    try {
+        const raw = localStorage.getItem(LAST_SEARCH_KEY);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj?.name || !obj?.phone) return null;
+        if (obj.ts && Date.now() - obj.ts > LAST_SEARCH_MAX_AGE_MS) {
+            localStorage.removeItem(LAST_SEARCH_KEY);
+            return null;
+        }
+        return obj;
+    } catch { return null; }
+}
+
+function clearLastSearch() {
+    try { localStorage.removeItem(LAST_SEARCH_KEY); } catch { /* 무시 */ }
+}
+
+// 기억한 값이 있으면 채우고 '다른 사람으로 조회' 버튼을 보인다.
+function applyLastSearch() {
+    const last = loadLastSearch();
+    if (!last) return;
+    if (elements.nameInput) elements.nameInput.value = last.name;
+    if (elements.phoneInput) elements.phoneInput.value = last.phone;
+    if (elements.clearRememberedBtn) elements.clearRememberedBtn.style.display = 'block';
+}
 
 // 2. DOM 요소 선택
 const elements = {
@@ -37,7 +80,8 @@ const elements = {
     adminBtn: document.getElementById('adminBtn'),
     adminModal: document.getElementById('adminLoginModal'),
     adminClose: document.getElementById('adminLoginClose'),
-    adminForm: document.getElementById('adminLoginForm')
+    adminForm: document.getElementById('adminLoginForm'),
+    clearRememberedBtn: document.getElementById('clearRememberedBtn')
 };
 
 // 3. 데이터 로드
@@ -77,6 +121,9 @@ function searchMember() {
     const member = findMember(name, phone);
 
     if (member) {
+        // 찾은 경우에만 기억한다. 오타를 기억해 두면 다음에도 못 찾는다.
+        saveLastSearch(name, phone);
+        if (elements.clearRememberedBtn) elements.clearRememberedBtn.style.display = 'block';
         displayResult(member);
     } else {
         showError("일치하는 정보를 찾을 수 없습니다.<br>입력 내용을 확인해주세요.");
@@ -710,6 +757,18 @@ function initEventListeners() {
         if (e.key === 'Enter' && !elements.searchBtn.disabled) searchMember();
     });
 
+    // '다른 사람으로 조회' — 기억한 값 지우기
+    if (elements.clearRememberedBtn) {
+        elements.clearRememberedBtn.addEventListener('click', () => {
+            clearLastSearch();
+            elements.nameInput.value = '';
+            elements.phoneInput.value = '';
+            elements.clearRememberedBtn.style.display = 'none';
+            elements.resultContainer.style.display = 'none';
+            elements.nameInput.focus();
+        });
+    }
+
     // 회차 변경
     const picker = document.getElementById('sessionPicker');
     if (picker) {
@@ -882,4 +941,5 @@ window.addEventListener('load', () => {
     loadData();
     initEventListeners();
     initModal();
+    applyLastSearch();
 });
