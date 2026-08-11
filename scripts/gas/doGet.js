@@ -220,11 +220,28 @@ function doPost(e) {
       }
 
       // ---- 쓰기 (① 원본) ---------------------------------------------------
+      //
+      // 이미 O/X 가 아닌 값이 들어 있는 칸은 건드리지 않는다.
+      // 시트에는 사람이 직접 넣은 '돌봄' · '-' 같은 표기가 있고, 앱은 그 뜻을
+      // 모른다. 조장이 무심코 체크하면 그 기록이 O/X 로 덮여 사라진다.
+      // 바꿔야 한다면 시트에서 직접 고치는 게 맞다.
       var saved = [];
       var missing = [];
+      var kept = [];
       for (var k = 0; k < entries.length; k++) {
         var row = rowOf[entries[k].id];
         if (row === undefined) { missing.push(entries[k].id); continue; }
+
+        var cell = values[row][target.col];
+        var current = cell instanceof Date
+          ? Utilities.formatDate(cell, tz, 'yyyy-MM-dd')
+          : String(cell == null ? '' : cell).trim();
+
+        if (DG_ALLOWED_STATUS.indexOf(current.toUpperCase()) === -1) {
+          kept.push(entries[k].id + '(' + current + ')');
+          continue;
+        }
+
         sheet.getRange(row + 1, target.col + 1).setValue(entries[k].status);
         saved.push(entries[k]);
       }
@@ -250,9 +267,13 @@ function doPost(e) {
         session: target.date,
         saved: saved.length,
         missing: missing,
+        // O/X 가 아닌 값이 있어 건드리지 않은 칸
+        kept: kept,
         dbPushed: pushed,
         dbError: pushError,
-        message: saved.length ? '출석 저장 완료' : 'ID 불일치'
+        message: saved.length ? '출석 저장 완료'
+               : kept.length ? '이미 다른 표기가 있어 두었습니다: ' + kept.join(', ')
+               : 'ID 불일치'
       });
     } finally {
       lock.releaseLock();

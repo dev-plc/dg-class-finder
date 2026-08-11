@@ -13,7 +13,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=15';
+} from './scripts/members-data.js?v=16';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -309,15 +309,24 @@ function renderTeamMembers(members, teamName, role) {
 
     listElement.innerHTML = sortedMembers.map((m) => {
         const lunchIcon = (m.lunch && m.lunch.toUpperCase() === 'O') ? '<span style="margin-left:4px;" title="김밥 대상자">🍙</span>' : '';
-        const isChecked = (m.attendance && m.attendance.toUpperCase() === 'O') ? 'checked' : '';
+        const status = String(m.attendance || '').trim();
+
+        // 시트에 '돌봄' · '-' 처럼 O/X 가 아닌 표기가 있으면 체크박스를 두지 않는다.
+        // 체크박스로 두면 '체크 안 됨' 으로 보여서, 조장이 무심코 눌러 그 기록을
+        // O 로 덮어 버린다. 바꿔야 한다면 시트에서 직접 고치는 게 맞다.
+        const isPlain = status === '' || status.toUpperCase() === 'O' || status.toUpperCase() === 'X';
+
+        const control = isPlain
+            ? `<input type="checkbox" ${status.toUpperCase() === 'O' ? 'checked' : ''}
+                    class="attendance-check"
+                    data-name="${escapeAttr(m.name)}" data-phone="${escapeAttr(m.phone)}"
+                    style="width: 18px; height: 18px; cursor: pointer;">`
+            : `<span class="attendance-badge" title="시트에 적힌 표기입니다. 바꾸려면 시트에서 고치세요.">${escapeHtml(status)}</span>`;
 
         return `
             <div class="team-member-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" ${isChecked}
-                        class="attendance-check"
-                        data-name="${escapeAttr(m.name)}" data-phone="${escapeAttr(m.phone)}"
-                        style="width: 18px; height: 18px; cursor: pointer;">
+                    ${control}
                     <span class="member-name">
                         ${escapeHtml(m.name)}(${escapeHtml(m.phone)}) ${lunchIcon}
                     </span>
