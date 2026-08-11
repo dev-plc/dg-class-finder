@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=21';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=21';
+import { matches as hangulMatches } from './hangul.js?v=22';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=22';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -320,7 +320,8 @@ export async function getMyHomework(member) {
 
   const rows = await sbSelect(
     `dg_homework?select=lecture,kind,content,submitted_at` +
-    `&member_id=eq.${member._uuid}&order=submitted_at.desc.nullslast`);
+    // 시각이 비어 있는 건이 섞여도 순서가 흔들리지 않게 lecture 를 보조로 둔다.
+    `&member_id=eq.${member._uuid}&order=submitted_at.desc.nullslast,lecture.desc`);
 
   return rows.map(r => ({
     lecture: r.lecture || '',

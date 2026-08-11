@@ -15,7 +15,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=21';
+} from './scripts/members-data.js?v=22';
 
 // 2. DOM 요소 선택
 const elements = {

@@ -81,6 +81,49 @@ function DG_findHeaderRow(values) {
   return -1;
 }
 
+/**
+ * 헤더 행을 찾는다 (주어진 낱말 중 하나가 들어 있는 첫 줄).
+ * 시트 위에 제목·안내문이 한두 줄 붙는 일이 흔해서 1행으로 못박지 않는다.
+ */
+function DG_findHeaderRowBy(values, needles) {
+  for (var i = 0; i < Math.min(6, values.length); i++) {
+    var row = values[i].map(function (h) { return String(h).trim().toLowerCase(); });
+    for (var c = 0; c < row.length; c++) {
+      for (var n = 0; n < needles.length; n++) {
+        if (row[c].indexOf(needles[n]) !== -1) return i;
+      }
+    }
+  }
+  return -1;
+}
+
+/**
+ * 제출 시각을 'yyyy-MM-ddTHH:mm:ss' 로.
+ *
+ * 폼 응답은 보통 진짜 Date 로 들어오지만, 시트를 복사·붙여넣기 하면 글자가 된다.
+ * '2026. 3. 28 오전 8:28:40' 은 new Date() 가 못 읽어서 그냥 두면 시각이
+ * 통째로 비고 정렬도 무너진다.
+ */
+function DG_parseWhen(value, tz) {
+  if (value instanceof Date) return Utilities.formatDate(value, tz, "yyyy-MM-dd'T'HH:mm:ss");
+
+  var s = String(value == null ? '' : value).trim();
+  if (!s) return '';
+
+  var m = s.match(/^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?(?:\s*(오전|오후))?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    var h = parseInt(m[5], 10);
+    if (m[4] === '오후' && h < 12) h += 12;
+    if (m[4] === '오전' && h === 12) h = 0;
+    var d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10),
+                     h, parseInt(m[6], 10), parseInt(m[7] || '0', 10));
+    if (!isNaN(d.getTime())) return Utilities.formatDate(d, tz, "yyyy-MM-dd'T'HH:mm:ss");
+  }
+
+  var p = new Date(s);
+  return isNaN(p.getTime()) ? '' : Utilities.formatDate(p, tz, "yyyy-MM-dd'T'HH:mm:ss");
+}
+
 // 날짜 헤더를 'MM/DD' 로 통일한다. '9/6' · '09/06' · 진짜 Date 가 섞여 온다.
 function DG_headerToMMDD(value, tz) {
   if (value instanceof Date) return Utilities.formatDate(value, tz, 'MM/dd');
@@ -168,7 +211,11 @@ function DG_readHomework(ss, tz) {
   var values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
 
-  var header = values[0].map(function (h) { return String(h).trim().toLowerCase(); });
+  // 헤더가 1행이라고 못박지 않는다. 위에 제목 줄이 붙는 일이 흔하다.
+  var headerIdx = DG_findHeaderRowBy(values, ['아이디', '타임스탬프', 'timestamp']);
+  if (headerIdx === -1) return [];
+
+  var header = values[headerIdx].map(function (h) { return String(h).trim().toLowerCase(); });
   var find = function (needles) {
     for (var i = 0; i < header.length; i++) {
       for (var n = 0; n < needles.length; n++) {
@@ -188,7 +235,7 @@ function DG_readHomework(ss, tz) {
   if (iId === -1) return [];
 
   var out = [];
-  for (var r = 1; r < values.length; r++) {
+  for (var r = headerIdx + 1; r < values.length; r++) {
     var row = values[r];
 
     // 아이디는 '이름+전화뒷4' 형태를 기대한다. 공백·전각이 섞여 오므로 정규화한다.
@@ -201,19 +248,7 @@ function DG_readHomework(ss, tz) {
       if (tail) id = id + tail;
     }
 
-    var when = '';
-    if (iTime !== -1) {
-      var t = row[iTime];
-      if (t instanceof Date) {
-        when = Utilities.formatDate(t, tz, "yyyy-MM-dd'T'HH:mm:ss");
-      } else {
-        // 날짜가 아닌 값이 올 수 있다. 형태를 확인하고 쓴다.
-        var parsed = new Date(String(t));
-        if (String(t).trim() && !isNaN(parsed.getTime())) {
-          when = Utilities.formatDate(parsed, tz, "yyyy-MM-dd'T'HH:mm:ss");
-        }
-      }
-    }
+    var when = iTime !== -1 ? DG_parseWhen(row[iTime], tz) : '';
 
     out.push({
       id: id,
