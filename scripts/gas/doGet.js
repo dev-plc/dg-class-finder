@@ -91,36 +91,56 @@ function DG_headerToMMDD(value, tz) {
 /**
  * 회차 목록. 연도를 여기서 확정한다.
  *
- * 시트 헤더에는 MM/DD 뿐이라 연도가 없다. 전부 같은 해로 보면 11월에 시작해
- * 1월에 끝나는 학기가 뒤집힌다 (01/25 가 11/02 보다 앞서게 된다).
- * 열 순서를 시간순으로 보고, 달이 작아지는 지점에서 해가 바뀐 것으로 판단한다.
+ * 헤더 칸이 진짜 날짜 값이면 연도를 이미 알고 있으므로 그대로 쓴다.
+ * 알고 있는 것을 버리고 추측할 이유가 없다.
+ *
+ * 글자로 적힌 'MM/DD' 만 추측이 필요하다. 전부 같은 해로 보면 11월에 시작해
+ * 1월에 끝나는 학기가 뒤집히므로(01/25 가 11/02 보다 앞서게 된다),
+ * 열 순서를 시간순으로 보고 달이 작아지는 지점에서 해가 바뀐 것으로 판단한다.
+ * 기준 연도는 앞선 날짜 칸에서 이어받고, 하나도 없으면 올해로 본다.
+ * 스크립트 속성 DG_START_YEAR 로 못박을 수도 있다 (보통은 둘 필요 없다).
  *
  * @returns [{ key:'11/02', date:'2025-11-02', col: 열인덱스(0부터) }, ...]
  */
 function DG_buildSessions(headerRow, tz) {
-  var startYear = parseInt(DG_prop('DG_START_YEAR'), 10);
-  if (!startYear) startYear = new Date().getFullYear();
+  var forcedYear = parseInt(DG_prop('DG_START_YEAR'), 10) || null;
 
   var out = [];
   var seen = {};
-  var year = startYear;
+  var year = forcedYear;   // null 이면 첫 날짜 칸이나 올해에서 받아온다
   var prevMonth = null;
 
   for (var c = 0; c < headerRow.length; c++) {
-    var key = DG_headerToMMDD(headerRow[c], tz);
+    var raw = headerRow[c];
+    var key = '';
+    var iso = '';
+
+    if (raw instanceof Date) {
+      // 연도를 아는 경우. 추측하지 않는다.
+      key = Utilities.formatDate(raw, tz, 'MM/dd');
+      iso = Utilities.formatDate(raw, tz, 'yyyy-MM-dd');
+      if (!forcedYear) year = parseInt(iso.slice(0, 4), 10);
+      prevMonth = parseInt(key.slice(0, 2), 10);
+    } else {
+      var m = String(raw).trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+      if (!m) continue;
+      var month = parseInt(m[1], 10);
+      var day = parseInt(m[2], 10);
+
+      if (year === null) {
+        year = new Date().getFullYear();
+      } else if (prevMonth !== null && month < prevMonth) {
+        year++;   // 12 → 01
+      }
+      prevMonth = month;
+
+      key = ('0' + month).slice(-2) + '/' + ('0' + day).slice(-2);
+      iso = year + '-' + ('0' + month).slice(-2) + '-' + ('0' + day).slice(-2);
+    }
+
     if (!key || seen[key]) continue;
     seen[key] = true;
-
-    var month = parseInt(key.slice(0, 2), 10);
-    var day = parseInt(key.slice(3, 5), 10);
-    if (prevMonth !== null && month < prevMonth) year++;   // 12 → 01
-    prevMonth = month;
-
-    out.push({
-      key: key,
-      date: year + '-' + ('0' + month).slice(-2) + '-' + ('0' + day).slice(-2),
-      col: c
-    });
+    out.push({ key: key, date: iso, col: c });
   }
   return out;
 }
