@@ -925,7 +925,7 @@ body.large-text .map-image {
 }
 .session-picker select {
     flex: 1 1 auto;
-    max-width: 220px;
+    width: 100%;
     padding: 10px 14px;
     border-radius: 10px;
     border: 2px solid var(--midnight-blue);
@@ -1129,3 +1129,42 @@ body.large-text .map-image {
 .mx-cell.absent  { background: rgba(239, 68, 68, 0.12); }
 .mx-cell.special { background: rgba(59, 130, 246, 0.14); font-size: 10px; }
 .mx-cell.empty   { opacity: 0.35; }
+
+/* ============================================================
+   조 요약 카드 — 총원 · 출석 · 결석 · 김밥
+   제목에서 이 숫자들을 빼야 '전체 출석표' 버튼이 같은 줄에 들어간다.
+   ============================================================ */
+.team-summary-card {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 10px 0 14px;
+    padding: 12px;
+    background: var(--milk-beige);
+    border: 1px solid rgba(37, 99, 235, 0.18);
+    border-radius: 10px;
+}
+.team-summary-card .stat {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 10px;
+    min-width: 58px;
+}
+.team-summary-card .stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--midnight-blue);
+}
+.team-summary-card .stat-label {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-top: 4px;
+    white-space: nowrap;
+}
+.team-summary-card .stat.present .stat-value { color: #059669; }
+.team-summary-card .stat.absent  .stat-value { color: #dc2626; }
+.team-summary-card .stat.special .stat-value { color: #2563eb; }
+.team-summary-card .stat.lunch   .stat-value { color: #d97706; }

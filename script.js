@@ -13,7 +13,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=18';
+} from './scripts/members-data.js?v=19';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -249,6 +249,33 @@ function renderSessionPicker() {
     ).join('');
 }
 
+// 6-2. 조 요약 — 총원 · 출석 · 결석 · 김밥
+//
+// '돌봄' 같은 시트 표기는 출석도 결석도 아니라서 따로 센다.
+// 결석으로 묶으면 조장이 "왜 결석이 이렇게 많지" 하고 잘못 읽는다.
+function renderTeamSummary(members) {
+    const el = document.getElementById('teamSummaryCard');
+    if (!el) return;
+
+    const up = (v) => String(v || '').trim().toUpperCase();
+    const present = members.filter(m => up(m.attendance) === 'O').length;
+    const absent = members.filter(m => up(m.attendance) === 'X').length;
+    const other = members.length - present - absent;
+    const kimbap = members.filter(m => up(m.lunch) === 'O').length;
+
+    const stat = (cls, value, label) => `
+        <div class="stat ${cls}">
+            <div class="stat-value">${value}</div>
+            <div class="stat-label">${label}</div>
+        </div>`;
+
+    el.innerHTML = stat('', members.length, '총원')
+        + stat('present', present, '✅ 출석')
+        + stat('absent', absent, '❌ 결석')
+        + (other ? stat('special', other, '📌 그 외') : '')
+        + stat('lunch', kimbap, '🍙 김밥');
+}
+
 // 6. 직책별 우선순위 설정
 const rolePriority = {
     "관리자": 1,
@@ -273,11 +300,12 @@ function renderTeamMembers(members, teamName, role) {
 
     container.style.display = 'block';
 
-    const kimbapCount = members.filter(m => m.lunch && m.lunch.toUpperCase() === 'O').length;
-
-    titleElement.textContent = `👥 ${teamName} 조원 명단 (총 ${members.length}명 / 🍙 김밥 ${kimbapCount}개)`;
+    // 총원·김밥은 제목이 아니라 요약 카드에 둔다.
+    // 제목이 길면 '전체 출석표' 버튼이 다음 줄로 밀린다.
+    titleElement.textContent = `👥 ${teamName} 조원 명단`;
 
     renderSessionPicker();
+    renderTeamSummary(members);
 
     const sortedMembers = [...members].sort((a, b) => {
         const priorityA = rolePriority[a.role] || 4;
@@ -409,6 +437,9 @@ async function saveAttendanceChanges() {
 
         // 끝났는데 '저장 중…' 이 남아 있으면 진행 중인 줄 안다.
         btn.textContent = '✅ 저장됨';
+
+        // 요약 숫자도 같이 맞춘다 (명단은 그대로 두고 카드만).
+        if (shownMember) renderTeamSummary(getTeamMembers(shownMember.team));
         if (info) info.textContent = `✅ ${session} ${saved}건 저장 완료`;
         if (notes.length) alert(notes.join('\n'));
 
