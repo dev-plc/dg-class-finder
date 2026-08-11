@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PLC DG 조배치 검색</title>
-    <link rel="stylesheet" href="style.css?v=19">
+    <link rel="stylesheet" href="style.css?v=20">
 </head>
 <body class="dark-mode">
     <div class="container">
@@ -105,10 +105,22 @@
                         <span class="info-value" id="resultLunch"></span>
                     </div>
 
+                    <!-- 본인 출석 현황 — 지나간 회차만 -->
+                    <div id="myAttendanceSection" class="my-attendance" style="display: none;">
+                        <div class="my-attendance-head">
+                            <h3 class="my-attendance-title">📅 내 출석 현황</h3>
+                            <span id="myAttendanceSummary" class="my-attendance-summary"></span>
+                        </div>
+                        <div id="myAttendanceGrid" class="my-attendance-grid"></div>
+                    </div>
+
                     <div id="teamMemberListContainer" style="display: none; margin-top: 20px;">
                         <div class="team-list-header">
                             <h3 id="teamListTitle" class="team-list-title"></h3>
-                            <button type="button" id="openMatrixBtn" class="matrix-open-btn">📊 전체 출석표</button>
+                            <button type="button" id="openMatrixBtn" class="telegram-btn matrix-open-btn">
+                                <span style="font-size: 1.1em;">📊</span>
+                                <span>전체 출석표</span>
+                            </button>
                         </div>
 
                         <!-- 회차 선택 — 어느 회차의 출결을 보고 고칠지 -->
@@ -213,6 +225,6 @@
         </div>
     </div>
 
-    <script type="module" src="script.js?v=19"></script>
+    <script type="module" src="script.js?v=20"></script>
 </body>
 </html>

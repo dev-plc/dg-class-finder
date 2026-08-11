@@ -214,12 +214,17 @@ function buildSessionDates(keys, startYear) {
 const START_YEAR = toInt(getArg('start-year')) || toInt(process.env.START_YEAR)
   || new Date().getFullYear();
 const attendanceBySheetId = [];
+const sessionRows = [];   // dg_sessions 에 넣을 회차 목록
 
 if (Array.isArray(gas.sessions) && gas.sessions.length) {
   // GAS v19+ — 연도까지 확정된 회차를 준다. 여기서 추측하지 않는다.
   // 판단이 두 곳에 있으면 반드시 갈라지므로 GAS 한 곳으로 모았다.
   const isoList = gas.sessions.map(s => s.date);
   console.log(`▶ 회차 ${isoList.length}개: ${isoList[0]} ~ ${isoList[isoList.length - 1]} (GAS 확정)`);
+
+  for (const s of gas.sessions) {
+    sessionRows.push({ cohort_id: COHORT_ID, session_date: s.date, label: trim(s.key) });
+  }
 
   for (const r of rows) {
     const id = `${trim(r.name)}${trim(r.phone)}`;
@@ -332,6 +337,14 @@ console.log(`   ${locations.length}건 반영`);
 console.log('▶ dg_team_links');
 await upsert('dg_team_links', teamLinks, 'cohort_id,team');
 console.log(`   ${teamLinks.length}건 반영`);
+
+// 회차 목록. 조원 화면이 본인 출석 그리드를 그릴 때 쓴다 —
+// 출석 기록만으로는 '기록 없는 회차' 와 '수업 없던 날' 을 구분할 수 없다.
+if (sessionRows.length) {
+  console.log('▶ dg_sessions');
+  await upsert('dg_sessions', sessionRows, 'cohort_id,session_date');
+  console.log(`   ${sessionRows.length}건 반영`);
+}
 
 if (attendanceBySheetId.length) {
   console.log('▶ dg_attendance');

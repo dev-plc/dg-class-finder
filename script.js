@@ -8,12 +8,13 @@ import {
     getLocationImage,
     getTeamLink,
     getSessions,
+    getMyAttendance,
     getSession,
     setSession,
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=19';
+} from './scripts/members-data.js?v=20';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -217,6 +218,9 @@ function displayResult(member) {
         shownMember = member;
     }
 
+    // 본인 출석 현황은 조장·조원 모두에게 보여준다.
+    renderMyAttendance(member);
+
     elements.resultContainer.style.display = 'block';
     elements.resultContainer.scrollIntoView({ behavior: 'smooth' });
 }
@@ -247,6 +251,51 @@ function renderSessionPicker() {
     select.innerHTML = [...sessions].reverse().map(s =>
         `<option value="${escapeAttr(s.date)}"${s.date === current ? ' selected' : ''}>${escapeHtml(s.key)}</option>`
     ).join('');
+}
+
+// 5-1. 본인 출석 현황
+//
+// 조원도 자기 이력은 볼 수 있어야 한다. 조 전체 출석표는 조장 것이다.
+// 지나간 회차만 그린다 — 아직 오지 않은 회차를 '기록 없음' 으로 보여주면
+// 빠뜨린 것처럼 읽힌다.
+async function renderMyAttendance(member) {
+    const section = document.getElementById('myAttendanceSection');
+    const grid = document.getElementById('myAttendanceGrid');
+    const summary = document.getElementById('myAttendanceSummary');
+    if (!section || !grid) return;
+
+    section.style.display = 'none';
+
+    let rows;
+    try {
+        rows = await getMyAttendance(member);
+    } catch (err) {
+        console.log('본인 출석 조회 실패:', err);
+        return;
+    }
+    if (!rows.length) return;
+
+    // 화면이 다른 사람으로 넘어갔으면 늦게 온 응답은 버린다.
+    if (!shownMember || shownMember.id !== member.id) return;
+
+    const present = rows.filter(r => r.status.toUpperCase() === 'O').length;
+    const absent = rows.filter(r => r.status.toUpperCase() === 'X').length;
+    const other = rows.length - present - absent;
+
+    if (summary) {
+        summary.textContent = `출석 ${present} · 결석 ${absent}`
+            + (other ? ` · 그 외 ${other}` : '');
+    }
+
+    grid.innerHTML = rows.map(r => {
+        const st = classifyStatus(r.status);
+        return `<div class="att-chip ${st.cls}" title="${escapeAttr(r.key)} · ${escapeAttr(st.title)}">
+                    <span class="att-date">${escapeHtml(r.key)}</span>
+                    <span class="att-mark">${escapeHtml(st.label)}</span>
+                </div>`;
+    }).join('');
+
+    section.style.display = 'block';
 }
 
 // 6-2. 조 요약 — 총원 · 출석 · 결석 · 김밥

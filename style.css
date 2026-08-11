@@ -974,19 +974,11 @@ body.large-text .map-image {
     margin: 0;
     color: var(--midnight-blue);
 }
+/* 안내방 버튼과 같은 생김새를 쓴다 (telegram-btn 이 색·테두리를 준다).
+   여기서는 줄바꿈만 막는다. */
 .matrix-open-btn {
-    padding: 8px 14px;
-    background: var(--midnight-blue);
-    color: #fff;
-    border: none;
-    border-radius: 18px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
     white-space: nowrap;
-    min-height: 36px;
 }
-.matrix-open-btn:hover { opacity: 0.9; }
 
 /* ============================================================
    출결 일괄 저장 바
@@ -1168,3 +1160,51 @@ body.large-text .map-image {
 .team-summary-card .stat.absent  .stat-value { color: #dc2626; }
 .team-summary-card .stat.special .stat-value { color: #2563eb; }
 .team-summary-card .stat.lunch   .stat-value { color: #d97706; }
+
+/* ============================================================
+   본인 출석 현황
+   ============================================================ */
+.my-attendance {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.my-attendance-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.my-attendance-title {
+    font-size: 1rem;
+    margin: 0;
+    color: var(--midnight-blue);
+}
+.my-attendance-summary {
+    font-size: 12px;
+    opacity: 0.75;
+}
+.my-attendance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 6px;
+}
+.att-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 4px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: var(--white);
+}
+.att-date { font-size: 10px; opacity: 0.7; }
+.att-mark { font-size: 14px; font-weight: 700; line-height: 1; }
+.att-chip.present { background: rgba(16, 185, 129, 0.16); }
+.att-chip.absent  { background: rgba(239, 68, 68, 0.12); }
+.att-chip.special { background: rgba(59, 130, 246, 0.14); }
+.att-chip.special .att-mark { font-size: 11px; }
+.att-chip.empty   { opacity: 0.4; }

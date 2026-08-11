@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=19';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=19';
+import { matches as hangulMatches } from './hangul.js?v=20';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=20';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -116,7 +116,7 @@ function todayISO() {
 async function fetchFromServer(cohortId) {
   const enc = encodeURIComponent(cohortId);
 
-  const [members, teamLinkRows, locationRows, attendance] = await Promise.all([
+  const [members, teamLinkRows, locationRows, attendance, sessionRows] = await Promise.all([
     sbSelect(`dg_members?select=*&cohort_id=eq.${enc}&status=eq.active&order=team,team_no`),
     // order 가 있어야 sbSelect 가 1000행 넘게 나눠 받는다.
     sbSelect(`dg_team_links?select=team,chat_url&cohort_id=eq.${enc}&order=team`),
@@ -130,6 +130,9 @@ async function fetchFromServer(cohortId) {
     sbSelect(`dg_attendance?select=member_id,status,` +
              `dg_members!inner(cohort_id)&dg_members.cohort_id=eq.${enc}` +
              `&session_date=eq.${todayISO()}&order=member_id`),
+    // 회차 목록. 조원 화면이 본인 출석 그리드를 그릴 때 쓴다.
+    // 조장은 뒤에 GAS 에서 더 최신인 것으로 덮어쓴다.
+    sbSelect(`dg_sessions?select=session_date,label&cohort_id=eq.${enc}&order=session_date`),
   ]);
 
   const teamLinks = {};
@@ -147,10 +150,16 @@ async function fetchFromServer(cohortId) {
   const attByMember = new Map();
   for (const a of attendance) attByMember.set(a.member_id, a.status ?? '');
 
+  const sessions = (sessionRows || []).map(s => ({
+    date: s.session_date,
+    key: s.label || String(s.session_date).slice(5).replace('-', '/'),
+  }));
+
   return {
     members: members.map(m => buildMemberRow(m, teamLinks, attByMember)),
     locationMap,
     teamLinks,
+    sessions,
   };
 }
 
@@ -273,6 +282,29 @@ export async function refreshAttendance() {
 
   writeCacheSync();
   notify({ type: 'attendance-refresh' });
+}
+
+/**
+ * 본인의 회차별 출결. 조원이 자기 이력을 볼 때 쓴다.
+ *
+ * Supabase 에서 읽는다. 시트가 원본이지만 여기서 GAS 를 부르면 모든 조회에
+ * 왕복이 붙어 조회를 빠르게 둔 의미가 없어진다. 10분 트리거가 DB 를 맞추고
+ * 있어 지연은 그 정도다.
+ *
+ * @returns [{ date, key, status }] — 지나간 회차만, 오래된 것부터
+ */
+export async function getMyAttendance(member) {
+  if (!member || !member._uuid) return [];
+
+  const rows = await sbSelect(
+    `dg_attendance?select=session_date,status&member_id=eq.${member._uuid}&order=session_date`);
+
+  const byDate = new Map(rows.map(r => [r.session_date, r.status ?? '']));
+  const today = state.today || todayISO();
+
+  return state.sessions
+    .filter(s => s.date <= today)
+    .map(s => ({ date: s.date, key: s.key, status: byDate.get(s.date) || '' }));
 }
 
 /**
