@@ -13,7 +13,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=17';
+} from './scripts/members-data.js?v=18';
 
 // 2. DOM 요소 선택
 const elements = {
@@ -230,39 +230,21 @@ let shownMember = null;
 // 10일 열이 새로 생긴다. 목록은 시트에 이미 있는 회차만이고,
 // 아직 지나지 않은 회차는 데이터 계층이 걸러 준다.
 function renderSessionPicker() {
-    const title = document.getElementById('teamListTitle');
-    if (!title) return;
+    const row = document.getElementById('sessionPickerRow');
+    const select = document.getElementById('sessionPicker');
+    if (!row || !select) return;
 
     const sessions = getSessions();
-    let row = document.getElementById('sessionPickerRow');
-
     if (!sessions.length) {
-        if (row) row.style.display = 'none';
+        row.style.display = 'none';
         return;
     }
 
-    if (!row) {
-        row = document.createElement('div');
-        row.id = 'sessionPickerRow';
-        row.className = 'session-picker';
-        row.innerHTML = `
-            <label for="sessionPicker">회차</label>
-            <select id="sessionPicker"></select>
-        `;
-        title.parentNode.insertBefore(row, title.nextSibling);
-
-        row.querySelector('#sessionPicker').addEventListener('change', (e) => {
-            setSession(e.target.value);
-            if (shownMember) {
-                renderTeamMembers(getTeamMembers(shownMember.team), shownMember.team, shownMember.role);
-            }
-        });
-    }
-
     row.style.display = 'flex';
-    const select = row.querySelector('#sessionPicker');
     const current = getSession();
-    select.innerHTML = sessions.map(s =>
+
+    // 최근 회차를 위로 (조장은 대개 방금 지난 회차를 본다)
+    select.innerHTML = [...sessions].reverse().map(s =>
         `<option value="${escapeAttr(s.date)}"${s.date === current ? ' selected' : ''}>${escapeHtml(s.key)}</option>`
     ).join('');
 }
@@ -316,11 +298,12 @@ function renderTeamMembers(members, teamName, role) {
         // O 로 덮어 버린다. 바꿔야 한다면 시트에서 직접 고치는 게 맞다.
         const isPlain = status === '' || status.toUpperCase() === 'O' || status.toUpperCase() === 'X';
 
+        const checked = status.toUpperCase() === 'O';
         const control = isPlain
-            ? `<input type="checkbox" ${status.toUpperCase() === 'O' ? 'checked' : ''}
+            ? `<input type="checkbox" ${checked ? 'checked' : ''}
                     class="attendance-check"
                     data-name="${escapeAttr(m.name)}" data-phone="${escapeAttr(m.phone)}"
-                    style="width: 18px; height: 18px; cursor: pointer;">`
+                    data-initial="${checked ? '1' : '0'}">`
             : `<span class="attendance-badge" title="시트에 적힌 표기입니다. 바꾸려면 시트에서 고치세요.">${escapeHtml(status)}</span>`;
 
         return `
@@ -337,6 +320,8 @@ function renderTeamMembers(members, teamName, role) {
             </div>
         `;
     }).join('');
+
+    setupSaveBar();
 }
 
 function escapeHtml(v) {
@@ -346,32 +331,178 @@ function escapeHtml(v) {
 }
 const escapeAttr = escapeHtml;
 
-// ✨ 낙관적 업데이트: 체크는 바로 반영하고, 실패하면 되돌린다.
+// ============================================================================
+// 출결 일괄 저장
 //
-// 방금 누른 한 사람만 보낸다. 전원을 O/X 로 보내면 사람이 시트에 직접 넣은
-// 다른 표기가 한 번에 지워진다.
-async function toggleAttendanceUI(name, phone, checked, checkboxElement) {
-    const status = checked ? 'O' : 'X';
-    const originalStatus = checked ? 'X' : 'O';
+// 체크할 때마다 보내지 않는다. 조장은 명단을 훑으며 여러 명을 고치는데,
+// 누를 때마다 저장하면 되돌리기 어렵고 통신도 그만큼 늘어난다.
+// 무엇이 몇 건 바뀌는지 보여주고, 버튼을 눌렀을 때 바뀐 사람만 보낸다.
+// ============================================================================
+
+function attendanceChecks() {
+    return Array.from(document.querySelectorAll('#teamMemberList .attendance-check'));
+}
+
+function changedChecks() {
+    return attendanceChecks().filter(cb => (cb.checked ? '1' : '0') !== cb.dataset.initial);
+}
+
+function refreshSaveBar() {
+    const bar = document.getElementById('attendanceSaveBar');
+    const btn = document.getElementById('saveAttendanceBtn');
+    const info = document.getElementById('attendanceSaveInfo');
+    if (!bar || !btn || !info) return;
+
+    const checks = attendanceChecks();
+    const present = checks.filter(cb => cb.checked).length;
+    const changes = changedChecks().length;
+
+    info.textContent = `출석 ${present} · 결석 ${checks.length - present}`
+        + (changes ? ` · 변경 ${changes}건` : '');
+    btn.disabled = changes === 0;
+    btn.textContent = changes === 0 ? '변경 사항 없음' : `출석 반영 (${changes}건)`;
+    bar.classList.toggle('has-changes', changes > 0);
+}
+
+function setupSaveBar() {
+    const bar = document.getElementById('attendanceSaveBar');
+    if (!bar) return;
+    bar.style.display = 'flex';
+    for (const cb of attendanceChecks()) cb.addEventListener('change', refreshSaveBar);
+    refreshSaveBar();
+}
+
+async function saveAttendanceChanges() {
+    const btn = document.getElementById('saveAttendanceBtn');
+    const info = document.getElementById('attendanceSaveInfo');
     const session = getSession();
+
+    const changed = changedChecks();
+    if (!changed.length || !btn) return;
 
     if (!session) {
         alert('회차를 알 수 없어 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-        if (checkboxElement) checkboxElement.checked = (originalStatus === 'O');
         return;
     }
 
+    // 바뀐 사람만 보낸다. 전원을 O/X 로 보내면 시트에 사람이 직접 넣은
+    // 다른 표기가 한 번에 지워진다.
+    const changes = changed.map(cb => ({
+        name: cb.dataset.name,
+        phone: cb.dataset.phone,
+        status: cb.checked ? 'O' : 'X',
+    }));
+
+    const prevText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '저장 중…';
+
     try {
-        const { saved, missing } = await saveAttendance(session, [{ name, phone, status }]);
-        if (!saved) {
-            throw new Error(missing.length ? `명단에서 찾지 못했습니다: ${missing.join(', ')}`
-                                           : '저장된 항목이 없습니다.');
-        }
+        const { saved, kept, missing } = await saveAttendance(session, changes);
+
+        // 저장된 것만 새 기준선으로 삼는다
+        for (const cb of changed) cb.dataset.initial = cb.checked ? '1' : '0';
+
+        const notes = [];
+        if (kept && kept.length) notes.push(`다른 표기가 있어 두었습니다: ${kept.join(', ')}`);
+        if (missing && missing.length) notes.push(`명단에 없습니다: ${missing.join(', ')}`);
+
+        // 끝났는데 '저장 중…' 이 남아 있으면 진행 중인 줄 안다.
+        btn.textContent = '✅ 저장됨';
+        if (info) info.textContent = `✅ ${session} ${saved}건 저장 완료`;
+        if (notes.length) alert(notes.join('\n'));
+
+        setTimeout(refreshSaveBar, 2500);
     } catch (error) {
         console.log('출결 저장 실패:', error);
-        alert('출결 처리에 실패하여 원래 상태로 되돌립니다: ' + error.message);
-        if (checkboxElement) checkboxElement.checked = (originalStatus === 'O');
+        alert('출결 저장에 실패했습니다: ' + error.message);
+        btn.textContent = prevText;
+        btn.disabled = false;
     }
+}
+
+// ============================================================================
+// 조 전체 출석표
+//
+// 명단 화면은 한 회차만 보여준다. 조장이 흐름을 보려면 회차를 하나씩
+// 바꿔가며 봐야 해서, 조원 전체 × 회차를 한 표에 펼친다.
+// ============================================================================
+
+// 시트 값을 표시용으로 나눈다. O·X 말고도 사람이 적은 표기가 들어온다.
+function classifyStatus(raw) {
+    const v = String(raw || '').trim();
+    if (v === '') return { label: '·', cls: 'empty', title: '기록 없음' };
+    const up = v.toUpperCase();
+    if (up === 'O') return { label: 'O', cls: 'present', title: '출석' };
+    if (up === 'X') return { label: 'X', cls: 'absent', title: '결석' };
+    return { label: v, cls: 'special', title: `시트 표기: ${v}` };
+}
+
+function renderTeamMatrix(teamName, members) {
+    const scrollEl = document.getElementById('matrixScroll');
+    const titleEl = document.getElementById('matrixTitle');
+    if (!scrollEl) return;
+
+    const sessions = getSessions();
+    if (titleEl) titleEl.textContent = `👥 ${teamName} 전체 출석표 (${members.length}명 · ${sessions.length}회차)`;
+
+    const sorted = [...members].sort((a, b) => {
+        const pa = rolePriority[a.role] || 4;
+        const pb = rolePriority[b.role] || 4;
+        if (pa !== pb) return pa - pb;
+        return a.name.localeCompare(b.name, 'ko');
+    });
+
+    const headRow = sessions.map(s =>
+        `<th><span class="mx-date">${escapeHtml(s.key)}</span></th>`
+    ).join('');
+
+    const bodyRows = sorted.map(m => {
+        const att = m.attendanceByDate || {};
+        const present = sessions.filter(s => String(att[s.date] || '').toUpperCase() === 'O').length;
+
+        const cells = sessions.map(s => {
+            const st = classifyStatus(att[s.date]);
+            return `<td class="mx-cell ${st.cls}" title="${escapeAttr(m.name)} · ${escapeAttr(s.key)} · ${escapeAttr(st.title)}">
+                        <span class="mx-status">${escapeHtml(st.label)}</span>
+                    </td>`;
+        }).join('');
+
+        return `
+            <tr>
+                <th class="mx-name-cell" scope="row">
+                    <span class="mx-name">${escapeHtml(m.name)}</span>
+                    <span class="mx-role">${escapeHtml(m.role || '조원')} · 출석 ${present}</span>
+                </th>
+                ${cells}
+            </tr>
+        `;
+    }).join('');
+
+    scrollEl.innerHTML = `
+        <table class="matrix-table">
+            <thead><tr><th class="mx-name-cell mx-corner">조원</th>${headRow}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+        </table>
+    `;
+}
+
+function openMatrixModal() {
+    if (!shownMember || !shownMember.team) return;
+    renderTeamMatrix(shownMember.team, getTeamMembers(shownMember.team));
+    const modal = document.getElementById('matrixModal');
+    if (!modal) return;
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMatrixModal() {
+    const modal = document.getElementById('matrixModal');
+    if (!modal) return;
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = 'auto';
 }
 
 // 8. 에러 표시 함수
@@ -406,15 +537,43 @@ function initEventListeners() {
         if (e.key === 'Enter' && !elements.searchBtn.disabled) searchMember();
     });
 
-    // 조원 명단은 다시 그려지므로 목록 자체에 한 번만 걸어 둔다.
-    const teamList = document.getElementById('teamMemberList');
-    if (teamList) {
-        teamList.addEventListener('change', (e) => {
-            const box = e.target.closest('.attendance-check');
-            if (!box) return;
-            toggleAttendanceUI(box.dataset.name, box.dataset.phone, box.checked, box);
+    // 회차 변경
+    const picker = document.getElementById('sessionPicker');
+    if (picker) {
+        picker.addEventListener('change', (e) => {
+            // 저장하지 않은 변경이 있으면 회차를 바꿀 때 사라진다. 먼저 묻는다.
+            const pending = changedChecks().length;
+            if (pending && !confirm(`저장하지 않은 변경 ${pending}건이 있습니다. 버리고 회차를 바꿀까요?`)) {
+                e.target.value = getSession();
+                return;
+            }
+            setSession(e.target.value);
+            if (shownMember) {
+                renderTeamMembers(getTeamMembers(shownMember.team), shownMember.team, shownMember.role);
+            }
         });
     }
+
+    // 출결 일괄 저장
+    const saveBtn = document.getElementById('saveAttendanceBtn');
+    if (saveBtn) saveBtn.addEventListener('click', saveAttendanceChanges);
+
+    // 전체 출석표
+    const matrixBtn = document.getElementById('openMatrixBtn');
+    if (matrixBtn) matrixBtn.addEventListener('click', openMatrixModal);
+
+    const matrixClose = document.getElementById('matrixCloseBtn');
+    if (matrixClose) matrixClose.addEventListener('click', closeMatrixModal);
+
+    const matrixModal = document.getElementById('matrixModal');
+    if (matrixModal) {
+        matrixModal.addEventListener('click', (e) => {
+            if (e.target === matrixModal) closeMatrixModal();
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeMatrixModal();
+    });
 }
 
 function initModal() {

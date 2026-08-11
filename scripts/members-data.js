@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=17';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=17';
+import { matches as hangulMatches } from './hangul.js?v=18';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=18';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -322,16 +322,23 @@ export async function saveAttendance(session, changes) {
   const result = await res.json();
   if (!result.success) throw new Error(result.message || '출결 저장 실패');
 
+  // 시트에 이미 다른 표기가 있어 두고 온 사람은 반영하지 않는다.
+  const keptIds = new Set((result.kept || []).map(s => String(s).replace(/\(.*\)$/, '')));
+
   for (const c of changes) {
     const m = state.members.find(x => x.name === c.name && x.phone === c.phone);
-    if (!m) continue;
+    if (!m || keptIds.has(m.id)) continue;
     m.attendanceByDate = m.attendanceByDate || {};
     m.attendanceByDate[session] = c.status;
     if (session === state.session) m.attendance = c.status;
   }
   writeCacheSync();
 
-  return { saved: result.saved || 0, missing: result.missing || [] };
+  return {
+    saved: result.saved || 0,
+    kept: result.kept || [],
+    missing: result.missing || [],
+  };
 }
 
 // ============================================================================

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PLC DG 조배치 검색</title>
-    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="stylesheet" href="style.css?v=18">
 </head>
 <body class="dark-mode">
     <div class="container">
@@ -106,8 +106,24 @@
                     </div>
 
                     <div id="teamMemberListContainer" style="display: none; margin-top: 20px;">
-                        <h3 id="teamListTitle" style="font-size: 1.1rem; margin-bottom: 10px; color: var(--midnight-blue);"></h3>
+                        <div class="team-list-header">
+                            <h3 id="teamListTitle" class="team-list-title"></h3>
+                            <button type="button" id="openMatrixBtn" class="matrix-open-btn">📊 전체 출석표</button>
+                        </div>
+
+                        <!-- 회차 선택 — 어느 회차의 출결을 보고 고칠지 -->
+                        <div id="sessionPickerRow" class="session-picker" style="display: none;">
+                            <label for="sessionPicker">회차</label>
+                            <select id="sessionPicker"></select>
+                        </div>
+
                         <div id="teamMemberList" class="team-member-list-grid">
+                        </div>
+
+                        <!-- 체크한 뒤 이 버튼으로 반영한다 (체크할 때마다 저장하지 않는다) -->
+                        <div id="attendanceSaveBar" class="attendance-save-bar" style="display: none;">
+                            <span id="attendanceSaveInfo" class="attendance-save-info"></span>
+                            <button type="button" id="saveAttendanceBtn" class="attendance-save-btn" disabled>변경 사항 없음</button>
                         </div>
                     </div>
                 </div>
@@ -124,6 +140,21 @@
         <div class="error-message" id="errorMessage" style="display: none;">
             <span class="error-icon">⚠</span>
             <span class="error-text" id="errorText"></span>
+        </div>
+
+        <!-- 조 전체 출석표 -->
+        <div class="matrix-modal" id="matrixModal" aria-hidden="true">
+            <div class="matrix-modal-inner" role="dialog" aria-modal="true" aria-labelledby="matrixTitle">
+                <div class="matrix-modal-header">
+                    <h3 id="matrixTitle">조 전체 출석표</h3>
+                    <button type="button" id="matrixCloseBtn" class="matrix-close-btn" aria-label="닫기">✕</button>
+                </div>
+                <div class="matrix-legend">
+                    <span><b>O</b> 출석</span><span><b>X</b> 결석</span><span><b>·</b> 기록 없음</span>
+                    <span>그 밖의 표기는 시트에 적힌 그대로</span>
+                </div>
+                <div class="matrix-scroll" id="matrixScroll"></div>
+            </div>
         </div>
 
         <!-- 푸터 -->
@@ -179,6 +210,6 @@
         </div>
     </div>
 
-    <script type="module" src="script.js?v=17"></script>
+    <script type="module" src="script.js?v=18"></script>
 </body>
 </html>

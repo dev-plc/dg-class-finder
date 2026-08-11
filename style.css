@@ -924,14 +924,21 @@ body.large-text .map-image {
     color: var(--midnight-blue);
 }
 .session-picker select {
-    padding: 6px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--midnight-blue);
+    flex: 1 1 auto;
+    max-width: 220px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 2px solid var(--midnight-blue);
     background: var(--white);
     color: var(--midnight-blue);
-    font-size: 0.9rem;
-    font-weight: 600;
+    font-size: 1rem;
+    font-weight: 700;
     cursor: pointer;
+    /* 손가락으로 누를 수 있는 크기. 기본 select 는 너무 작다. */
+    min-height: 44px;
+}
+.session-picker label {
+    font-size: 0.95rem;
 }
 
 /* 시트에 적힌 특수 표기 (돌봄 · - 등). 앱에서는 바꾸지 않는다. */
@@ -950,3 +957,175 @@ body.large-text .map-image {
     font-weight: 700;
     white-space: nowrap;
 }
+
+/* ============================================================
+   조원 명단 머리말 · 전체 출석표 버튼
+   ============================================================ */
+.team-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.team-list-title {
+    font-size: 1.1rem;
+    margin: 0;
+    color: var(--midnight-blue);
+}
+.matrix-open-btn {
+    padding: 8px 14px;
+    background: var(--midnight-blue);
+    color: #fff;
+    border: none;
+    border-radius: 18px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: 36px;
+}
+.matrix-open-btn:hover { opacity: 0.9; }
+
+/* ============================================================
+   출결 일괄 저장 바
+   ============================================================ */
+.attendance-save-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--milk-beige);
+    border: 1px solid var(--midnight-blue);
+    border-radius: 10px;
+    flex-wrap: wrap;
+}
+.attendance-save-bar.has-changes {
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+}
+.attendance-save-info {
+    font-size: 13px;
+    color: var(--midnight-blue);
+    font-weight: 600;
+}
+.attendance-save-btn {
+    padding: 10px 18px;
+    background: var(--midnight-blue);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: 42px;
+}
+.attendance-save-btn:disabled {
+    background: #d1d5db;
+    color: #6b7280;
+    cursor: default;
+}
+.attendance-save-btn:not(:disabled):hover { opacity: 0.92; }
+
+/* ============================================================
+   조 전체 출석표 (매트릭스)
+   ============================================================ */
+.matrix-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 10000;
+    padding: 12px;
+}
+.matrix-modal.active { display: flex; align-items: center; justify-content: center; }
+.matrix-modal-inner {
+    display: flex;
+    flex-direction: column;
+    background: var(--white);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 1100px;
+    max-height: 90vh;
+    overflow: hidden;
+}
+.matrix-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px 16px 10px;
+}
+.matrix-modal-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--midnight-blue);
+}
+.matrix-close-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--midnight-blue);
+    min-width: 40px;
+    min-height: 40px;
+}
+.matrix-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 0 16px 10px;
+    font-size: 11px;
+    opacity: 0.75;
+}
+.matrix-scroll {
+    overflow: auto;
+    flex: 1 1 auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 16px 16px;
+}
+.matrix-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 11px;
+    width: max-content;
+    min-width: 100%;
+}
+.matrix-table th,
+.matrix-table td {
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    padding: 5px 4px;
+    text-align: center;
+    background: var(--white);
+}
+/* 헤더 행과 이름 열을 고정해 스크롤해도 기준이 남게 한다 */
+.matrix-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--milk-beige);
+    min-width: 44px;
+}
+.mx-date { display: block; font-size: 10px; font-weight: 700; }
+.mx-name-cell {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--white);
+    text-align: left !important;
+    padding: 5px 10px !important;
+    min-width: 100px;
+    box-shadow: 1px 0 0 rgba(0, 0, 0, 0.08);
+}
+.matrix-table thead .mx-corner { z-index: 4; background: var(--milk-beige); }
+.mx-name { display: block; font-weight: 700; white-space: nowrap; }
+.mx-role { display: block; font-size: 9px; opacity: 0.6; white-space: nowrap; }
+.mx-status { display: block; font-weight: 700; font-size: 12px; }
+.mx-cell.present { background: rgba(16, 185, 129, 0.16); }
+.mx-cell.absent  { background: rgba(239, 68, 68, 0.12); }
+.mx-cell.special { background: rgba(59, 130, 246, 0.14); font-size: 10px; }
+.mx-cell.empty   { opacity: 0.35; }
