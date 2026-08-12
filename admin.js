@@ -8,7 +8,7 @@
 // ⚠️ 아래 로그인 확인은 화면 전환일 뿐 보호 장치가 아니다. 콘솔에서
 //    sessionStorage 한 줄이면 통과한다. 이 화면이 보여주는 값은 모두 anon 키로
 //    읽히는 것이라, 진짜로 가리려면 Supabase Auth 로 경로를 나눠야 한다.
-import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=32';
+import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=33';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -145,9 +145,11 @@ function showDuplicateSelection(members) {
     members.forEach(member => {
         const item = document.createElement('div');
         item.className = 'duplicate-item';
+        const phoneDisplay = member.phone ? ` (${member.phone})` : '';
+        const ageDisplay = member.age ? ` · ${member.age}세` : '';
         item.innerHTML = `
-            <div class="duplicate-item-id">${member.name}${member.phone}</div>
-            <div class="duplicate-item-info">${member.team} · ${member.location} · ${member.age}세</div>
+            <div class="duplicate-item-id">${member.name}${phoneDisplay}</div>
+            <div class="duplicate-item-info">${member.team} · ${member.location}${ageDisplay}</div>
         `;
         item.addEventListener('click', () => {
             showSearchResult(member);
@@ -167,7 +169,8 @@ function showSearchResult(member) {
     hideSearchError();
     duplicateContainer.style.display = 'none';
     
-    document.getElementById('searchResultName').textContent = `${member.name}${member.phone}`;
+    const phoneDisplay = member.phone ? ` (${member.phone})` : '';
+    document.getElementById('searchResultName').textContent = `${member.name}${phoneDisplay}`;
     document.getElementById('searchResultTeam').textContent = member.team;
     document.getElementById('searchResultLocation').textContent = member.location;
     
@@ -292,9 +295,11 @@ function showTeamMembers(team) {
     team.members.forEach(member => {
         const card = document.createElement('div');
         card.className = 'team-member-card';
+        const phoneDisplay = member.phone ? ` (${member.phone})` : '';
+        const ageDisplay = member.age ? `${member.age}세` : '';
         card.innerHTML = `
-            <div class="team-member-id">${member.name}${member.phone}</div>
-            <div class="team-member-age">${member.age}세</div>
+            <div class="team-member-id">${member.name}${phoneDisplay}</div>
+            <div class="team-member-age">${ageDisplay}</div>
         `;
         teamMembersList.appendChild(card);
     });
@@ -328,7 +333,7 @@ function renderMembersView(filterText = '') {
     const filteredMembers = filterText
         ? sortedMembers.filter(member =>
             member.name.toLowerCase().includes(filterText.toLowerCase()) ||
-            (member.name + member.phone).toLowerCase().includes(filterText.toLowerCase()) ||
+            (member.name + (member.phone || '')).toLowerCase().includes(filterText.toLowerCase()) ||
             member.team.toLowerCase().includes(filterText.toLowerCase()) ||
             member.location.toLowerCase().includes(filterText.toLowerCase())
           )
@@ -343,17 +348,19 @@ function renderMembersView(filterText = '') {
     filteredMembers.forEach(member => {
         const card = document.createElement('div');
         card.className = 'member-card';
+        const phoneDisplay = member.phone ? ` (${member.phone})` : '';
         card.innerHTML = `
-            <div class="member-card-id">${member.name}${member.phone}</div>
+            <div class="member-card-id">${member.name}${phoneDisplay}</div>
             <div class="member-card-info">
                 <div class="member-card-row">
                     <span class="member-card-label">조</span>
                     <span class="member-card-value team">${member.team}</span>
                 </div>
+                ${member.age ? `
                 <div class="member-card-row">
                     <span class="member-card-label">나이</span>
                     <span class="member-card-value">${member.age}세</span>
-                </div>
+                </div>` : ''}
                 <div class="member-card-row">
                     <span class="member-card-label">위치</span>
                     <span class="member-card-value">${member.location}</span>
