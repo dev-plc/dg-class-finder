@@ -6,19 +6,19 @@
 // ⚠️ CACHE_VERSION 과 아래 ?v= 는 scripts/bump-version.mjs 가 함께 올린다.
 //    손으로 고치지 말 것 — 한 곳만 빠뜨려도 그 파일만 옛것이 나온다.
 
-const CACHE_VERSION = 'dgf-v35';
+const CACHE_VERSION = 'dgf-v36';
 
 const PRECACHE_URLS = [
   './',
   './index.html',
   './admin.html',
-  './style.css?v=35',
-  './admin.css?v=35',
-  './script.js?v=35',
-  './admin.js?v=35',
-  './scripts/members-data.js?v=35',
-  './scripts/hangul.js?v=35',
-  './scripts/supabase-config.js?v=35',
+  './style.css?v=36',
+  './admin.css?v=36',
+  './script.js?v=36',
+  './admin.js?v=36',
+  './scripts/members-data.js?v=36',
+  './scripts/hangul.js?v=36',
+  './scripts/supabase-config.js?v=36',
 ];
 
 self.addEventListener('message', (event) => {
@@ -42,7 +42,14 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k)))
+      Promise.all(
+        keys.map(k => {
+          if (k !== CACHE_VERSION) {
+            console.log('[SW] 구버전 캐시 강제 삭제:', k);
+            return caches.delete(k);
+          }
+        })
+      )
     ).then(() => self.clients.claim())
   );
 });
