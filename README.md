@@ -46,7 +46,7 @@ CSV 게시 시 아래 헤더 형식을 준수해야 합니다:
 ## 📁 파일 구조
 
 ```text
-교리교육 조배치 검색기/
+DG 조배치 검색기/
 ├── index.html          # 메인 검색 페이지
 ├── admin.html          # 관리자 전용 페이지
 ├── style.css           # 디자인 (다크모드 포함)
@@ -224,7 +224,7 @@ python check_update.py
 
 ## 📁 파일 구조
 ```
-교리교육 조배치 검색기/
+DG 조배치 검색기/
 ├── index.html          # 메인 페이지 (일반 사용자)
 ├── admin.html          # 관리자 페이지
 ├── roadmap.html        # 로드맵 페이지

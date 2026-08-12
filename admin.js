@@ -8,7 +8,7 @@
 // ⚠️ 아래 로그인 확인은 화면 전환일 뿐 보호 장치가 아니다. 콘솔에서
 //    sessionStorage 한 줄이면 통과한다. 이 화면이 보여주는 값은 모두 anon 키로
 //    읽히는 것이라, 진짜로 가리려면 Supabase Auth 로 경로를 나눠야 한다.
-import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=39';
+import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=41';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -270,12 +270,16 @@ function renderTeamsView(filterText = '') {
     filteredTeams.forEach(team => {
         const card = document.createElement('div');
         card.className = 'team-card';
+        const lunchCount = team.members.filter(m => (m.lunch && String(m.lunch).trim().toUpperCase() === 'O')).length;
         card.innerHTML = `
             <div class="team-card-header">
                 <div class="team-card-name">${team.name}</div>
                 <div class="team-card-count">${team.members.length}명</div>
             </div>
             <div class="team-card-location">${team.location}</div>
+            <div class="team-card-lunch" style="font-size: 0.88em; margin-top: 6px; color: #166534; font-weight: 600;">
+                🍱 김밥 ${lunchCount}개 (${team.members.length}명 중)
+            </div>
         `;
         card.addEventListener('click', () => showTeamMembers(team));
         teamsGrid.appendChild(card);
@@ -289,7 +293,8 @@ teamFilter.addEventListener('input', (e) => {
 
 // 조원 목록 모달 표시
 function showTeamMembers(team) {
-    teamModalTitle.textContent = `${team.name} (${team.members.length}명) · ${team.location}`;
+    const lunchTotal = team.members.filter(m => (m.lunch && String(m.lunch).trim().toUpperCase() === 'O')).length;
+    teamModalTitle.textContent = `${team.name} (${team.members.length}명 / 🍱 김밥 ${lunchTotal}개) · ${team.location}`;
     
     teamMembersList.innerHTML = '';
     team.members.forEach(member => {
@@ -297,8 +302,12 @@ function showTeamMembers(team) {
         card.className = 'team-member-card';
         const phoneDisplay = member.phone ? ` (${member.phone})` : '';
         const ageDisplay = member.age ? `${member.age}세` : '';
+        const isLunchO = member.lunch && String(member.lunch).trim().toUpperCase() === 'O';
+        const lunchBadge = isLunchO
+            ? '<span style="display:inline-block; padding:2px 6px; border-radius:4px; background:#dcfce7; color:#166534; font-size:0.8em; font-weight:bold; margin-left:6px;">🍱 김밥 O</span>'
+            : '<span style="display:inline-block; padding:2px 6px; border-radius:4px; background:#f3f4f6; color:#9ca3af; font-size:0.8em; margin-left:6px;">김밥 X</span>';
         card.innerHTML = `
-            <div class="team-member-id">${member.name}${phoneDisplay}</div>
+            <div class="team-member-id">${member.name}${phoneDisplay}${lunchBadge}</div>
             <div class="team-member-age">${ageDisplay}</div>
         `;
         teamMembersList.appendChild(card);

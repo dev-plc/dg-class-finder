@@ -15,7 +15,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=39';
+} from './scripts/members-data.js?v=41';
 
 // 1-1. 내 정보 기억
 //
@@ -746,7 +746,7 @@ function initEventListeners() {
         if (id === 'plc' && pw === 'plc1234') {
             alert("로그인 성공!");
             sessionStorage.setItem('adminLoggedIn', 'true'); 
-            window.location.href = 'admin.html?v=39'; 
+            window.location.href = 'admin.html?v=41'; 
         } else {
             const errorElement = document.getElementById('adminLoginError');
             errorElement.style.display = 'block';
