@@ -89,6 +89,7 @@ function applyTo(file, source) {
     out = out.replace(HTML_ASSET, (_m, pre, path, _old, post) => `${pre}${path}?v=${NEXT}${post}`);
   } else if (/\.(js|mjs)$/i.test(rel)) {
     out = out.replace(JS_IMPORT, (_m, pre, path, _old, post) => `${pre}${path}?v=${NEXT}${post}`);
+    out = out.replace(/admin\.html\?v=\d+/g, `admin.html?v=${NEXT}`);
     if (rel === 'sw.js') {
       out = out.replace(/const CACHE_VERSION = 'dgf-v\d+'/, `const CACHE_VERSION = 'dgf-v${NEXT}'`);
       out = out.replace(SW_PRECACHE, (_m, path, _old, post) => `${path}?v=${NEXT}${post}`);
