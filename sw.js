@@ -6,19 +6,19 @@
 // ⚠️ CACHE_VERSION 과 아래 ?v= 는 scripts/bump-version.mjs 가 함께 올린다.
 //    손으로 고치지 말 것 — 한 곳만 빠뜨려도 그 파일만 옛것이 나온다.
 
-const CACHE_VERSION = 'dgf-v34';
+const CACHE_VERSION = 'dgf-v35';
 
 const PRECACHE_URLS = [
   './',
   './index.html',
   './admin.html',
-  './style.css?v=34',
-  './admin.css?v=34',
-  './script.js?v=34',
-  './admin.js?v=34',
-  './scripts/members-data.js?v=34',
-  './scripts/hangul.js?v=34',
-  './scripts/supabase-config.js?v=34',
+  './style.css?v=35',
+  './admin.css?v=35',
+  './script.js?v=35',
+  './admin.js?v=35',
+  './scripts/members-data.js?v=35',
+  './scripts/hangul.js?v=35',
+  './scripts/supabase-config.js?v=35',
 ];
 
 self.addEventListener('message', (event) => {
@@ -35,11 +35,8 @@ self.addEventListener('install', (event) => {
         PRECACHE_URLS.map(u => new Request(u, { cache: 'reload' }))
       ).catch(err => console.log('[SW] 일부 precache 실패:', err)))
   );
-  // 여기서 self.skipWaiting() 을 부르지 않는다.
-  //
-  // 부르면 새 SW 가 대기 없이 바로 활성화돼서, 페이지가 토스트를 0.6초 보여준 뒤
-  // 적용하려는 경로와 경쟁한다. SW 가 이기면 안내 없이 화면이 리로드된다.
-  // 활성화 시점은 페이지가 SKIP_WAITING 메시지로 정한다 (위 message 핸들러).
+  // 새 SW 가 즉시 활성화되어 구버전 캐시를 파기하도록 함
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

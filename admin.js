@@ -8,7 +8,7 @@
 // ⚠️ 아래 로그인 확인은 화면 전환일 뿐 보호 장치가 아니다. 콘솔에서
 //    sessionStorage 한 줄이면 통과한다. 이 화면이 보여주는 값은 모두 anon 키로
 //    읽히는 것이라, 진짜로 가리려면 Supabase Auth 로 경로를 나눠야 한다.
-import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=34';
+import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=35';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -396,6 +396,43 @@ if (document.readyState === 'loading') {
 } else {
     initAdmin();
 }
+
+// Service Worker 등록 및 갱신 감지
+function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+
+    window.addEventListener('load', async () => {
+        try {
+            const hadController = !!navigator.serviceWorker.controller;
+            const registration = await navigator.serviceWorker.register('./sw.js');
+
+            registration.addEventListener('updatefound', () => {
+                const newSW = registration.installing;
+                if (!newSW) return;
+                newSW.addEventListener('statechange', () => {
+                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                        newSW.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                });
+            });
+
+            setInterval(() => registration.update(), 30 * 60 * 1000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') registration.update();
+            });
+
+            let reloading = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (reloading) return;
+                reloading = true;
+                window.location.reload();
+            });
+        } catch (err) {
+            console.log('SW 등록 실패:', err);
+        }
+    });
+}
+registerServiceWorker();
 
 
 
