@@ -1,189 +1,167 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.update()));
+      }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PL교회 교리교육 휴강 안내</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', '맑은 고딕', sans-serif;
-            background: linear-gradient(135deg, #F5F1E8 0%, #EDE6D6 100%);
-            height: 100vh;
-            width: 100vw;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .break-container {
-            text-align: center;
-            animation: fadeIn 1s ease;
-            max-width: 700px;
-            width: 90%;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(40px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .logo {
-            font-size: 64px;
-            font-weight: 600;
-            color: #1B3B6F;
-            margin-bottom: 18px;
-            letter-spacing: 3px;
-        }
-
-        .church-name {
-            font-size: 15px;
-            color: #2C4875;
-            letter-spacing: 4px;
-            margin-bottom: 50px;
-            opacity: 0.8;
-            font-weight: 500;
-        }
-
-        .content-box {
-            background: white;
-            padding: 55px 60px 65px 60px;
-            border-radius: 24px;
-            box-shadow: 0 10px 40px rgba(27, 59, 111, 0.15);
-            animation: float 4s ease-in-out infinite;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-        }
-
-        .title {
-            font-size: 38px;
-            font-weight: 700;
-            color: #1B3B6F;
-            margin-bottom: 45px;
-            letter-spacing: -1px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-        }
-
-        .title-icon {
-            font-size: 36px;
-        }
-
-        .date {
-            font-size: 36px;
-            font-weight: 700;
-            color: #1B3B6F;
-            margin-bottom: 30px;
-            letter-spacing: -1px;
-        }
-
-        .reason {
-            font-size: clamp(18px, 3.5vw, 24px);
-            color: #2C4875;
-            line-height: 1.7;
-            margin-bottom: 40px;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        .message {
-            font-size: clamp(16px, 2.8vw, 20px);
-            color: #6B7280;
-            line-height: 1.8;
-            font-weight: 400;
-            animation: sparkle 3s ease-in-out infinite;
-        }
-
-        @keyframes sparkle {
-            0%, 100% { 
-                opacity: 0.8; 
-                transform: scale(1);
-            }
-            50% { 
-                opacity: 1; 
-                transform: scale(1.03);
-            }
-        }
-
-        /* 반응형 */
-        @media (max-width: 768px) {
-            .logo {
-                font-size: 52px;
-            }
-
-            .church-name {
-                font-size: 12px;
-                margin-bottom: 40px;
-            }
-
-            .content-box {
-                padding: 45px 30px 55px 30px;
-            }
-
-            .title {
-                font-size: 30px;
-                margin-bottom: 35px;
-            }
-
-            .title-icon {
-                font-size: 28px;
-            }
-
-            .date {
-                font-size: 32px;
-                margin-bottom: 25px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .content-box {
-                padding: 40px 25px 50px 25px;
-            }
-
-            .title {
-                font-size: 26px;
-            }
-
-            .title-icon {
-                font-size: 24px;
-            }
-
-            .date {
-                font-size: 28px;
-            }
-        }
-    </style>
+    <title>PLC DG 관리자</title>
+    <link rel="stylesheet" href="style.css?v=38">
+    <link rel="stylesheet" href="admin.css?v=38">
 </head>
 <body>
-    <div class="break-container">
-        <div class="logo">PLC</div>
-        <div class="church-name">PRACTICAL LEADERSHIP CHURCH</div>
-        
-        <div class="content-box">
-            <h1 class="title">
-                <span class="title-icon">📆</span>
-                교리교육 휴강 안내
-            </h1>
-            
-            <div class="date">12월 28일 (일)</div>
-            <div class="reason">이번 주 교리교육은 한 주 쉬어갑니다</div>
+    <div class="admin-container">
+        <!-- 헤더 -->
+        <header class="admin-header">
+            <div class="admin-header-content">
+                <div class="admin-brand">
+                    <div class="admin-logo">PLC</div>
+                    <span class="admin-badge">관리자 모드</span>
+                </div>
+                <div class="admin-controls">
+                    <div class="theme-toggle-wrapper">
+                        <svg class="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                        <button class="theme-toggle" id="themeToggle" aria-label="테마 전환">
+                            <div class="toggle-track">
+                                <div class="toggle-thumb"></div>
+                            </div>
+                        </button>
+                    </div>
+                    <button class="logout-btn" id="logoutBtn" aria-label="로그아웃" title="로그아웃">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                            <polyline points="16 17 21 12 16 7"></polyline>
+                            <line x1="21" y1="12" x2="9" y2="12"></line>
+                        </svg>
+                        <span class="logout-text">로그아웃</span>
+                    </button>
+                </div>
+            </div>
+        </header>
 
-            <p class="message">
-                자유롭게 교제하시고 2026년에도<br>
-                교리교육으로 함께 하겠습니다❤️
-            </p>
+        <!-- 탭 네비게이션 -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="search">검색 모드</button>
+            <button class="tab-btn" data-tab="teams">조별 보기</button>
+            <button class="tab-btn" data-tab="members">개인별 보기</button>
+        </nav>
+
+        <!-- 검색 모드 -->
+        <div class="tab-content active" id="searchTab">
+            <div class="search-section">
+                <div class="search-box">
+                    <div class="input-group">
+                        <label for="searchName">이름</label>
+                        <input 
+                            type="text" 
+                            id="searchName" 
+                            placeholder="이름을 입력하세요"
+                            autocomplete="off"
+                        >
+                    </div>
+                    <button class="search-btn" id="adminSearchBtn">
+                        <span class="btn-text">검색하기</span>
+                    </button>
+                </div>
+
+                <!-- 동명이인 선택 -->
+                <div class="duplicate-container" id="duplicateContainer" style="display: none;">
+                    <h3 class="duplicate-title">동일한 이름이 여러 명 있습니다. 선택해주세요:</h3>
+                    <div class="duplicate-list" id="duplicateList"></div>
+                </div>
+
+                <!-- 검색 결과 -->
+                <div class="result-container" id="searchResultContainer" style="display: none;">
+                    <div class="result-card">
+                        <div class="result-header">
+                            <h2 class="result-title">조원 정보</h2>
+                            <button class="close-btn" id="searchCloseBtn">✕</button>
+                        </div>
+                        <div class="result-content">
+                            <div class="info-row">
+                                <span class="info-label">이름</span>
+                                <span class="info-value" id="searchResultName">-</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">조</span>
+                                <span class="info-value highlight" id="searchResultTeam">-</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">위치</span>
+                                <span class="info-value" id="searchResultLocation">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 에러 메시지 -->
+                <div class="error-message" id="searchErrorMessage" style="display: none;">
+                    <span class="error-icon">⚠</span>
+                    <span class="error-text" id="searchErrorText"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 조별 보기 -->
+        <div class="tab-content" id="teamsTab">
+            <div class="filter-section">
+                <input 
+                    type="text" 
+                    id="teamFilter" 
+                    class="filter-input" 
+                    placeholder="조 이름 또는 위치로 검색..."
+                    autocomplete="off"
+                >
+            </div>
+            <div class="teams-grid" id="teamsGrid">
+                <!-- 조별 카드들이 여기에 동적으로 생성됩니다 -->
+            </div>
+        </div>
+
+        <!-- 개인별 보기 -->
+        <div class="tab-content" id="membersTab">
+            <div class="filter-section">
+                <input 
+                    type="text" 
+                    id="memberFilter" 
+                    class="filter-input" 
+                    placeholder="이름, 조, 위치로 검색..."
+                    autocomplete="off"
+                >
+            </div>
+            <div class="members-grid" id="membersGrid">
+                <!-- 개인 카드들이 여기에 동적으로 생성됩니다 -->
+            </div>
         </div>
     </div>
+
+    <!-- 조원 목록 모달 -->
+    <div class="team-modal" id="teamModal">
+        <div class="team-modal-content">
+            <div class="team-modal-header">
+                <h2 id="teamModalTitle">조원 목록</h2>
+                <button class="team-modal-close" id="teamModalClose">✕</button>
+            </div>
+            <div class="team-members-list" id="teamMembersList">
+                <!-- 조원 카드들이 여기에 동적으로 생성됩니다 -->
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="admin.js?v=38"></script>
 </body>
 </html>
+

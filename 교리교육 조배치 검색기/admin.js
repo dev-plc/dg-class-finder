@@ -1,3 +1,15 @@
+// 관리자 화면.
+//
+// 데이터는 index 와 같은 계층(members-data.js)에서 온다. 예전에는 '웹에 게시'
+// 된 구글시트 CSV 를 직접 읽었는데, 그 URL 은 인증 없이 누구나 열 수 있어
+// 명단 전체가 공개돼 있었다. 게다가 index 와 원본이 달라 두 화면이 서로 다른
+// 값을 보여줄 수 있었다.
+//
+// ⚠️ 아래 로그인 확인은 화면 전환일 뿐 보호 장치가 아니다. 콘솔에서
+//    sessionStorage 한 줄이면 통과한다. 이 화면이 보여주는 값은 모두 anon 키로
+//    읽히는 것이라, 진짜로 가리려면 Supabase Auth 로 경로를 나눠야 한다.
+import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=38';
+
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
     window.location.href = 'index.html';
@@ -32,22 +44,39 @@ const teamMembersList = document.getElementById('teamMembersList');
 const teamFilter = document.getElementById('teamFilter');
 const memberFilter = document.getElementById('memberFilter');
 
-// 데이터 로드
 async function loadData() {
     try {
-        const response = await fetch('data.json');
-        memberData = await response.json();
+        // 캐시가 있으면 즉시 그리고 뒤에서 갱신한다.
+        await ensureLoaded({
+            onBackgroundRefreshError: (err) => console.log('백그라운드 갱신 실패:', err),
+        });
+
+        memberData = getMembers();
         console.log('✅ 데이터 로드 완료:', memberData.length, '명');
-        
-        // 초기 렌더링
+
         renderTeamsView();
         renderMembersView();
     } catch (error) {
-        console.error('❌ 데이터 로드 실패:', error);
-        alert('데이터를 불러오는데 실패했습니다.');
+        console.log('❌ 데이터 로드 실패:', error);
+        alert('데이터를 불러오는 중 오류가 발생했습니다. 인터넷 연결을 확인해주세요.');
     }
 }
 
+// 캐시로 먼저 그렸다면 갱신이 끝났을 때 다시 그려야 한다.
+// 안 그리면 화면에는 옛 값이 남고, 보는 사람은 그것이 옛것인 줄 모른다.
+subscribe((event) => {
+    if (event.type !== 'refresh' && event.type !== 'cohort-changed') return;
+    memberData = getMembers();
+    renderTeamsView(teamFilter ? teamFilter.value : '');
+    renderMembersView(memberFilter ? memberFilter.value : '');
+    if (searchNameInput && searchNameInput.value.trim()) {
+        try {
+            searchMember();
+        } catch (e) {
+            console.log('자동 재검색 무시:', e);
+        }
+    }
+});
 // 테마 전환
 document.body.classList.remove('dark-mode');
 themeToggle.addEventListener('click', () => {
@@ -55,12 +84,16 @@ themeToggle.addEventListener('click', () => {
 });
 
 // 로그아웃
-logoutBtn.addEventListener('click', () => {
-    if (confirm('로그아웃 하시겠습니까?')) {
-        sessionStorage.removeItem('adminLoggedIn');
-        window.location.href = 'index.html';
-    }
-});
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+        if (confirm("로그아웃 하시겠습니까?")) {
+            // 세션 정보 삭제
+            sessionStorage.removeItem('adminLoggedIn');
+            // 로그인 페이지(index.html)로 이동
+            window.location.href = 'index.html';
+        }
+    });
+}
 
 // 탭 전환
 tabBtns.forEach(btn => {
@@ -112,9 +145,11 @@ function showDuplicateSelection(members) {
     members.forEach(member => {
         const item = document.createElement('div');
         item.className = 'duplicate-item';
+        const phoneDisplay = member.phone ? ` (${member.phone})` : '';
+        const ageDisplay = member.age ? ` · ${member.age}세` : '';
         item.innerHTML = `
-            <div class="duplicate-item-id">${member.name}${member.phone}</div>
-            <div class="duplicate-item-info">${member.team} · ${member.location} · ${member.age}세</div>
+            <div class="duplicate-item-id">${member.name}${phoneDisplay}</div>
+            <div class="duplicate-item-info">${member.team} · ${member.location}${ageDisplay}</div>
         `;
         item.addEventListener('click', () => {
             showSearchResult(member);
@@ -134,7 +169,8 @@ function showSearchResult(member) {
     hideSearchError();
     duplicateContainer.style.display = 'none';
     
-    document.getElementById('searchResultName').textContent = `${member.name}${member.phone}`;
+    const phoneDisplay = member.phone ? ` (${member.phone})` : '';
+    document.getElementById('searchResultName').textContent = `${member.name}${phoneDisplay}`;
     document.getElementById('searchResultTeam').textContent = member.team;
     document.getElementById('searchResultLocation').textContent = member.location;
     
@@ -259,9 +295,11 @@ function showTeamMembers(team) {
     team.members.forEach(member => {
         const card = document.createElement('div');
         card.className = 'team-member-card';
+        const phoneDisplay = member.phone ? ` (${member.phone})` : '';
+        const ageDisplay = member.age ? `${member.age}세` : '';
         card.innerHTML = `
-            <div class="team-member-id">${member.name}${member.phone}</div>
-            <div class="team-member-age">${member.age}세</div>
+            <div class="team-member-id">${member.name}${phoneDisplay}</div>
+            <div class="team-member-age">${ageDisplay}</div>
         `;
         teamMembersList.appendChild(card);
     });
@@ -295,7 +333,7 @@ function renderMembersView(filterText = '') {
     const filteredMembers = filterText
         ? sortedMembers.filter(member =>
             member.name.toLowerCase().includes(filterText.toLowerCase()) ||
-            (member.name + member.phone).toLowerCase().includes(filterText.toLowerCase()) ||
+            (member.name + (member.phone || '')).toLowerCase().includes(filterText.toLowerCase()) ||
             member.team.toLowerCase().includes(filterText.toLowerCase()) ||
             member.location.toLowerCase().includes(filterText.toLowerCase())
           )
@@ -310,17 +348,19 @@ function renderMembersView(filterText = '') {
     filteredMembers.forEach(member => {
         const card = document.createElement('div');
         card.className = 'member-card';
+        const phoneDisplay = member.phone ? ` (${member.phone})` : '';
         card.innerHTML = `
-            <div class="member-card-id">${member.name}${member.phone}</div>
+            <div class="member-card-id">${member.name}${phoneDisplay}</div>
             <div class="member-card-info">
                 <div class="member-card-row">
                     <span class="member-card-label">조</span>
                     <span class="member-card-value team">${member.team}</span>
                 </div>
+                ${member.age ? `
                 <div class="member-card-row">
                     <span class="member-card-label">나이</span>
                     <span class="member-card-value">${member.age}세</span>
-                </div>
+                </div>` : ''}
                 <div class="member-card-row">
                     <span class="member-card-label">위치</span>
                     <span class="member-card-value">${member.location}</span>
@@ -343,9 +383,56 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// 페이지 로드 시 데이터 로드
-window.addEventListener('load', () => {
+// 안전한 초기화 함수
+function initAdmin() {
     loadData();
-    searchNameInput.focus();
-});
+    if (searchNameInput) {
+        searchNameInput.focus();
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAdmin);
+} else {
+    initAdmin();
+}
+
+// Service Worker 등록 및 갱신 감지
+function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+
+    window.addEventListener('load', async () => {
+        try {
+            const hadController = !!navigator.serviceWorker.controller;
+            const registration = await navigator.serviceWorker.register('./sw.js');
+
+            registration.addEventListener('updatefound', () => {
+                const newSW = registration.installing;
+                if (!newSW) return;
+                newSW.addEventListener('statechange', () => {
+                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                        newSW.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                });
+            });
+
+            setInterval(() => registration.update(), 30 * 60 * 1000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') registration.update();
+            });
+
+            let reloading = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (reloading) return;
+                reloading = true;
+                window.location.reload();
+            });
+        } catch (err) {
+            console.log('SW 등록 실패:', err);
+        }
+    });
+}
+registerServiceWorker();
+
+
 
