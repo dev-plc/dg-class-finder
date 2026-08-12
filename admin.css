@@ -384,19 +384,20 @@ body.dark-mode .logout-btn:hover {
     margin-left: 6px;
 }
 
-/* 다크모드 극강의 시독성 뱃지 pill (화사한 베이지/골드 옐로우) */
+/* 다크모드 극강의 시독성 뱃지 (조별보기 활성화 버튼과 100% 동일한 베이지-네이비 매칭) */
 body.dark-mode .team-card-lunch {
-    background: rgba(254, 240, 138, 0.18); /* 따뜻하고 은은한 옐로우/골드 뱃지 박스 */
-    color: #FDE047; /* 화사하고 독보적인 시독성의 옐로우/골드 */
-    border: 1px solid rgba(254, 240, 138, 0.4);
+    background: #EDE6D6; /* 조별보기 버튼과 동일한 화사한 웜 베이지 배경 */
+    color: #1B3B6F; /* 선명하고 뚜렷한 딥 네이비 글씨 */
+    border: 1px solid #D6CBB5;
     font-weight: 800;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 body.dark-mode .badge-lunch-yes {
-    background: rgba(254, 240, 138, 0.2);
-    color: #FDE047;
-    border: 1px solid rgba(254, 240, 138, 0.4);
+    background: #EDE6D6;
+    color: #1B3B6F;
+    border: 1px solid #D6CBB5;
+    font-weight: 800;
 }
 
 body.dark-mode .badge-lunch-no {
