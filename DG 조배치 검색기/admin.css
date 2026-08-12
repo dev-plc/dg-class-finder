@@ -349,10 +349,17 @@ body.dark-mode .logout-btn:hover {
 }
 
 .team-card-lunch {
-    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
     margin-top: 8px;
-    color: #1b5e20;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: #E8F5E9;
+    color: #1B5E20;
     font-weight: 700;
+    width: fit-content;
 }
 
 /* 김밥 뱃지 공통 스타일 */
@@ -377,22 +384,24 @@ body.dark-mode .logout-btn:hover {
     margin-left: 6px;
 }
 
-/* 다크모드 고대비 시독성 스타일 */
+/* 다크모드 극강의 시독성 뱃지 pill (화사한 베이지/골드 옐로우) */
 body.dark-mode .team-card-lunch {
-    color: #6EE7B7; /* 화사하고 시독성 뛰어난 라이트 에메랄드 */
+    background: rgba(254, 240, 138, 0.18); /* 따뜻하고 은은한 옐로우/골드 뱃지 박스 */
+    color: #FDE047; /* 화사하고 독보적인 시독성의 옐로우/골드 */
+    border: 1px solid rgba(254, 240, 138, 0.4);
     font-weight: 800;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 body.dark-mode .badge-lunch-yes {
-    background: rgba(16, 185, 129, 0.25);
-    color: #6EE7B7;
-    border: 1px solid rgba(110, 231, 183, 0.4);
+    background: rgba(254, 240, 138, 0.2);
+    color: #FDE047;
+    border: 1px solid rgba(254, 240, 138, 0.4);
 }
 
 body.dark-mode .badge-lunch-no {
-    background: rgba(255, 255, 255, 0.1);
-    color: #9CA3AF;
+    background: rgba(255, 255, 255, 0.12);
+    color: #CBD5E1;
 }
 
 /* ==================== 조원 목록 모달 (team-modal) ==================== */
