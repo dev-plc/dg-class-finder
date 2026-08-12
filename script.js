@@ -15,7 +15,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=28';
+} from './scripts/members-data.js?v=29';
 
 // 1-1. 내 정보 기억
 //

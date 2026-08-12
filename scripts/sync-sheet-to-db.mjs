@@ -233,11 +233,15 @@ if (Array.isArray(gas.sessions) && gas.sessions.length) {
   }
   const named = sessionRows.filter(s => s.name).length;
   const fromSheet = gas.sessionNamesFromSheet;
-  console.log(`   회차 이름 ${named}/${sessionRows.length}개 — `
-    + (fromSheet
-        ? '시트 날짜 헤더 윗줄에서 읽음'
-        : "순서대로 매김 ('N강'). 강의가 아닌 주가 날짜 열에 섞여 있으면 "
-          + '번호가 밀립니다 — 그럴 때는 시트에 강의명을 적으세요'));
+  if (fromSheet) {
+    console.log(`   회차 이름 ${named}/${sessionRows.length}개 — 시트 날짜 헤더 윗줄에서 읽음`);
+  } else {
+    // 이 시트에는 '자유교제' 처럼 강의가 아닌 주가 섞여 있다. 순번으로 매기면
+    // 그 뒤 회차가 통째로 한 칸씩 밀리고, 과제가 엉뚱한 회차에 붙는다.
+    console.log(`   ⚠️ 회차 이름을 순서대로 매겼습니다 ('1강'…${named}개).`);
+    console.log('      강의가 아닌 주(자유교제 등)가 날짜 열에 섞여 있으면 번호가 밀려');
+    console.log('      과제가 엉뚱한 회차에 붙습니다. 시트 날짜 헤더 윗줄에 강의명을 적으세요.');
+  }
 
   for (const r of rows) {
     const id = `${trim(r.name)}${trim(r.phone)}`;
