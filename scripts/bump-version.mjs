@@ -144,3 +144,15 @@ if (stale.length) {
 }
 
 console.log(`\n✅ 저장소 전체가 v${NEXT} 로 일치합니다.`);
+
+// GAS 는 별도 버전을 쓴다 (자산 ?v= 와 무관). 다만 파일 머리말과 DG_VERSION 이
+// 어긋나면 "어느 버전을 올린 거지" 로 헤매게 되므로 여기서 같이 봐 준다.
+try {
+  const gas = readFileSync(join(ROOT, 'scripts/gas/doGet.js'), 'utf8');
+  const constV = gas.match(/var DG_VERSION = (\d+)/)?.[1];
+  const headV = gas.match(/Google Apps Script 전체 코드 \(v(\d+)\)/)?.[1];
+  if (constV && headV && constV !== headV) {
+    console.log(`\n⚠️ GAS 버전 표기가 어긋납니다: 머리말 v${headV} · DG_VERSION ${constV}`);
+    console.log('   둘을 맞추세요 (배포한 버전을 알 수 없게 됩니다).');
+  }
+} catch { /* GAS 파일이 없으면 넘어간다 */ }
