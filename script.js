@@ -12,10 +12,12 @@ import {
     getMyHomework,
     getSession,
     setSession,
+    getTeamExtras,
+    isClassSession,
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=48';
+} from './scripts/members-data.js?v=33';
 
 // 1-1. 내 정보 기억
 //
@@ -646,6 +648,16 @@ async function saveAttendanceChanges() {
 //
 // 명단 화면은 한 회차만 보여준다. 조장이 흐름을 보려면 회차를 하나씩
 // 바꿔가며 봐야 해서, 조원 전체 × 회차를 한 표에 펼친다.
+//
+// 칸 하나에 세 가지가 겹친다 — 출결 · 김밥(🍙) · 과제(📝).
+// 셋의 키가 서로 다르다는 게 이 화면에서 제일 잘 틀리는 지점이다.
+//
+//   출결 = ISO 날짜   (attendanceByDate['2026-08-09'])
+//   김밥 = ISO 날짜   (dg_lunch.session_date)
+//   과제 = 강의명     (dg_homework.lecture — '18강')
+//
+// 그래서 컬럼이 date 와 name 을 같이 들고 있어야 한다. 하나로 합치려 들면
+// 대응이 어긋나고, 어긋나도 오류가 안 나서 📝 가 한 번도 안 뜬다.
 // ============================================================================
 
 // 시트 값을 표시용으로 나눈다. O·X 말고도 사람이 적은 표기가 들어온다.
@@ -655,16 +667,36 @@ function classifyStatus(raw) {
     const up = v.toUpperCase();
     if (up === 'O') return { label: 'O', cls: 'present', title: '출석' };
     if (up === 'X') return { label: 'X', cls: 'absent', title: '결석' };
+    // 시트의 '-' 는 그 주에 수업이 없었다는 뜻이다. '돌봄' 같은 표기와 같이
+    // 묶어 눈에 띄게 칠하면, 빠진 것처럼 읽혀 조장이 헛걸음한다.
+    if (v === '-' || v === '−') return { label: '−', cls: 'none', title: '수업 없음' };
     return { label: v, cls: 'special', title: `시트 표기: ${v}` };
 }
 
-function renderTeamMatrix(teamName, members) {
+// 회차를 컬럼으로 바꾼다. 두 키(date · name)를 같이 들고 다니는 게 핵심이다.
+function buildSessionColumns() {
+    return getSessions()
+        .map(s => ({
+            date: s.date,                    // ← 출결·김밥을 찾을 키
+            key: s.key,                      // ← 화면에 찍는 MM/DD
+            name: s.name || '',              // ← 과제를 찾을 키
+            isClass: isClassSession(s.name), // ← '자유교제' 같은 회차는 흐리게
+        }))
+        .filter(c => c.date);
+}
+
+// extras 는 getTeamExtras() 결과. 없으면 뱃지 없이 그대로 그린다
+// (모달을 여는 순간 표는 뜨고, 김밥·과제는 도착하는 대로 다시 그린다).
+function renderTeamMatrix(teamName, members, extras) {
     const scrollEl = document.getElementById('matrixScroll');
     const titleEl = document.getElementById('matrixTitle');
     if (!scrollEl) return;
 
-    const sessions = getSessions();
-    if (titleEl) titleEl.textContent = `👥 ${teamName} 전체 출석표 (${members.length}명 · ${sessions.length}회차)`;
+    const cols = buildSessionColumns();
+    if (titleEl) titleEl.textContent = `👥 ${teamName} 전체 출석표 (${members.length}명 · ${cols.length}회차)`;
+
+    const lunchMap = extras?.lunch || new Map();
+    const hwMap = extras?.homework || new Map();
 
     const sorted = [...members].sort((a, b) => {
         const pa = rolePriority[a.role] || 4;
@@ -673,18 +705,33 @@ function renderTeamMatrix(teamName, members) {
         return a.name.localeCompare(b.name, 'ko');
     });
 
-    const headRow = sessions.map(s =>
-        `<th><span class="mx-date">${escapeHtml(s.key)}</span></th>`
+    const headRow = cols.map(c =>
+        `<th class="${c.isClass ? '' : 'non-class'}">
+            <span class="mx-session">${escapeHtml(c.name || '-')}</span>
+            <span class="mx-date">${escapeHtml(c.key)}</span>
+        </th>`
     ).join('');
 
     const bodyRows = sorted.map(m => {
         const att = m.attendanceByDate || {};
-        const present = sessions.filter(s => String(att[s.date] || '').toUpperCase() === 'O').length;
+        const present = cols.filter(c => String(att[c.date] || '').toUpperCase() === 'O').length;
+        const myLunch = lunchMap.get(m._uuid) || null;
+        const myHw = hwMap.get(m._uuid) || null;
 
-        const cells = sessions.map(s => {
-            const st = classifyStatus(att[s.date]);
-            return `<td class="mx-cell ${st.cls}" title="${escapeAttr(m.name)} · ${escapeAttr(s.key)} · ${escapeAttr(st.title)}">
+        const cells = cols.map(c => {
+            const st = classifyStatus(att[c.date]);
+            const lunch = !!(myLunch && myLunch.has(c.date));
+            // 회차에 강의명이 없으면 과제를 붙일 근거가 없다. 순서로 짐작하지 않는다.
+            const homework = !!(myHw && c.name && myHw.has(normalizeLectureKey(c.name)));
+
+            const badges = (lunch ? '🍙' : '') + (homework ? '📝' : '');
+            const tip = [m.name, c.key, c.name, st.title,
+                         lunch ? '🍙 김밥 신청' : '', homework ? '📝 과제 제출' : '']
+                        .filter(Boolean).join(' · ');
+
+            return `<td class="mx-cell ${st.cls}${c.isClass ? '' : ' non-class'}" title="${escapeAttr(tip)}">
                         <span class="mx-status">${escapeHtml(st.label)}</span>
+                        ${badges ? `<span class="mx-badges">${badges}</span>` : ''}
                     </td>`;
         }).join('');
 
@@ -707,14 +754,41 @@ function renderTeamMatrix(teamName, members) {
     `;
 }
 
+// 데이터 계층의 정규화와 같은 규칙. 회차 이름(시트)과 과제 이름(폼)이
+// 서로 다르게 적히므로 양쪽을 같은 모양으로 만든 뒤에 견준다.
+function normalizeLectureKey(v) {
+    const raw = String(v || '').replace(/\s/g, '');
+    const m = raw.match(/^제?(\d+)강/);
+    if (m) return m[1] + '강';
+    if (/^자유교재/.test(raw)) return '자유교제';
+    if (/^교재/.test(raw)) return '교제';
+    return raw.toLowerCase();
+}
+
+let matrixToken = 0;
+
 function openMatrixModal() {
     if (!shownMember || !shownMember.team) return;
-    renderTeamMatrix(shownMember.team, getTeamMembers(shownMember.team));
+    const team = shownMember.team;
+    const members = getTeamMembers(team);
+
+    // 표부터 띄운다. 김밥·과제를 기다리느라 버튼이 먹통처럼 보이면 안 된다.
+    renderTeamMatrix(team, members, null);
+
     const modal = document.getElementById('matrixModal');
     if (!modal) return;
     modal.classList.add('active');
     modal.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+
+    const token = ++matrixToken;
+    getTeamExtras(members)
+        .then(extras => {
+            // 그새 닫혔거나 다른 조를 열었으면 늦게 온 응답은 버린다.
+            if (token !== matrixToken || !modal.classList.contains('active')) return;
+            renderTeamMatrix(team, members, extras);
+        })
+        .catch(err => console.log('조 김밥·과제 조회 실패:', err));
 }
 
 function closeMatrixModal() {
@@ -746,7 +820,7 @@ function initEventListeners() {
         if (id === 'plc' && pw === 'plc1234') {
             alert("로그인 성공!");
             sessionStorage.setItem('adminLoggedIn', 'true'); 
-            window.location.href = 'admin.html?v=48'; 
+            window.location.href = 'admin.html'; 
         } else {
             const errorElement = document.getElementById('adminLoginError');
             errorElement.style.display = 'block';

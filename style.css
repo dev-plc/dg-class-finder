@@ -1077,7 +1077,9 @@ body.large-text .map-image {
     overflow: auto;
     flex: 1 1 auto;
     -webkit-overflow-scrolling: touch;
-    padding: 0 16px 16px;
+    /* 좌우 여백을 주면 안 된다 — sticky 이름 열이 그 여백만큼 안으로 들어가고,
+       가로로 스크롤할 때 숫자가 이름 열 왼쪽 틈으로 비집고 나온다 */
+    padding: 0 0 16px;
 }
 .matrix-table {
     border-collapse: separate;
@@ -1100,9 +1102,10 @@ body.large-text .map-image {
     top: 0;
     z-index: 2;
     background: var(--milk-beige);
-    min-width: 44px;
+    min-width: 52px;
 }
-.mx-date { display: block; font-size: 10px; font-weight: 700; }
+.mx-session { display: block; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.mx-date { display: block; font-size: 9px; opacity: 0.65; white-space: nowrap; }
 .mx-name-cell {
     position: sticky;
     left: 0;
@@ -1117,10 +1120,24 @@ body.large-text .map-image {
 .mx-name { display: block; font-weight: 700; white-space: nowrap; }
 .mx-role { display: block; font-size: 9px; opacity: 0.6; white-space: nowrap; }
 .mx-status { display: block; font-weight: 700; font-size: 12px; }
+/* 🍙 · 📝 는 출결 밑에 한 줄로. 자리를 늘 잡아둬야 칸 높이가 들쭉날쭉하지 않다 */
+.mx-badges { display: block; font-size: 11px; line-height: 1.1; letter-spacing: -1px; }
+/* 수료에 안 들어가는 회차(자유교제 등)는 배경으로 구분한다.
+   안 그러면 "18강인데 왜 19칸이냐" 는 질문이 반복된다.
+   출결 색보다 먼저 둔다 — 같은 특이도라 뒤에 두면 O·X 색을 덮어버린다 */
+.matrix-table thead th.non-class { background: rgba(0, 0, 0, 0.06); }
+.matrix-table thead th.non-class .mx-session { opacity: 0.7; font-weight: 600; }
+.mx-cell.non-class { background: rgba(0, 0, 0, 0.045); }
+.mx-cell.non-class .mx-status { opacity: 0.5; }
+
 .mx-cell.present { background: rgba(16, 185, 129, 0.16); }
 .mx-cell.absent  { background: rgba(239, 68, 68, 0.12); }
 .mx-cell.special { background: rgba(59, 130, 246, 0.14); font-size: 10px; }
-.mx-cell.empty   { opacity: 0.35; }
+/* 기록 없는 칸·수업 없는 칸은 흐리게.
+   다만 🍙·📝 까지 흐려지면 안 보이므로 표기만 흐리게 한다 */
+.mx-cell.empty .mx-status,
+.mx-cell.none .mx-status { opacity: 0.3; }
+.legend-dim { opacity: 0.7; }
 
 /* ============================================================
    조 요약 카드 — 총원 · 출석 · 결석 · 김밥
@@ -1220,6 +1237,7 @@ body.large-text .map-image {
 .att-chip.special { background: rgba(59, 130, 246, 0.14); }
 .att-chip.special .att-mark { font-size: 11px; }
 .att-chip.empty   { opacity: 0.4; }
+.att-chip.none    { opacity: 0.4; }
 
 /* ============================================================
    본인 과제 제출

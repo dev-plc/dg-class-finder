@@ -7,7 +7,7 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=48">
+    <link rel="stylesheet" href="style.css?v=33">
 </head>
 <body class="dark-mode">
     <div class="container">
@@ -123,6 +123,7 @@
                         <div class="grid-legend">
                             <span><b>O</b> 출석</span>
                             <span><b>X</b> 결석</span>
+                            <span><b>−</b> 수업 없음</span>
                             <span><b>·</b> 기록 없음</span>
                             <span>🍙 김밥 신청</span>
                             <span>📝 과제 제출</span>
@@ -199,7 +200,10 @@
                     <button type="button" id="matrixCloseBtn" class="matrix-close-btn" aria-label="닫기">✕</button>
                 </div>
                 <div class="matrix-legend">
-                    <span><b>O</b> 출석</span><span><b>X</b> 결석</span><span><b>·</b> 기록 없음</span>
+                    <span><b>O</b> 출석</span><span><b>X</b> 결석</span>
+                    <span><b>−</b> 수업 없음</span><span><b>·</b> 기록 없음</span>
+                    <span>🍙 김밥</span><span>📝 과제</span>
+                    <span class="legend-dim">흐린 열은 수료에 안 들어가는 회차</span>
                     <span>그 밖의 표기는 시트에 적힌 그대로</span>
                 </div>
                 <div class="matrix-scroll" id="matrixScroll"></div>
@@ -259,6 +263,6 @@
         </div>
     </div>
 
-    <script type="module" src="script.js?v=48"></script>
+    <script type="module" src="script.js?v=33"></script>
 </body>
 </html>

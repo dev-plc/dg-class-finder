@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=48';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=48';
+import { matches as hangulMatches } from './hangul.js?v=33';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=33';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -334,9 +334,67 @@ export async function getMyAttendance(member) {
     }));
 }
 
-// '1강' · '1 강' · '교리1' 을 견주기 좋게 다듬는다.
+/**
+ * 강의명을 견주기 좋게 다듬는다.
+ *
+ * 과제는 구글 폼으로 받고 회차 이름은 시트에서 온다. 두 곳에 사람이 따로
+ * 적기 때문에 글자가 어긋난다. 그대로 비교하면 📝 가 한 번도 안 뜨는데,
+ * 오류가 안 나서 알아채기 어렵다.
+ *
+ *   '18 강' · '제18강' · '18강 ' → '18강'
+ *   '교재' → '교제'  (섞여 적힌다)
+ */
 function normalizeLecture(v) {
-  return String(v || '').replace(/\s/g, '').toLowerCase();
+  const raw = String(v || '').replace(/\s/g, '');
+  const m = raw.match(/^제?(\d+)강/);
+  if (m) return m[1] + '강';
+  if (/^자유교재/.test(raw)) return '자유교제';
+  if (/^교재/.test(raw)) return '교제';
+  return raw.toLowerCase();
+}
+
+/**
+ * 조 전체의 김밥·과제. 전체 출석표가 칸마다 🍙 · 📝 를 찍는 데 쓴다.
+ *
+ * 사람마다 따로 부르면 조원 수만큼 왕복이 생긴다. member_id 를 묶어 한 번에
+ * 받는다 (조 하나라 목록이 길어질 일은 없다).
+ *
+ * @returns { lunch: Map(uuid → Set(YYYY-MM-DD)), homework: Map(uuid → Set(강의명)) }
+ */
+export async function getTeamExtras(members) {
+  const empty = { lunch: new Map(), homework: new Map() };
+  const ids = (members || []).map(m => m._uuid).filter(Boolean);
+  if (!ids.length) return empty;
+
+  const list = `(${ids.join(',')})`;
+
+  const [lunchRows, hwRows] = await Promise.all([
+    sbSelect(`dg_lunch?select=member_id,session_date&member_id=in.${list}` +
+             `&applied=is.true&order=member_id,session_date`).catch(() => []),
+    sbSelect(`dg_homework?select=member_id,lecture&member_id=in.${list}` +
+             `&order=member_id,lecture`).catch(() => []),
+  ]);
+
+  const lunch = new Map();
+  for (const r of lunchRows) {
+    if (!lunch.has(r.member_id)) lunch.set(r.member_id, new Set());
+    lunch.get(r.member_id).add(r.session_date);
+  }
+
+  const homework = new Map();
+  for (const r of hwRows) {
+    const key = normalizeLecture(r.lecture);
+    if (!key) continue;
+    if (!homework.has(r.member_id)) homework.set(r.member_id, new Set());
+    homework.get(r.member_id).add(key);
+  }
+
+  return { lunch, homework };
+}
+
+/** 회차 이름이 강의인지 (수료에 들어가는지). '자유교제' 같은 주는 아니다. */
+export function isClassSession(name) {
+  return /^\d+강$/.test(normalizeLecture(name));
 }
 
 /**
