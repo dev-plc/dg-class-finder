@@ -23,8 +23,9 @@
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SW_PATH = join(ROOT, 'sw.js');
 
 const EXCLUDE_DIRS = new Set(['node_modules', '.git', 'images', 'icons', 'assets']);
