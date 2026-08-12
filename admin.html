@@ -1,11 +1,16 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.update()));
+      }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PLC DG 관리자</title>
-    <link rel="stylesheet" href="style.css?v=36">
-    <link rel="stylesheet" href="admin.css?v=36">
+    <link rel="stylesheet" href="style.css?v=37">
+    <link rel="stylesheet" href="admin.css?v=37">
 </head>
 <body>
     <div class="admin-container">
@@ -156,7 +161,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=36"></script>
+    <script type="module" src="admin.js?v=37"></script>
 </body>
 </html>
 
