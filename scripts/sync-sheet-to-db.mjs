@@ -126,6 +126,7 @@ for (const r of rows) {
     team_no: toInt(r['no.'] ?? r.team_no),
     location: trim(r.location),
     role: trim(r.role),
+    age: toInt(r.age),
     lunch: trim(r.lunch),
     status: 'active',
   });

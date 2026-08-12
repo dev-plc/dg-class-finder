@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v22)
+// DGfinder — Google Apps Script 전체 코드 (v23)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,10 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v23
+//   - 인원에 age 를 담는다. 관리자 화면이 쓰는 값이라 명시적으로 하나만 더한다
+//     (Tel · 연락처 · 결혼 같은 열은 그대로 내보내지 않는다).
 //
 // v22
 //   - 회차 이름을 sessions[].label 로 내려준다. 날짜 헤더 바로 윗줄에 적힌 값을
@@ -54,7 +58,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 22;
+var DG_VERSION = 23;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -911,14 +915,18 @@ function doGet(e) {
       //
       // 예전에는 headers.forEach 로 전 컬럼을 담았는데, 그러면 시트에 개인정보
       // 컬럼이 생기는 순간 인증 없는 URL 로 그대로 공개된다.
+      // 담을 열을 하나씩 적는다. 시트에는 Tel · 연락처 · 결혼 · 담당교역자 같은
+      // 열이 더 있는데, 그건 여기로 내보내지 않는다.
       var teamIdx = headers.indexOf('team');
       var locIdx = headers.indexOf('location');
       var roleIdx = headers.indexOf('role');
       var noIdx = headers.indexOf('no.');
+      var ageIdx = headers.indexOf('age');
       obj['team'] = teamIdx !== -1 ? String(data[i][teamIdx]).trim() : '';
       obj['location'] = locIdx !== -1 ? String(data[i][locIdx]).trim() : '';
       obj['role'] = roleIdx !== -1 ? String(data[i][roleIdx]).trim() : '';
       obj['team_no'] = noIdx !== -1 ? String(data[i][noIdx]).trim() : '';
+      obj['age'] = ageIdx !== -1 ? String(data[i][ageIdx]).trim() : '';
 
       obj['telegramLink'] = telegramMap[obj['team']] || '';
       obj['lunch'] = kimbapMap[obj['id']] || 'X';

@@ -1,3 +1,15 @@
+// 관리자 화면.
+//
+// 데이터는 index 와 같은 계층(members-data.js)에서 온다. 예전에는 '웹에 게시'
+// 된 구글시트 CSV 를 직접 읽었는데, 그 URL 은 인증 없이 누구나 열 수 있어
+// 명단 전체가 공개돼 있었다. 게다가 index 와 원본이 달라 두 화면이 서로 다른
+// 값을 보여줄 수 있었다.
+//
+// ⚠️ 아래 로그인 확인은 화면 전환일 뿐 보호 장치가 아니다. 콘솔에서
+//    sessionStorage 한 줄이면 통과한다. 이 화면이 보여주는 값은 모두 anon 키로
+//    읽히는 것이라, 진짜로 가리려면 Supabase Auth 로 경로를 나눠야 한다.
+import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=31';
+
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
     window.location.href = 'index.html';
@@ -32,42 +44,32 @@ const teamMembersList = document.getElementById('teamMembersList');
 const teamFilter = document.getElementById('teamFilter');
 const memberFilter = document.getElementById('memberFilter');
 
-const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTgWISi-dAcC5JBD22_g65W-ms7S1MdHZqI1LjjK8iIpZYs-rY4bu9NlfR9lY6R96fVku3iq5AUFo8A/pub?gid=0&single=true&output=csv';
-
 async function loadData() {
     try {
-        const response = await fetch(GOOGLE_SHEET_CSV_URL);
-        if (!response.ok) throw new Error('Network response was not ok');
-        const csvText = await response.text();
-        
-        // CSV 파싱 (index.html에서 썼던 것과 동일한 로직)
-        memberData = parseCSV(csvText);
-        
+        // 캐시가 있으면 즉시 그리고 뒤에서 갱신한다.
+        await ensureLoaded({
+            onBackgroundRefreshError: (err) => console.log('백그라운드 갱신 실패:', err),
+        });
+
+        memberData = getMembers();
         console.log('✅ 데이터 로드 완료:', memberData.length, '명');
-        
-        // 초기 렌더링
+
         renderTeamsView();
         renderMembersView();
     } catch (error) {
-        console.error('❌ 데이터 로드 실패:', error);
-        alert('구글 시트 데이터를 불러오는데 실패했습니다.');
+        console.log('❌ 데이터 로드 실패:', error);
+        alert('데이터를 불러오는 중 오류가 발생했습니다. 인터넷 연결을 확인해주세요.');
     }
 }
 
-// parseCSV 함수도 admin.js에 추가해주어야 합니다.
-function parseCSV(csvText) {
-    const lines = csvText.split('\n').filter(line => line.trim() !== "");
-    if (lines.length < 2) return [];
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-    return lines.slice(1).map(line => {
-        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-        const obj = {};
-        headers.forEach((header, i) => {
-            obj[header] = values[i] ? values[i].trim().replace(/"/g, '') : "";
-        });
-        return obj;
-    });
-}
+// 캐시로 먼저 그렸다면 갱신이 끝났을 때 다시 그려야 한다.
+// 안 그리면 화면에는 옛 값이 남고, 보는 사람은 그것이 옛것인 줄 모른다.
+subscribe((event) => {
+    if (event.type !== 'refresh' && event.type !== 'cohort-changed') return;
+    memberData = getMembers();
+    renderTeamsView(teamFilter ? teamFilter.value : '');
+    renderMembersView(memberFilter ? memberFilter.value : '');
+});
 // 테마 전환
 document.body.classList.remove('dark-mode');
 themeToggle.addEventListener('click', () => {
