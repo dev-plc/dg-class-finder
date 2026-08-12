@@ -38,7 +38,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 21;
+var DG_VERSION = 22;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -194,27 +194,39 @@ function DG_todayISO(tz) {
 }
 
 /**
- * 강의명 행 — 날짜 헤더 바로 윗줄에 '1강' · '교리1' 처럼 적어 두면 그대로 읽는다.
+ * 회차 이름. 과제의 '몇 강인가요?' 와 견주어 붙이는 데 쓴다.
  *
- * 이것이 있어야 과제의 '몇 강' 을 회차에 정확히 붙일 수 있다.
- * 없으면 빈 객체를 돌려주고, 과제는 회차에 붙이지 않는다 —
- * 순서로 짐작하면 엉뚱한 회차에 붙기 때문이다.
+ * 날짜 헤더 바로 윗줄에 '1강' · '교리1' 처럼 적어 두면 그 값이 우선한다.
+ * 없으면 순서대로 'N강' 을 매긴다 (아래 설명 참고).
  *
- * @returns { '2026-08-09': '18강', ... }
+ * @returns { map: { '2026-08-09': '18강', ... }, fromSheet: true|false }
  */
 function DG_readSessionLabels(values, headerRowIdx, sessions) {
   var out = {};
-  if (headerRowIdx <= 0) return out;
+  var fromSheet = false;
 
-  var above = values[headerRowIdx - 1];
-  if (!above) return out;
-
-  for (var i = 0; i < sessions.length; i++) {
-    var v = above[sessions[i].col];
-    var label = String(v == null ? '' : v).trim();
-    if (label) out[sessions[i].date] = label;
+  if (headerRowIdx > 0) {
+    var above = values[headerRowIdx - 1];
+    if (above) {
+      for (var i = 0; i < sessions.length; i++) {
+        var label = String(above[sessions[i].col] == null ? '' : above[sessions[i].col]).trim();
+        if (label) { out[sessions[i].date] = label; fromSheet = true; }
+      }
+    }
   }
-  return out;
+
+  // 시트에 강의명 줄이 없으면 순서대로 'N강' 을 매긴다.
+  //
+  // 과제의 '몇 강인가요?' 값이 곧 강의명('1강' · '2강')이고, 날짜 열은 실제로
+  // 있었던 회차만 담고 있다. 그래서 N번째 열이 N강이 된다.
+  //
+  // ⚠️ 강의가 아닌 주(수련회 등)가 날짜 열로 섞여 있으면 번호가 그만큼 밀린다.
+  //    그럴 때는 날짜 헤더 윗줄에 강의명을 직접 적으면 그 값이 우선한다.
+  if (!fromSheet) {
+    for (var j = 0; j < sessions.length; j++) out[sessions[j].date] = (j + 1) + '강';
+  }
+
+  return { map: out, fromSheet: fromSheet };
 }
 
 /**
@@ -838,8 +850,9 @@ function doGet(e) {
     var todayISO = DG_todayISO(tz);
     var sessions = DG_buildSessions(originalHeadersRaw, tz);
 
-    // 날짜 헤더 윗줄의 강의명. 있으면 과제의 '몇 강' 을 회차에 붙일 수 있다.
-    var sessionLabels = DG_readSessionLabels(data, headerRowIdx, sessions);
+    // 회차 이름. 시트에 적혀 있으면 그것을, 없으면 순서대로 'N강' 을 쓴다.
+    var labelInfo = DG_readSessionLabels(data, headerRowIdx, sessions);
+    var sessionLabels = labelInfo.map;
 
     // 김밥 — 회차별. 결과 카드의 한 줄(kimbapMap) 은 그대로 두고 이력을 더한다.
     var lunchByDate = DG_readLunchByDate(ss, tz);
@@ -916,6 +929,8 @@ function doGet(e) {
       locationMap: locationMap,
       teamLinkMap: telegramMap,
       cohortHint: cohortHint,
+      // true 면 시트에 적힌 강의명, false 면 순서로 매긴 'N강'
+      sessionNamesFromSheet: labelInfo.fromSheet,
       today: todayISO,
       currentSession: currentSession,
       // [{ key:'11/02', date:'2025-11-02' }, ...] — 연도는 GAS 가 확정한다
