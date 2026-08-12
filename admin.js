@@ -70,7 +70,11 @@ subscribe((event) => {
     renderTeamsView(teamFilter ? teamFilter.value : '');
     renderMembersView(memberFilter ? memberFilter.value : '');
     if (searchNameInput && searchNameInput.value.trim()) {
-        searchMember();
+        try {
+            searchMember();
+        } catch (e) {
+            console.log('자동 재검색 무시:', e);
+        }
     }
 });
 // 테마 전환
@@ -372,11 +376,19 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// 페이지 로드 시 데이터 로드
-window.addEventListener('load', () => {
+// 안전한 초기화 함수
+function initAdmin() {
     loadData();
-    searchNameInput.focus();
-});
+    if (searchNameInput) {
+        searchNameInput.focus();
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAdmin);
+} else {
+    initAdmin();
+}
 
 
 
