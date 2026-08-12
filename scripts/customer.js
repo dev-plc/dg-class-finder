@@ -1,5 +1,5 @@
 // Firebase 설정 import
-import { db, collection, addDoc } from './firebase-config.js?v=33';
+import { db, collection, addDoc } from './firebase-config.js?v=34';
 
 // 장바구니 상태 관리
 let cart = []; // { name, price, quantity, icon }
