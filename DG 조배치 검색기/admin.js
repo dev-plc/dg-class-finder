@@ -8,7 +8,7 @@
 // ⚠️ 아래 로그인 확인은 화면 전환일 뿐 보호 장치가 아니다. 콘솔에서
 //    sessionStorage 한 줄이면 통과한다. 이 화면이 보여주는 값은 모두 anon 키로
 //    읽히는 것이라, 진짜로 가리려면 Supabase Auth 로 경로를 나눠야 한다.
-import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=42';
+import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=43';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -233,21 +233,35 @@ function renderTeamsView(filterText = '') {
         teamGroups[member.team].members.push(member);
     });
     
-    // 조 이름 정렬 (새1, 새2, ..., 남1, 남2, ..., 여1, 여2, ...)
+    // 조 이름 오름차순 정렬 (새1, 새2, ..., 남1, 남2, ..., C1, C2, O1, O2, V1, Y1, ...)
     const sortedTeams = Object.values(teamGroups).sort((a, b) => {
-        const getPrefix = (name) => name.match(/[가-힣]+/)?.[0] || '';
-        const getNumber = (name) => parseInt(name.match(/\d+/)?.[0] || '0');
+        const PREFERRED_ORDER = ['새', '남', '여', 'DG', 'C', 'O', 'V', 'Y', 'M', 'W'];
         
-        const prefixA = getPrefix(a.name);
-        const prefixB = getPrefix(b.name);
-        const numA = getNumber(a.name);
-        const numB = getNumber(b.name);
-        
-        if (prefixA !== prefixB) {
-            const order = ['새', '남', '여', 'DG', 'M', 'W'];
-            return order.indexOf(prefixA) - order.indexOf(prefixB);
+        const getPrefix = (str) => (str.match(/^[가-힣A-Za-z]+/)?.[0] || '');
+        const getNum = (str) => {
+            const match = str.match(/\d+/);
+            return match ? parseInt(match[0], 10) : 0;
+        };
+
+        const prefA = getPrefix(a.name);
+        const prefB = getPrefix(b.name);
+
+        if (prefA !== prefB) {
+            const idxA = PREFERRED_ORDER.indexOf(prefA);
+            const idxB = PREFERRED_ORDER.indexOf(prefB);
+            
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            
+            return prefA.localeCompare(prefB, 'ko');
         }
-        return numA - numB;
+
+        const numA = getNum(a.name);
+        const numB = getNum(b.name);
+        if (numA !== numB) return numA - numB;
+
+        return a.name.localeCompare(b.name, 'ko', { numeric: true });
     });
     
     allTeams = sortedTeams;
