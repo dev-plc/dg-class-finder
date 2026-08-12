@@ -69,6 +69,9 @@ subscribe((event) => {
     memberData = getMembers();
     renderTeamsView(teamFilter ? teamFilter.value : '');
     renderMembersView(memberFilter ? memberFilter.value : '');
+    if (searchNameInput && searchNameInput.value.trim()) {
+        searchMember();
+    }
 });
 // 테마 전환
 document.body.classList.remove('dark-mode');
