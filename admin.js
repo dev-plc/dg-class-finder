@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=54';
+} from './scripts/members-data.js?v=55';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -535,6 +535,26 @@ function attEsc(v) {
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/**
+ * 오늘과 가장 가까운 회차. 출석 관리·출석부 출력 둘 다 여기서 기본값을 잡는다.
+ *
+ * 거리가 같으면 이미 지난 쪽을 고른다 — 찍거나 정정할 것이 있는 쪽이다.
+ */
+function nearestSessionDate(sessions, today) {
+    const day = (iso) => Date.parse(String(iso) + 'T00:00:00Z');
+    const t = day(today);
+    let best = null, bestDiff = Infinity, bestPast = 1;
+
+    for (const s of sessions) {
+        const diff = Math.abs(day(s.date) - t);
+        const past = s.date <= today ? 0 : 1;
+        if (diff < bestDiff || (diff === bestDiff && past < bestPast)) {
+            best = s; bestDiff = diff; bestPast = past;
+        }
+    }
+    return best ? best.date : null;
+}
+
 function attChanges() {
     const out = [];
     for (const [uuid, status] of attDraft) {
@@ -599,7 +619,9 @@ function renderAttSessionPicker() {
     // (조회 화면은 지난 주차만 본다. 미리 찍히면 결석 수가 부풀려진다.)
     const sessions = getSessions({ all: true });
     const today = getToday();
-    attSessionPicker.innerHTML = [...sessions].reverse().map(s => {
+    // 시트에 적힌 차례대로(오름차순) 보여준다. 목록을 훑는 사람이 회차 번호와
+    // 같은 순서로 읽게 된다.
+    attSessionPicker.innerHTML = sessions.map(s => {
         const future = s.date > today ? ' (예정)' : '';
         const label = `${s.key}${s.name ? ' · ' + s.name : ''}${future}`;
         return `<option value="${attEsc(s.date)}"${s.date === attSessionDate ? ' selected' : ''}>${attEsc(label)}</option>`;
@@ -942,12 +964,11 @@ function initAttendanceTab() {
     const teams = new Set(memberData.map(m => m.team).filter(Boolean));
     const prefs = attLoadPrefs();
 
-    // 기본값은 가장 최근 지난 강의. 방금 끝난 수업을 바로 찍는 게 주 용도다.
+    // 기본값은 오늘과 가장 가까운 회차. 방금 끝난 수업을 바로 찍는 게 주 용도다.
     const today = getToday();
-    const lastPast = [...sessions].reverse().find(s => s.date <= today);
     attSessionDate = (prefs.session && known.has(prefs.session))
         ? prefs.session
-        : (lastPast?.date || sessions[sessions.length - 1].date);
+        : (nearestSessionDate(sessions, today) || sessions[sessions.length - 1].date);
     attTeam = (prefs.team && teams.has(prefs.team)) ? prefs.team : '';
 
     renderAttSessionPicker();
@@ -1040,7 +1061,7 @@ function renderPrPickers() {
     if (!prSessionPicker || !prScopePicker) return;
 
     const sessions = getSessions({ all: true });
-    prSessionPicker.innerHTML = [...sessions].reverse().map(s =>
+    prSessionPicker.innerHTML = sessions.map(s =>
         `<option value="${attEsc(s.date)}"${s.date === prSessionDate ? ' selected' : ''}>` +
         `${attEsc(s.key)}${s.name ? ' · ' + attEsc(s.name) : ''}</option>`).join('');
 
@@ -1341,11 +1362,10 @@ function initPrintTab() {
     const sessions = getSessions({ all: true });
     if (!sessions.length) { renderPrPreview(); return; }
 
-    // 출석부는 앞으로 있을 수업에 쓰는 종이다. 기본값을 지난 회차로 두면
-    // 매번 바꿔야 한다 — 아직 안 지난 가장 가까운 회차를 먼저 고른다.
+    // 기본값은 오늘과 가장 가까운 회차. 출석 관리와 같은 기준이라
+    // 탭을 옮겨도 같은 주차를 보게 된다.
     const today = getToday();
-    const nextUp = sessions.find(s => s.date >= today);
-    prSessionDate = nextUp?.date || sessions[sessions.length - 1].date;
+    prSessionDate = nearestSessionDate(sessions, today) || sessions[sessions.length - 1].date;
 
     renderPrPickers();
     prApplyAutoLunchReq();
