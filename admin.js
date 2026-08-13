@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=55';
+} from './scripts/members-data.js?v=56';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1170,13 +1170,6 @@ function prTeamStat(t) {
     };
 }
 
-// 큰 조가 위로. 손이 많이 가는 조부터 눈에 들어와야 한다.
-// 인원이 같으면 김밥·과제가 많은 순, 그래도 같으면 조 이름 순.
-function prBySize(a, b) {
-    const A = prTeamStat(a), B = prTeamStat(b);
-    return B.n - A.n || B.lunch - A.lunch || B.hw - A.hw || compareTeamName(a.name, b.name);
-}
-
 /**
  * 집계표 — 전체 한 장, 그다음 장소별로 한 장씩.
  *
@@ -1199,10 +1192,7 @@ function renderPrSummaries(teams, head) {
         return renderPrSummary(loc, loc, teams, head, false);
     }
 
-    // 장소도 인원 많은 순으로.
-    const sizeOf = (ts) => ts.reduce((n, t) => n + t.members.length, 0);
-    const locs = [...byLoc.entries()].sort(
-        (a, b) => sizeOf(b[1]) - sizeOf(a[1]) || a[0].localeCompare(b[0], 'ko'));
+    const locs = [...byLoc.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko'));
 
     return renderPrSummary('__all__', '전체', teams, head, true)
          + locs.map(([loc, ts]) => renderPrSummary(loc, loc, ts, head, false)).join('');
@@ -1211,7 +1201,9 @@ function renderPrSummaries(teams, head) {
 // showLocation — 여러 장소가 섞인 '전체' 장에서만 장소 열을 둔다.
 // 장소별 장은 머리말에 이미 있어서 열로 두면 같은 값이 줄마다 반복된다.
 function renderPrSummary(key, title, teams, head, showLocation) {
-    const sorted = [...teams].sort(prBySize);
+    // 조 순서는 어디서나 오름차순이다 — 집계표와 조별 출석부의 차례가 어긋나면
+    // 한 장씩 짚어 가며 대조할 수가 없다.
+    const sorted = [...teams].sort((a, b) => compareTeamName(a.name, b.name));
 
     const rows = sorted.map(t => {
         const s = prTeamStat(t);
