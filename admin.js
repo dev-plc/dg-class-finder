@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=60';
+} from './scripts/members-data.js?v=61';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1434,13 +1434,16 @@ function registerServiceWorker() {
     window.addEventListener('load', async () => {
         try {
             const hadController = !!navigator.serviceWorker.controller;
+            let updateApplied = false;
             const registration = await navigator.serviceWorker.register('./sw.js');
 
             registration.addEventListener('updatefound', () => {
                 const newSW = registration.installing;
                 if (!newSW) return;
                 newSW.addEventListener('statechange', () => {
+                    // controller 가 있어야 '갱신'이다. null 이면 첫 방문이다.
                     if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                        updateApplied = true;
                         newSW.postMessage({ type: 'SKIP_WAITING' });
                     }
                 });
@@ -1453,6 +1456,11 @@ function registerServiceWorker() {
 
             let reloading = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
+                // 첫 설치의 clients.claim() 도 이 이벤트를 일으킨다. 그때는 갱신이
+                // 아니라 첫 방문이므로 리로드하지 않는다 — 처음 들어온 사람 화면이
+                // 이유 없이 깜빡이고, 출석 관리 중이었다면 입력이 날아간다.
+                // (index 쪽은 이미 이렇게 막아 뒀는데 여기만 빠져 있었다)
+                if (!updateApplied && !hadController) return;
                 if (reloading) return;
                 reloading = true;
                 window.location.reload();

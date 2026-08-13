@@ -835,8 +835,12 @@ body.dark-mode .att-loaded-at.stale { color: #fbbf24; }
     border-top: 1px solid var(--warm-beige);
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.1);
 }
-.att-save-info { font-size: 14px; font-weight: 700; color: var(--text-dark); }
+/* 안내문이 길어지면 버튼이 '저/장' 으로 쪼개진다. 버튼은 안 줄이고
+   안내문을 접는다 — 눌러야 하는 쪽이 버튼이다 */
+.att-save-info { font-size: 14px; font-weight: 700; color: var(--text-dark); min-width: 0; }
 .att-save-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
     padding: 14px 28px;
     font-size: 16px;
     font-weight: 800;
@@ -1039,7 +1043,7 @@ body.dark-mode .pr-page { background: #fff; color: #111; }
     .admin-container {
         padding: 16px 12px;
     }
-    
+
     .admin-header {
         padding: 16px 20px;
         border-radius: 18px;
@@ -1053,4 +1057,58 @@ body.dark-mode .pr-page { background: #fff; color: #111; }
     .members-grid {
         grid-template-columns: 1fr;
     }
+
+    /* 탭이 다섯 개라 한 줄에 못 들어간다. flex 로 두면 버튼이 글자 폭까지
+       짜부라져 '검 색 모 드' 처럼 한 글자씩 세로로 쪼개진다.
+       칸을 미리 정해 두 줄로 내리고, 글자는 줄바꿈을 막는다. */
+    .tab-nav {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 20px;
+    }
+    .tab-btn {
+        padding: 12px 6px;
+        font-size: 14px;
+        border-radius: 14px;
+        white-space: nowrap;
+    }
+    /* 눌렀을 때 뜨는 효과는 손가락으로는 보이지도 않고 줄만 흔든다 */
+    .tab-btn:hover { transform: none; }
+
+    /* 헤더 — 390px 에서 '관리자 모드' 배지가 테마 토글 밑으로 파고들었다.
+       배지를 줄이고, 토글 옆 해 아이콘은 뺀다 (토글만으로 뜻이 통한다). */
+    .admin-header-content { gap: 8px; }
+    .admin-brand { gap: 8px; min-width: 0; }
+    .admin-badge {
+        min-width: 0;
+        padding: 5px 9px;
+        font-size: 11px;
+        letter-spacing: -0.5px;
+        white-space: nowrap;
+    }
+    .admin-controls { gap: 8px; flex-shrink: 0; }
+    .theme-icon { display: none; }
+    .logout-btn { padding: 8px 12px; }
+    .logout-text { white-space: nowrap; }
+}
+
+/* 폰 세로 폭에서는 머리줄에 배지까지 들어갈 자리가 없다 (쓸 수 있는 폭 284px,
+   PLC + 배지 + 토글 + 로그아웃 = 306px). 줄이면 글자가 잘려 '관리자 도' 가 된다.
+   배지는 알려주는 것뿐이니 뺀다 — 관리자 탭이 보이는 것만으로 이미 안다.
+   로그아웃 글자는 남긴다. 그쪽이 눌러야 하는 것이다. */
+@media (max-width: 420px) {
+    .admin-badge { display: none; }
+
+    /* 동기화 — 두 버튼을 한 줄에. 글자가 긴 쪽에 자리를 더 준다.
+       stretch 로 두 버튼 높이를 맞춘다 (한쪽만 두 줄이면 키가 어긋난다) */
+    .sync-bar { gap: 8px; padding: 12px; align-items: stretch; }
+    .sync-btn { flex: 1 1 0; min-width: 0; padding: 12px 8px; font-size: 13px; }
+    #syncBtn { flex: 2 1 0; }
+    .sync-info { flex: 1 1 100%; }
+
+    /* 출석부 출력 조작부 */
+    .pr-controls { padding: 12px; }
+    .pr-count { margin-left: 0; flex: 1 1 100%; text-align: right; }
+    .pr-chk { padding: 8px 10px; font-size: 13px; }
 }
