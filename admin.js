@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=53';
+} from './scripts/members-data.js?v=54';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1141,49 +1141,91 @@ function renderPrPreview() {
     updatePrCount();
 }
 
-// 장소별로 한 장씩 낸다. 웨슬리홀 담당과 온라인 담당이 각자 자기 것만 들고
-// 가는데, 한 장에 몰아 두면 서로 상관없는 조까지 들여다봐야 한다.
-function renderPrSummaries(teams, head) {
-    const locOf = (t) => t.location || '(장소 없음)';
-    const locs = [...new Set(teams.map(locOf))].sort((a, b) => a.localeCompare(b, 'ko'));
-    return locs.map(loc =>
-        renderPrSummary(loc, teams.filter(t => locOf(t) === loc), head)).join('');
+function prTeamStat(t) {
+    return {
+        n: t.members.length,
+        lunch: t.members.filter(m => prLunchSet.has(m._uuid)).length,
+        hw: t.members.filter(m => prHwSet.has(m._uuid)).length,
+    };
 }
 
-function renderPrSummary(loc, teams, head) {
-    const rows = teams.map(t => {
-        const lunch = t.members.filter(m => prLunchSet.has(m._uuid)).length;
-        const hw = t.members.filter(m => prHwSet.has(m._uuid)).length;
-        // 장소는 장마다 하나뿐이라 열로 두지 않는다 (머리말에 있다).
+// 큰 조가 위로. 손이 많이 가는 조부터 눈에 들어와야 한다.
+// 인원이 같으면 김밥·과제가 많은 순, 그래도 같으면 조 이름 순.
+function prBySize(a, b) {
+    const A = prTeamStat(a), B = prTeamStat(b);
+    return B.n - A.n || B.lunch - A.lunch || B.hw - A.hw || compareTeamName(a.name, b.name);
+}
+
+/**
+ * 집계표 — 전체 한 장, 그다음 장소별로 한 장씩.
+ *
+ * 전체는 전달할 사람이 한눈에 보는 장이고, 장소별은 웨슬리홀 담당과 온라인
+ * 담당이 각자 들고 가는 장이다. 장소가 한 곳뿐이면 둘이 같은 내용이라
+ * 전체만 낸다.
+ */
+function renderPrSummaries(teams, head) {
+    const locOf = (t) => t.location || '(장소 없음)';
+
+    const byLoc = new Map();
+    for (const t of teams) {
+        const l = locOf(t);
+        if (!byLoc.has(l)) byLoc.set(l, []);
+        byLoc.get(l).push(t);
+    }
+
+    if (byLoc.size <= 1) {
+        const loc = [...byLoc.keys()][0] || '전체';
+        return renderPrSummary(loc, loc, teams, head, false);
+    }
+
+    // 장소도 인원 많은 순으로.
+    const sizeOf = (ts) => ts.reduce((n, t) => n + t.members.length, 0);
+    const locs = [...byLoc.entries()].sort(
+        (a, b) => sizeOf(b[1]) - sizeOf(a[1]) || a[0].localeCompare(b[0], 'ko'));
+
+    return renderPrSummary('__all__', '전체', teams, head, true)
+         + locs.map(([loc, ts]) => renderPrSummary(loc, loc, ts, head, false)).join('');
+}
+
+// showLocation — 여러 장소가 섞인 '전체' 장에서만 장소 열을 둔다.
+// 장소별 장은 머리말에 이미 있어서 열로 두면 같은 값이 줄마다 반복된다.
+function renderPrSummary(key, title, teams, head, showLocation) {
+    const sorted = [...teams].sort(prBySize);
+
+    const rows = sorted.map(t => {
+        const s = prTeamStat(t);
         return `<tr>
             <td class="pr-left">${attEsc(t.name)}</td>
-            <td class="pr-c-mark">${t.members.length}</td>
-            <td class="pr-c-mark">${lunch}</td>
-            <td class="pr-c-mark">${hw}</td>
+            ${showLocation ? `<td class="pr-left">${attEsc(t.location || '-')}</td>` : ''}
+            <td class="pr-c-mark">${s.n}</td>
+            <td class="pr-c-mark">${s.lunch}</td>
+            <td class="pr-c-mark">${s.hw}</td>
             <td class="pr-c-mark"></td>
             <td class="pr-c-memo"></td>
         </tr>`;
     }).join('');
 
-    const total = teams.reduce((n, t) => n + t.members.length, 0);
-    const lunchAll = teams.reduce((n, t) => n + t.members.filter(m => prLunchSet.has(m._uuid)).length, 0);
-    const hwAll = teams.reduce((n, t) => n + t.members.filter(m => prHwSet.has(m._uuid)).length, 0);
+    const sum = sorted.reduce((acc, t) => {
+        const s = prTeamStat(t);
+        return { n: acc.n + s.n, lunch: acc.lunch + s.lunch, hw: acc.hw + s.hw };
+    }, { n: 0, lunch: 0, hw: 0 });
 
-    const key = '__summary__:' + loc;
+    const id = '__summary__:' + key;
     return `
-        <div class="pr-sheet" data-team="${attEsc(key)}">
+        <div class="pr-sheet" data-team="${attEsc(id)}">
             <label class="pr-pick">
-                <input type="checkbox" data-team="${attEsc(key)}"${prSkip.has(key) ? '' : ' checked'}> 출력
+                <input type="checkbox" data-team="${attEsc(id)}"${prSkip.has(id) ? '' : ' checked'}> 출력
             </label>
             <section class="pr-page" style="--pr-row: 9mm">
                 <div class="pr-head">
-                    <h2 class="pr-title">조별 집계표 · ${attEsc(loc)}</h2>
+                    <h2 class="pr-title">조별 집계표 · ${attEsc(title)}</h2>
                     <span class="pr-when">${head}</span>
                 </div>
-                <div class="pr-sub">${teams.length}개 조 · 인원 ${total}명</div>
+                <div class="pr-sub">${sorted.length}개 조 · 인원 ${sum.n}명</div>
                 <table class="pr-table">
                     <thead><tr>
                         <th class="pr-left">조</th>
+                        ${showLocation ? '<th class="pr-left">장소</th>' : ''}
                         <th class="pr-c-mark">인원</th><th class="pr-c-mark">김밥</th>
                         <th class="pr-c-mark">과제</th><th class="pr-c-mark">출석</th>
                         <th class="pr-c-memo">메모</th>
@@ -1191,8 +1233,9 @@ function renderPrSummary(loc, teams, head) {
                     <tbody>${rows}</tbody>
                     <tfoot><tr class="pr-total">
                         <td class="pr-left">합계</td>
-                        <td class="pr-c-mark">${total}</td><td class="pr-c-mark">${lunchAll}</td>
-                        <td class="pr-c-mark">${hwAll}</td><td class="pr-c-mark"></td>
+                        ${showLocation ? '<td class="pr-left"></td>' : ''}
+                        <td class="pr-c-mark">${sum.n}</td><td class="pr-c-mark">${sum.lunch}</td>
+                        <td class="pr-c-mark">${sum.hw}</td><td class="pr-c-mark"></td>
                         <td class="pr-c-memo"></td>
                     </tr></tfoot>
                 </table>
