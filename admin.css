@@ -960,6 +960,11 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
 .pr-phone { display: inline-block; margin-left: 4px; font-size: 10px; color: #666; font-weight: 400; }
 .pr-table .pr-total td { background: #eee; font-weight: 800; }
 
+/* 표 맨 아래 특이사항 칸 — 사람마다가 아니라 그날 조 전체에 대해 적는 자리 */
+.pr-table tfoot .pr-note td { height: var(--pr-note, 12mm); vertical-align: top; }
+.pr-note-label { background: #eee; font-weight: 700; }
+.pr-note-box { text-align: left; }
+
 @media print {
     @page { size: A4; margin: 12mm; }
 

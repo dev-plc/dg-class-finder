@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=57';
+} from './scripts/members-data.js?v=58';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1018,12 +1018,28 @@ const prCol = {
 const PR_PAGE_PAD_MM = 5;
 const PR_AVAIL_MM = 273 - 30 - PR_PAGE_PAD_MM * 2;
 
+// 표 맨 아래 '특이사항' 칸. 사람마다가 아니라 그날 조 전체에 대해 적는 자리다.
+const PR_NOTE_MIN_MM = 12;
+const PR_NOTE_MAX_MM = 40;
+
+const round1 = (v) => Math.round(v * 10) / 10;
+
 // 조마다 인원이 달라(12명 ~ 1명) 고정 줄 높이로는 아래가 휑하거나 넘친다.
 // 상한 22mm 가 필요하다 — 5명짜리 조를 꽉 채우려면 한 줄이 40mm 가 되는데
 // 그건 표가 아니라 빈 상자다. 인원이 적은 조는 아래가 남는 게 맞다.
+//
+// 특이사항 칸 자리를 먼저 떼어 두고 나눈다. 안 떼면 인원이 많은 조에서 표가
+// 한 줄만큼 넘쳐 빈 종이가 한 장 더 나온다.
 function prRowHeightMm(count) {
     if (!count) return 9;
-    return Math.round(Math.min(22, Math.max(9, PR_AVAIL_MM / count)) * 10) / 10;
+    return round1(Math.min(22, Math.max(8, (PR_AVAIL_MM - PR_NOTE_MIN_MM) / count)));
+}
+
+// 남는 높이를 특이사항 칸이 먹는다. 다만 한없이 키우지는 않는다 —
+// 5명짜리 조에서 100mm 짜리 상자가 되면 그것대로 이상하다.
+function prNoteHeightMm(count) {
+    const left = PR_AVAIL_MM - prRowHeightMm(count) * count;
+    return round1(Math.min(PR_NOTE_MAX_MM, Math.max(PR_NOTE_MIN_MM, left)));
 }
 
 // 그 주차가 해당 월의 마지막 수업이면 다음 달 김밥을 그때 받는다.
@@ -1135,7 +1151,7 @@ function renderPrPreview() {
                 <label class="pr-pick">
                     <input type="checkbox" data-team="${attEsc(t.name)}"${prSkip.has(t.name) ? '' : ' checked'}> 출력
                 </label>
-                <section class="pr-page" style="--pr-row: ${rowMm}mm">
+                <section class="pr-page" style="--pr-row: ${rowMm}mm; --pr-note: ${prNoteHeightMm(t.members.length)}mm">
                     <div class="pr-head">
                         <h2 class="pr-title">${attEsc(t.name)}</h2>
                         <span class="pr-when">${head}</span>
@@ -1154,6 +1170,12 @@ function renderPrPreview() {
                             </tr>
                         </thead>
                         <tbody>${body}</tbody>
+                        <tfoot>
+                            <tr class="pr-note">
+                                <td class="pr-note-label" colspan="2">특이사항</td>
+                                <td class="pr-note-box" colspan="${prColCount() - 2}"></td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </section>
             </div>`;
@@ -1163,6 +1185,12 @@ function renderPrPreview() {
     // 매번 끝까지 넘겨야 한다.
     prPreview.innerHTML = (prCol.summary() ? renderPrSummaries(teams, head) : '') + sheets;
     updatePrCount();
+}
+
+// 지금 켜져 있는 칸 수. 특이사항 줄이 표 폭을 정확히 덮어야 한다.
+// No · 이름 · 출석 · 메모(또는 채움) 네 칸은 늘 있다.
+function prColCount() {
+    return 4 + (prCol.lunch() ? 1 : 0) + (prCol.lunchReq() ? 1 : 0) + (prCol.hw() ? 1 : 0);
 }
 
 // 이름 밑에 붙일 직책. '조원' 은 대부분이라 적어 봐야 눈만 어지럽다 —
