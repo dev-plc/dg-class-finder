@@ -909,10 +909,13 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
 .pr-pick input { width: 16px; height: 16px; cursor: pointer; }
 
 .pr-page {
+    box-sizing: border-box;
     width: 186mm;                /* 210 - 24 */
     min-height: 273mm;           /* 297 - 24 */
     max-width: 100%;
-    padding: 0;
+    /* 표가 종이 끝에 붙으면 답답하다. 안쪽으로 살짝 물린다.
+       이 값은 admin.js 의 PR_PAGE_PAD_MM 과 같아야 줄 높이 계산이 맞는다. */
+    padding: 5mm;
     background: #fff;
     color: #111;
     box-shadow: var(--shadow-lg);
@@ -922,11 +925,11 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
     align-items: baseline;
     justify-content: space-between;
     gap: 12px;
-    padding: 6mm 4mm 0;
+    padding: 0 1mm;
 }
 .pr-title { font-size: 20px; font-weight: 800; color: #111; }
 .pr-when { font-size: 13px; font-weight: 700; color: #444; }
-.pr-sub { padding: 2mm 4mm 3mm; font-size: 12px; color: #444; }
+.pr-sub { padding: 2mm 1mm 3mm; font-size: 12px; color: #444; }
 
 /* table-layout: fixed 가 없으면 메모 칸을 끄는 순간 체크 칸들이 쓸데없이
    넓어지고 이름 칸이 300px 넘게 벌어진다 */
@@ -973,6 +976,9 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
         width: auto;
         min-height: 0;
         box-shadow: none;
+        /* @page 여백 위에 안쪽 여백을 한 번 더 얹으면 너무 좁아진다.
+           종이에서는 좌우를 빼고 위아래만 살짝 남긴다. */
+        padding: 2mm 0;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }

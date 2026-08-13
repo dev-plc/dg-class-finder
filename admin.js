@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=52';
+} from './scripts/members-data.js?v=53';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -991,9 +991,11 @@ const prCol = {
     summary: () => document.getElementById('prColSummary')?.checked,
 };
 
-// A4 세로 297 - 위아래 여백 24 = 273mm
+// A4 세로 297 - 인쇄 여백 24 = 273mm
 // 제목·주차·인원 18mm + 표 머리글 8mm + 여유 4mm = 30mm
-const PR_AVAIL_MM = 273 - 30;
+// 종이 안쪽 여백(위아래 각 5mm)도 빼야 마지막 줄이 밑변에 붙지 않는다.
+const PR_PAGE_PAD_MM = 5;
+const PR_AVAIL_MM = 273 - 30 - PR_PAGE_PAD_MM * 2;
 
 // 조마다 인원이 달라(12명 ~ 1명) 고정 줄 높이로는 아래가 휑하거나 넘친다.
 // 상한 22mm 가 필요하다 — 5명짜리 조를 꽉 채우려면 한 줄이 40mm 가 되는데
@@ -1133,21 +1135,33 @@ function renderPrPreview() {
             </div>`;
     }).join('');
 
-    prPreview.innerHTML = sheets + (prCol.summary() ? renderPrSummary(teams, head) : '');
+    // 집계표가 맨 앞이다. 나눠 주는 사람이 먼저 보는 장이라 뒤에 있으면
+    // 매번 끝까지 넘겨야 한다.
+    prPreview.innerHTML = (prCol.summary() ? renderPrSummaries(teams, head) : '') + sheets;
     updatePrCount();
 }
 
-function renderPrSummary(teams, head) {
+// 장소별로 한 장씩 낸다. 웨슬리홀 담당과 온라인 담당이 각자 자기 것만 들고
+// 가는데, 한 장에 몰아 두면 서로 상관없는 조까지 들여다봐야 한다.
+function renderPrSummaries(teams, head) {
+    const locOf = (t) => t.location || '(장소 없음)';
+    const locs = [...new Set(teams.map(locOf))].sort((a, b) => a.localeCompare(b, 'ko'));
+    return locs.map(loc =>
+        renderPrSummary(loc, teams.filter(t => locOf(t) === loc), head)).join('');
+}
+
+function renderPrSummary(loc, teams, head) {
     const rows = teams.map(t => {
         const lunch = t.members.filter(m => prLunchSet.has(m._uuid)).length;
         const hw = t.members.filter(m => prHwSet.has(m._uuid)).length;
+        // 장소는 장마다 하나뿐이라 열로 두지 않는다 (머리말에 있다).
         return `<tr>
             <td class="pr-left">${attEsc(t.name)}</td>
-            <td class="pr-left">${attEsc(t.location || '-')}</td>
             <td class="pr-c-mark">${t.members.length}</td>
             <td class="pr-c-mark">${lunch}</td>
             <td class="pr-c-mark">${hw}</td>
             <td class="pr-c-mark"></td>
+            <td class="pr-c-memo"></td>
         </tr>`;
     }).join('');
 
@@ -1155,28 +1169,31 @@ function renderPrSummary(teams, head) {
     const lunchAll = teams.reduce((n, t) => n + t.members.filter(m => prLunchSet.has(m._uuid)).length, 0);
     const hwAll = teams.reduce((n, t) => n + t.members.filter(m => prHwSet.has(m._uuid)).length, 0);
 
+    const key = '__summary__:' + loc;
     return `
-        <div class="pr-sheet" data-team="__summary__">
+        <div class="pr-sheet" data-team="${attEsc(key)}">
             <label class="pr-pick">
-                <input type="checkbox" data-team="__summary__"${prSkip.has('__summary__') ? '' : ' checked'}> 출력
+                <input type="checkbox" data-team="${attEsc(key)}"${prSkip.has(key) ? '' : ' checked'}> 출력
             </label>
             <section class="pr-page" style="--pr-row: 9mm">
                 <div class="pr-head">
-                    <h2 class="pr-title">조별 집계표</h2>
+                    <h2 class="pr-title">조별 집계표 · ${attEsc(loc)}</h2>
                     <span class="pr-when">${head}</span>
                 </div>
                 <div class="pr-sub">${teams.length}개 조 · 인원 ${total}명</div>
                 <table class="pr-table">
                     <thead><tr>
-                        <th class="pr-left">조</th><th class="pr-left">장소</th>
+                        <th class="pr-left">조</th>
                         <th class="pr-c-mark">인원</th><th class="pr-c-mark">김밥</th>
                         <th class="pr-c-mark">과제</th><th class="pr-c-mark">출석</th>
+                        <th class="pr-c-memo">메모</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                     <tfoot><tr class="pr-total">
-                        <td class="pr-left">합계</td><td class="pr-left"></td>
+                        <td class="pr-left">합계</td>
                         <td class="pr-c-mark">${total}</td><td class="pr-c-mark">${lunchAll}</td>
                         <td class="pr-c-mark">${hwAll}</td><td class="pr-c-mark"></td>
+                        <td class="pr-c-memo"></td>
                     </tr></tfoot>
                 </table>
             </section>
