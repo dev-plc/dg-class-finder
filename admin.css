@@ -854,6 +854,135 @@ body.dark-mode .att-stale { background: rgba(245, 158, 11, 0.18); }
 body.dark-mode .att-future { color: #fbbf24; }
 body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
 
+/* ==================== 출석부 출력 ==================== */
+/* 조가 13개면 미리보기가 13장이다. 조작부가 스크롤을 따라와야 한다 */
+.pr-controls {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    margin-bottom: 18px;
+    background: var(--white);
+    border-radius: 14px;
+    box-shadow: var(--shadow-md);
+}
+.pr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pr-cols-label { font-size: 13px; font-weight: 700; color: var(--text-light); }
+.pr-chk {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dark);
+    background: var(--milk-beige);
+    border-radius: 10px;
+    cursor: pointer;
+}
+.pr-chk input { width: 16px; height: 16px; cursor: pointer; }
+.pr-count { font-size: 13px; font-weight: 700; color: var(--text-light); margin-left: auto; }
+
+/* 미리보기를 A4 비율로 둔다. 화면 여백이 곧 인쇄물 여백이라
+   종이로 뽑아보지 않고도 아래가 휑한지 표가 넘치는지 알 수 있다 */
+.pr-preview { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+.pr-sheet { position: relative; width: 100%; max-width: 186mm; }
+.pr-sheet.pr-skip { opacity: 0.35; }
+
+/* 체크박스를 종이 위에 얹으면 미리보기가 잘라낸다. 종이 밖 상자에 올린다 */
+.pr-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-dark);
+    background: var(--milk-beige);
+    border-radius: 10px;
+    cursor: pointer;
+}
+.pr-pick input { width: 16px; height: 16px; cursor: pointer; }
+
+.pr-page {
+    width: 186mm;                /* 210 - 24 */
+    min-height: 273mm;           /* 297 - 24 */
+    max-width: 100%;
+    padding: 0;
+    background: #fff;
+    color: #111;
+    box-shadow: var(--shadow-lg);
+}
+.pr-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6mm 4mm 0;
+}
+.pr-title { font-size: 20px; font-weight: 800; color: #111; }
+.pr-when { font-size: 13px; font-weight: 700; color: #444; }
+.pr-sub { padding: 2mm 4mm 3mm; font-size: 12px; color: #444; }
+
+/* table-layout: fixed 가 없으면 메모 칸을 끄는 순간 체크 칸들이 쓸데없이
+   넓어지고 이름 칸이 300px 넘게 벌어진다 */
+.pr-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.pr-table th, .pr-table td {
+    border: 1px solid #999;
+    font-size: 12px;
+    color: #111;
+    text-align: center;
+    padding: 0 2px;
+}
+.pr-table thead th { background: #eee; height: 8mm; font-weight: 700; }
+.pr-table tbody td { height: var(--pr-row, 9mm); }
+.pr-table .pr-c-no   { width: 26px; }
+.pr-table .pr-left   { width: 122px; text-align: left; padding-left: 6px; font-weight: 600; }
+.pr-table .pr-c-mark { width: 34px; }
+.pr-table .pr-c-wide { width: 64px; }   /* '김밥신청' 은 글자가 길다 */
+.pr-table .pr-c-memo { width: auto; }   /* 남는 폭은 여기가 먹는다 */
+/* 메모를 끄면 테두리 없는 채움 칸을 대신 넣는다. 안 그러면 fixed 의 성질상
+   모자란 폭만큼 나머지 칸이 비례해서 늘어난다 */
+.pr-table .pr-c-fill { width: auto; border: none; }
+.pr-phone { display: inline-block; margin-left: 4px; font-size: 10px; color: #666; font-weight: 400; }
+.pr-table .pr-total td { background: #eee; font-weight: 800; }
+
+@media print {
+    @page { size: A4; margin: 12mm; }
+
+    .admin-header, .sync-bar, .tab-nav, .pr-controls, .pr-pick,
+    .team-modal, .att-save-bar { display: none !important; }
+    .tab-content:not(#printTab) { display: none !important; }
+    .admin-container { max-width: none; padding: 0; }
+    body { background: #fff; }
+
+    .pr-preview { display: block; gap: 0; }
+    .pr-sheet { max-width: none; break-after: page; page-break-after: always; }
+    /* 뺀 장은 아예 없는 것으로 */
+    .pr-sheet.pr-skip { display: none !important; }
+    /* 실제로 인쇄되는 마지막 장 뒤에는 새 장을 만들지 않는다 */
+    .pr-sheet.pr-last { break-after: auto; page-break-after: auto; }
+
+    /* 브라우저는 기본적으로 배경색을 인쇄하지 않는다. 이게 없으면 표 머리글
+       음영도 합계 줄 강조도 하나도 안 나와 인쇄물이 밋밋해진다 */
+    .pr-page {
+        width: auto;
+        min-height: 0;
+        box-shadow: none;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .pr-table { break-inside: auto; }
+    .pr-table tr { break-inside: avoid; }
+}
+
+/* 종이는 언제나 흰 바탕이다. 다크모드에서도 미리보기가 인쇄물과 같아야 한다 */
+body.dark-mode .pr-page { background: #fff; color: #111; }
+
 /* 반응형 조절 */
 @media (max-width: 640px) {
     .admin-container {

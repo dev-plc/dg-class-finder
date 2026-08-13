@@ -19,6 +19,7 @@ import {
     ensureLoaded,
     getMembers,
     getSessions,
+    getSessionExtras,
     getToday,
     isEditableStatus,
     loadAttendanceForSession,
@@ -26,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=51';
+} from './scripts/members-data.js?v=52';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -141,8 +142,9 @@ tabBtns.forEach(btn => {
         btn.classList.add('active');
         document.getElementById(`${tabName}Tab`).classList.add('active');
 
-        // 출결은 시트에서 읽어야 해서 왕복이 붙는다. 탭을 열 때 한 번만 부른다.
+        // 출결·출석부 자료는 탭을 열 때 한 번만 받는다.
         if (tabName === 'attendance') loadAttendance();
+        if (tabName === 'print') openPrintTab();
     });
 });
 
@@ -957,6 +959,344 @@ function initAttendanceTab() {
 window.addEventListener('beforeunload', (e) => {
     if (attChanges().length > 0) { e.preventDefault(); e.returnValue = ''; }
 });
+
+// ==================== 출석부 출력 ====================
+//
+// 지금까지 스프레드시트로 만들어 인쇄하던 조별 출석부를 앱에서 낸다.
+// 현장에서 손으로 체크하는 종이 양식이므로 **아는 값은 미리 찍고 받을 값은 비운다.**
+//
+//   번호·이름·김밥·과제 = 데이터        출석·김밥신청·메모 = 빈칸
+
+const prSessionPicker = document.getElementById('prSessionPicker');
+const prScopePicker = document.getElementById('prScopePicker');
+const prPreview = document.getElementById('prPreview');
+const prCount = document.getElementById('prCount');
+
+let prSessionDate = null;
+let prScope = 'all';              // 'all' | 'loc:웨슬리홀' | 'team:Y1'
+let prSkip = new Set();           // 출력에서 뺀 조
+let prLunchSet = new Set();
+let prHwSet = new Set();
+let prReady = false;
+let prLoading = false;
+// 사람이 '김밥신청' 을 직접 토글하면 그 뜻을 존중한다. 주차를 바꿔도 되돌리지
+// 않는다. 자동 판단이 사람 판단을 덮으면 신뢰를 잃는다.
+let prLunchReqTouched = false;
+
+const prCol = {
+    lunch: () => document.getElementById('prColLunch')?.checked,
+    lunchReq: () => document.getElementById('prColLunchReq')?.checked,
+    hw: () => document.getElementById('prColHw')?.checked,
+    memo: () => document.getElementById('prColMemo')?.checked,
+    summary: () => document.getElementById('prColSummary')?.checked,
+};
+
+// A4 세로 297 - 위아래 여백 24 = 273mm
+// 제목·주차·인원 18mm + 표 머리글 8mm + 여유 4mm = 30mm
+const PR_AVAIL_MM = 273 - 30;
+
+// 조마다 인원이 달라(12명 ~ 1명) 고정 줄 높이로는 아래가 휑하거나 넘친다.
+// 상한 22mm 가 필요하다 — 5명짜리 조를 꽉 채우려면 한 줄이 40mm 가 되는데
+// 그건 표가 아니라 빈 상자다. 인원이 적은 조는 아래가 남는 게 맞다.
+function prRowHeightMm(count) {
+    if (!count) return 9;
+    return Math.round(Math.min(22, Math.max(9, PR_AVAIL_MM / count)) * 10) / 10;
+}
+
+// 그 주차가 해당 월의 마지막 수업이면 다음 달 김밥을 그때 받는다.
+function prIsLastClassOfMonth(date) {
+    const ym = String(date).slice(0, 7);
+    const same = getSessions({ all: true })
+        .filter(s => String(s.date).slice(0, 7) === ym)
+        .map(s => s.date)
+        .sort();
+    return same.length > 0 && same[same.length - 1] === date;
+}
+
+function prTeams() {
+    const groups = new Map();
+    for (const m of memberData) {
+        const t = m.team || '(조 없음)';
+        if (!groups.has(t)) groups.set(t, { name: t, location: m.location || '', members: [] });
+        groups.get(t).members.push(m);
+    }
+    for (const g of groups.values()) {
+        g.members.sort((a, b) => (Number(a.team_no) || 999) - (Number(b.team_no) || 999)
+                                 || a.name.localeCompare(b.name, 'ko'));
+    }
+    return [...groups.values()].sort((a, b) => compareTeamName(a.name, b.name));
+}
+
+function prScopedTeams() {
+    const all = prTeams();
+    if (prScope.startsWith('team:')) return all.filter(t => t.name === prScope.slice(5));
+    if (prScope.startsWith('loc:')) return all.filter(t => t.location === prScope.slice(4));
+    return all;
+}
+
+function renderPrPickers() {
+    if (!prSessionPicker || !prScopePicker) return;
+
+    const sessions = getSessions({ all: true });
+    prSessionPicker.innerHTML = [...sessions].reverse().map(s =>
+        `<option value="${attEsc(s.date)}"${s.date === prSessionDate ? ' selected' : ''}>` +
+        `${attEsc(s.key)}${s.name ? ' · ' + attEsc(s.name) : ''}</option>`).join('');
+
+    const teams = prTeams();
+    const locations = [...new Set(teams.map(t => t.location).filter(Boolean))].sort(
+        (a, b) => a.localeCompare(b, 'ko'));
+
+    let html = `<option value="all"${prScope === 'all' ? ' selected' : ''}>전체 (${teams.length}개 조)</option>`;
+    // 장소가 한 곳뿐이면 묶음을 숨긴다. 고를 것이 없는 목록은 방해만 된다.
+    if (locations.length > 1) {
+        html += '<optgroup label="장소별">';
+        for (const loc of locations) {
+            const n = teams.filter(t => t.location === loc).length;
+            const v = 'loc:' + loc;
+            html += `<option value="${attEsc(v)}"${prScope === v ? ' selected' : ''}>${attEsc(loc)} (${n}개 조)</option>`;
+        }
+        html += '</optgroup>';
+    }
+    html += '<optgroup label="조별">';
+    for (const t of teams) {
+        const v = 'team:' + t.name;
+        html += `<option value="${attEsc(v)}"${prScope === v ? ' selected' : ''}>${attEsc(t.name)} (${t.members.length}명)</option>`;
+    }
+    html += '</optgroup>';
+    prScopePicker.innerHTML = html;
+}
+
+function prSessionMeta() {
+    return getSessions({ all: true }).find(s => s.date === prSessionDate) || null;
+}
+
+function renderPrPreview() {
+    if (!prPreview) return;
+
+    if (!prReady) {
+        prPreview.innerHTML = `<div class="att-empty">${prLoading ? '불러오는 중...' : '불러오지 못했습니다.'}</div>`;
+        updatePrCount();
+        return;
+    }
+
+    const s = prSessionMeta();
+    const teams = prScopedTeams();
+    if (!teams.length) {
+        prPreview.innerHTML = '<div class="att-empty">해당하는 조가 없습니다.</div>';
+        updatePrCount();
+        return;
+    }
+
+    const head = `${s ? attEsc(s.key) : ''}${s?.name ? ' ' + attEsc(s.name) : ''}`;
+
+    const sheets = teams.map(t => {
+        const rowMm = prRowHeightMm(t.members.length);
+        const lunchCount = t.members.filter(m => prLunchSet.has(m._uuid)).length;
+
+        const body = t.members.map((m, i) => `
+            <tr>
+                <td class="pr-c-no">${i + 1}</td>
+                <td class="pr-left">${attEsc(m.name)}<span class="pr-phone">${attEsc(m.phone || '')}</span></td>
+                ${prCol.lunch() ? `<td class="pr-c-mark">${prLunchSet.has(m._uuid) ? 'O' : ''}</td>` : ''}
+                ${prCol.lunchReq() ? '<td class="pr-c-wide"></td>' : ''}
+                <td class="pr-c-mark"></td>
+                ${prCol.hw() ? `<td class="pr-c-mark">${prHwSet.has(m._uuid) ? '✓' : ''}</td>` : ''}
+                ${prCol.memo() ? '<td class="pr-c-memo"></td>' : '<td class="pr-c-fill"></td>'}
+            </tr>`).join('');
+
+        return `
+            <div class="pr-sheet${prSkip.has(t.name) ? ' pr-skip' : ''}" data-team="${attEsc(t.name)}">
+                <label class="pr-pick">
+                    <input type="checkbox" data-team="${attEsc(t.name)}"${prSkip.has(t.name) ? '' : ' checked'}> 출력
+                </label>
+                <section class="pr-page" style="--pr-row: ${rowMm}mm">
+                    <div class="pr-head">
+                        <h2 class="pr-title">${attEsc(t.name)}</h2>
+                        <span class="pr-when">${head}</span>
+                    </div>
+                    <div class="pr-sub">${attEsc(t.location || '-')} · 인원 ${t.members.length}명 · 김밥 ${lunchCount}명</div>
+                    <table class="pr-table">
+                        <thead>
+                            <tr>
+                                <th class="pr-c-no">No.</th>
+                                <th class="pr-left">이름</th>
+                                ${prCol.lunch() ? '<th class="pr-c-mark">김밥</th>' : ''}
+                                ${prCol.lunchReq() ? '<th class="pr-c-wide">김밥신청</th>' : ''}
+                                <th class="pr-c-mark">출석</th>
+                                ${prCol.hw() ? '<th class="pr-c-mark">과제</th>' : ''}
+                                ${prCol.memo() ? '<th class="pr-c-memo">메모</th>' : '<th class="pr-c-fill"></th>'}
+                            </tr>
+                        </thead>
+                        <tbody>${body}</tbody>
+                    </table>
+                </section>
+            </div>`;
+    }).join('');
+
+    prPreview.innerHTML = sheets + (prCol.summary() ? renderPrSummary(teams, head) : '');
+    updatePrCount();
+}
+
+function renderPrSummary(teams, head) {
+    const rows = teams.map(t => {
+        const lunch = t.members.filter(m => prLunchSet.has(m._uuid)).length;
+        const hw = t.members.filter(m => prHwSet.has(m._uuid)).length;
+        return `<tr>
+            <td class="pr-left">${attEsc(t.name)}</td>
+            <td class="pr-left">${attEsc(t.location || '-')}</td>
+            <td class="pr-c-mark">${t.members.length}</td>
+            <td class="pr-c-mark">${lunch}</td>
+            <td class="pr-c-mark">${hw}</td>
+            <td class="pr-c-mark"></td>
+        </tr>`;
+    }).join('');
+
+    const total = teams.reduce((n, t) => n + t.members.length, 0);
+    const lunchAll = teams.reduce((n, t) => n + t.members.filter(m => prLunchSet.has(m._uuid)).length, 0);
+    const hwAll = teams.reduce((n, t) => n + t.members.filter(m => prHwSet.has(m._uuid)).length, 0);
+
+    return `
+        <div class="pr-sheet" data-team="__summary__">
+            <label class="pr-pick">
+                <input type="checkbox" data-team="__summary__"${prSkip.has('__summary__') ? '' : ' checked'}> 출력
+            </label>
+            <section class="pr-page" style="--pr-row: 9mm">
+                <div class="pr-head">
+                    <h2 class="pr-title">조별 집계표</h2>
+                    <span class="pr-when">${head}</span>
+                </div>
+                <div class="pr-sub">${teams.length}개 조 · 인원 ${total}명</div>
+                <table class="pr-table">
+                    <thead><tr>
+                        <th class="pr-left">조</th><th class="pr-left">장소</th>
+                        <th class="pr-c-mark">인원</th><th class="pr-c-mark">김밥</th>
+                        <th class="pr-c-mark">과제</th><th class="pr-c-mark">출석</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                    <tfoot><tr class="pr-total">
+                        <td class="pr-left">합계</td><td class="pr-left"></td>
+                        <td class="pr-c-mark">${total}</td><td class="pr-c-mark">${lunchAll}</td>
+                        <td class="pr-c-mark">${hwAll}</td><td class="pr-c-mark"></td>
+                    </tr></tfoot>
+                </table>
+            </section>
+        </div>`;
+}
+
+function updatePrCount() {
+    if (!prCount || !prPreview) return;
+    const all = prPreview.querySelectorAll('.pr-sheet').length;
+    const live = prPreview.querySelectorAll('.pr-sheet:not(.pr-skip)').length;
+    prCount.textContent = all ? `${all}장 중 ${live}장 출력` : '';
+}
+
+// 체크를 눌러도 다시 그리지 않는다. 다시 그리면 다른 장의 체크가 전부 초기화된다.
+prPreview?.addEventListener('change', (e) => {
+    const box = e.target.closest('.pr-pick input');
+    if (!box) return;
+    const team = box.dataset.team;
+    const sheet = box.closest('.pr-sheet');
+    if (box.checked) { prSkip.delete(team); sheet.classList.remove('pr-skip'); }
+    else { prSkip.add(team); sheet.classList.add('pr-skip'); }
+    updatePrCount();
+});
+
+function prSetAll(on) {
+    if (!prPreview) return;
+    prPreview.querySelectorAll('.pr-sheet').forEach(sheet => {
+        const box = sheet.querySelector('.pr-pick input');
+        if (box) box.checked = on;
+        sheet.classList.toggle('pr-skip', !on);
+        if (on) prSkip.delete(sheet.dataset.team);
+        else prSkip.add(sheet.dataset.team);
+    });
+    updatePrCount();
+}
+
+document.getElementById('prAllBtn')?.addEventListener('click', () => prSetAll(true));
+document.getElementById('prNoneBtn')?.addEventListener('click', () => prSetAll(false));
+
+document.getElementById('prPrintBtn')?.addEventListener('click', () => {
+    if (!prPreview) return;
+    // 마지막 장을 :last-child 로 잡으면 안 된다. 뺀 장은 숨겨질 뿐 DOM 상으로는
+    // 여전히 마지막일 수 있어서, 그 뒤에 빈 종이가 한 장 나온다.
+    const live = [...prPreview.querySelectorAll('.pr-sheet:not(.pr-skip)')];
+    if (!live.length) { alert('출력할 장이 없습니다. 최소 한 조는 선택해 주세요.'); return; }
+    prPreview.querySelectorAll('.pr-last').forEach(el => el.classList.remove('pr-last'));
+    live[live.length - 1].classList.add('pr-last');
+    window.print();
+});
+
+// 칸 토글 — 성격이 다른 칸을 한 체크박스로 묶지 않는다.
+// '김밥 현황'(데이터)과 '김밥신청'(빈칸)을 묶었다가 신청 칸을 끄면 현황까지
+// 사라지는 일이 있었다.
+['prColLunch', 'prColHw', 'prColMemo', 'prColSummary'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', renderPrPreview);
+});
+document.getElementById('prColLunchReq')?.addEventListener('change', () => {
+    prLunchReqTouched = true;
+    renderPrPreview();
+});
+
+prSessionPicker?.addEventListener('change', (e) => {
+    prSessionDate = e.target.value;
+    // 범위가 달라지면 뺐던 조가 목록에 없을 수도 있어 그 선택은 뜻을 잃는다.
+    prSkip.clear();
+    prApplyAutoLunchReq();
+    loadPrintData();
+});
+
+prScopePicker?.addEventListener('change', (e) => {
+    prScope = e.target.value;
+    prSkip.clear();
+    renderPrPreview();
+});
+
+function prApplyAutoLunchReq() {
+    if (prLunchReqTouched) return;
+    const box = document.getElementById('prColLunchReq');
+    if (box) box.checked = prIsLastClassOfMonth(prSessionDate);
+}
+
+async function loadPrintData() {
+    if (!prSessionDate) return;
+    prLoading = true;
+    renderPrPreview();
+    try {
+        const s = prSessionMeta();
+        const extras = await getSessionExtras(prSessionDate, s?.name || '');
+        prLunchSet = extras.lunch;
+        prHwSet = extras.homework;
+        prReady = true;
+    } catch (err) {
+        console.log('출석부 자료 조회 실패:', err);
+        prReady = false;
+    } finally {
+        prLoading = false;
+        renderPrPreview();
+    }
+}
+
+function initPrintTab() {
+    const sessions = getSessions({ all: true });
+    if (!sessions.length) { renderPrPreview(); return; }
+
+    // 출석부는 앞으로 있을 수업에 쓰는 종이다. 기본값을 지난 회차로 두면
+    // 매번 바꿔야 한다 — 아직 안 지난 가장 가까운 회차를 먼저 고른다.
+    const today = getToday();
+    const nextUp = sessions.find(s => s.date >= today);
+    prSessionDate = nextUp?.date || sessions[sessions.length - 1].date;
+
+    renderPrPickers();
+    prApplyAutoLunchReq();
+}
+
+async function openPrintTab() {
+    if (prLoading) return;
+    if (prReady) return;
+    initPrintTab();
+    await loadPrintData();
+}
 
 // ESC 키로 모달 닫기
 document.addEventListener('keydown', (e) => {

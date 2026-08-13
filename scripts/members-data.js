@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=51';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=51';
+import { matches as hangulMatches } from './hangul.js?v=52';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=52';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -417,6 +417,43 @@ export async function getTeamExtras(members) {
 /** 회차 이름이 강의인지 (수료에 들어가는지). '자유교제' 같은 주는 아니다. */
 export function isClassSession(name) {
   return /^\d+강$/.test(normalizeLecture(name));
+}
+
+// 과제는 회차 날짜가 없고 강의명만 있다. 회차를 바꿀 때마다 다시 받을 이유가
+// 없으므로 한 번 받아 두고 강의명으로 걸러 쓴다.
+let homeworkAllCache = null;
+
+/**
+ * 한 회차의 김밥·과제를 **전 인원**에 대해 받는다. 출석부 출력이 쓴다.
+ *
+ * getTeamExtras 와 달리 member_id 목록을 URL 에 싣지 않는다. 조 하나면 몰라도
+ * 전 인원(229명)이면 uuid 목록만 8KB 가 넘어 주소가 감당하지 못한다.
+ * 회차로 좁히면 인원수만큼의 행이라 그럴 필요가 없다.
+ *
+ * @returns { lunch: Set(uuid), homework: Set(uuid) }
+ */
+export async function getSessionExtras(sessionDate, lectureName) {
+  const empty = { lunch: new Set(), homework: new Set() };
+  if (!sessionDate) return empty;
+
+  const lunchRows = await sbSelect(
+    `dg_lunch?select=member_id&session_date=eq.${encodeURIComponent(sessionDate)}` +
+    `&applied=is.true&order=member_id`
+  ).catch(() => []);
+
+  if (!homeworkAllCache) {
+    homeworkAllCache = await sbSelect(
+      'dg_homework?select=member_id,lecture&order=member_id,lecture'
+    ).catch(() => []);
+  }
+
+  // 강의명은 시트와 폼에 따로 적혀 글자가 어긋난다. 정규화한 뒤에 견준다.
+  const key = normalizeLecture(lectureName);
+  const homework = new Set(
+    key ? homeworkAllCache.filter(r => normalizeLecture(r.lecture) === key).map(r => r.member_id) : []
+  );
+
+  return { lunch: new Set(lunchRows.map(r => r.member_id)), homework };
 }
 
 /**
