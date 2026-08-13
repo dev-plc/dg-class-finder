@@ -9,8 +9,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PLC DG 관리자</title>
-    <link rel="stylesheet" href="style.css?v=49">
-    <link rel="stylesheet" href="admin.css?v=49">
+    <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
+         찾다가 404 를 콘솔에 남긴다. -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="style.css?v=50">
+    <link rel="stylesheet" href="admin.css?v=50">
 </head>
 <body class="dark-mode">
     <div class="admin-container">
@@ -57,6 +60,7 @@
             <button class="tab-btn active" data-tab="search">검색 모드</button>
             <button class="tab-btn" data-tab="teams">조별 보기</button>
             <button class="tab-btn" data-tab="members">개인별 보기</button>
+            <button class="tab-btn" data-tab="attendance">출석 관리</button>
         </nav>
 
         <!-- 검색 모드 -->
@@ -146,6 +150,54 @@
                 <!-- 개인 카드들이 여기에 동적으로 생성됩니다 -->
             </div>
         </div>
+
+        <!-- 출석 관리 -->
+        <div class="tab-content" id="attendanceTab">
+            <div class="att-admin">
+                <!-- 주차·조 선택 -->
+                <div class="att-pickers">
+                    <label class="att-picker">
+                        <span class="att-picker-label">주차</span>
+                        <select id="attSessionPicker" class="att-select"></select>
+                    </label>
+                    <label class="att-picker">
+                        <span class="att-picker-label">조</span>
+                        <select id="attTeamPicker" class="att-select"></select>
+                    </label>
+                </div>
+
+                <div class="att-session-info" id="attSessionInfo"></div>
+
+                <!-- 편집 중 배경 갱신이 도착하면 여기에 알린다 (덮지 않는다) -->
+                <div class="att-stale" id="attStaleNotice" style="display: none;">
+                    <span>⚠️ 새 출결 데이터가 도착했습니다. 지금 저장하면 화면에 보이는 값 기준으로 저장됩니다.</span>
+                    <button type="button" id="attReloadBtn" class="att-stale-btn">새로 불러오기</button>
+                </div>
+
+                <!-- 일괄 버튼 -->
+                <div class="att-bulk">
+                    <button type="button" class="att-bulk-btn" id="attAllPresentBtn">전체 출석</button>
+                    <button type="button" class="att-bulk-btn" id="attBlankAbsentBtn">빈칸 → 결석</button>
+                    <button type="button" class="att-bulk-btn danger" id="attClearBtn">전체 지우기</button>
+                    <button type="button" class="att-bulk-btn" id="attRevertBtn">마지막 저장 상태로</button>
+                </div>
+
+                <div class="att-summary" id="attSummary"></div>
+
+                <div class="att-legend">
+                    <span><b>O</b> 출석</span><span><b>X</b> 결석</span><span><b>·</b> 미기록</span>
+                    <span class="att-legend-lock">🔒 ◎ − 돌봄 등은 시트에서 직접 수정</span>
+                </div>
+
+                <div class="att-list" id="attList"></div>
+
+                <!-- 저장 바 -->
+                <div class="att-save-bar" id="attSaveBar">
+                    <span class="att-save-info" id="attSaveInfo">변경 사항 없음</span>
+                    <button type="button" class="att-save-btn" id="attSaveBtn" disabled>저장</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- 조원 목록 모달 -->
@@ -161,7 +213,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=49"></script>
+    <script type="module" src="admin.js?v=50"></script>
 </body>
 </html>
 

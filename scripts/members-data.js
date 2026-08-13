@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=49';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=49';
+import { matches as hangulMatches } from './hangul.js?v=50';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=50';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -177,6 +177,28 @@ export async function refresh() {
   const cohortId = await getActiveCohortId();
   const previous = state.cohortId;
   const fresh = await fetchFromServer(cohortId);
+
+  // 시트에서 읽어 둔 회차별 출결(attendanceByDate)은 이 응답에 없다.
+  // 그대로 갈아끼우면 화면이 붙들고 있던 회차별 값이 통째로 사라진다.
+  //
+  // 조장 화면은 곧바로 refreshAttendance() 를 다시 불러서 티가 안 났지만,
+  // 관리자 출석 관리는 로드 시점 값을 스냅숏으로 떠 두기 때문에 여기서 비면
+  // '아직 아무도 안 찍힘' 으로 보인다. 그 상태에서 일괄 버튼을 누르면
+  // 시트에 있던 기록이 통째로 덮인다.
+  //
+  // 기수가 바뀌었으면 이전 값은 남의 것이므로 옮기지 않는다.
+  if (previous === cohortId) {
+    const prevAtt = new Map(
+      state.members.filter(m => m.attendanceByDate).map(m => [m.id, m.attendanceByDate])
+    );
+    for (const m of fresh.members) {
+      const att = prevAtt.get(m.id);
+      if (!att) continue;
+      m.attendanceByDate = att;
+      if (state.session) m.attendance = att[state.session] || '';
+    }
+  }
+
   Object.assign(state, fresh, { cohortId, loaded: true });
   writeCacheSync();
 
@@ -425,9 +447,37 @@ export async function getMyHomework(member) {
  * 회차 목록. 아직 지나지 않은 회차는 뺀다 —
  * 미래 회차에 O/X 가 들어가면 결석 수가 부풀려진다.
  */
-export function getSessions() {
+/**
+ * 회차 목록.
+ *
+ * 기본은 **지난 회차만**. 조회 화면(튜터용)이 미리 찍히면 결석 수가 부풀려진다.
+ * 관리자 화면은 지난 주차 정정이 주 업무라 { all: true } 로 전 주차를 받는다.
+ * 두 화면의 정책이 다르다는 것을 알고 쓸 것.
+ */
+export function getSessions({ all = false } = {}) {
+  if (all) return state.sessions.slice();
   const today = state.today || todayISO();
   return state.sessions.filter(s => s.date <= today);
+}
+
+/** GAS 가 확정한 오늘 (YYYY-MM-DD). 미래 회차를 가려내는 데 쓴다. */
+export function getToday() {
+  return state.today || todayISO();
+}
+
+/**
+ * 앱이 쓸 수 있는 출결 값인가.
+ *
+ * '◎'(지난 기수 이수) · '−'(집계 제외) · '돌봄' 같은 표기는 사람이 시트에
+ * 직접 넣은 것이고 앱은 그 뜻을 모른다. 화면에서 덮어쓸 수 있게 두면
+ * 무심코 누른 한 번에 지난 기수 기록이 사라진다. 고쳐야 하면 시트에서 고친다.
+ *
+ * GAS 의 DG_ALLOWED_STATUS 와 같은 규칙이다 — 한쪽만 바꾸면 저장이 조용히
+ * 거부되거나(kept) 화면과 시트가 어긋난다.
+ */
+export function isEditableStatus(v) {
+  const s = String(v || '').trim().toUpperCase();
+  return s === '' || s === 'O' || s === 'X';
 }
 
 /** 지금 화면이 보고 있는 회차 (YYYY-MM-DD). */
@@ -468,12 +518,15 @@ export async function saveAttendance(session, changes) {
   const result = await res.json();
   if (!result.success) throw new Error(result.message || '출결 저장 실패');
 
-  // 시트에 이미 다른 표기가 있어 두고 온 사람은 반영하지 않는다.
+  // 시트에 이미 다른 표기가 있어 두고 온 사람(kept)과, 시트에서 행을 못 찾은
+  // 사람(missing)은 실제로 저장되지 않았다. 화면에 반영하면 저장된 것처럼
+  // 보이고, 다음 갱신 때 조용히 옛 값으로 되돌아간다.
   const keptIds = new Set((result.kept || []).map(s => String(s).replace(/\(.*\)$/, '')));
+  const missingIds = new Set((result.missing || []).map(String));
 
   for (const c of changes) {
     const m = state.members.find(x => x.name === c.name && x.phone === c.phone);
-    if (!m || keptIds.has(m.id)) continue;
+    if (!m || keptIds.has(m.id) || missingIds.has(m.id)) continue;
     m.attendanceByDate = m.attendanceByDate || {};
     m.attendanceByDate[session] = c.status;
     if (session === state.session) m.attendance = c.status;
