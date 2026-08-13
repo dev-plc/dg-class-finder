@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v23)
+// DGfinder — Google Apps Script 전체 코드 (v24)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,17 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v24
+//   - doPost 가 { action: "sync" } 를 받으면 GitHub Actions 의 동기화 워크플로를
+//     실행한다. 관리자가 시트를 고친 직후 GitHub 에 들어가지 않고 앱에서 누른다.
+//     토큰은 스크립트 속성에 두고 앱에는 두지 않는다 — 앱 JS 는 누구나 읽는다.
+//   - 잠금(LockService)을 잡기 전에 처리한다. 동기화는 시트를 건드리지 않으므로
+//     출석 저장이 진행 중이어도 막힐 이유가 없다.
+//   - DG_authorizeAndCheck() — 시트·외부요청·GitHub 를 한 번에 점검한다.
+//     doGet/doPost 는 URL 로 불려서 승인 창을 띄울 자리가 없다. 사람이 편집기에서
+//     한 번 실행해 승인해야 한다. ⚠️ appsscript.json 의 oauthScopes 도 봐야 한다
+//     (scripts/gas/appsscript.json 참고). 목록에 없는 권한은 요청조차 하지 않는다.
 //
 // v23
 //   - 인원에 age 를 담는다. 관리자 화면이 쓰는 값이라 명시적으로 하나만 더한다
@@ -58,7 +69,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 23;
+var DG_VERSION = 24;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -75,10 +86,19 @@ var DG_ALLOWED_STATUS = ['O', 'X', ''];
 // 한 번에 저장할 수 있는 인원 수. 조 하나를 넘길 이유가 없다.
 var DG_MAX_BATCH = 100;
 
+// 시트 → DB 동기화 워크플로. 스크립트 속성으로 덮어쓸 수 있다.
+var DG_GH_REPO_DEFAULT = "dev-plc/dg-class-finder";
+var DG_GH_WORKFLOW_DEFAULT = "sync-db.yml";   // .github/workflows/ 안의 파일명 (화면 제목 아님)
+var DG_SYNC_MIN_INTERVAL_MS = 60 * 1000;
+
 // 스크립트 속성 (파일 → 프로젝트 설정 → 스크립트 속성)
 //   DG_SUPABASE_URL         https://xxxx.supabase.co
 //   DG_SUPABASE_SERVICE_KEY service_role 키. 절대 코드나 저장소에 두지 말 것.
 //   DG_START_YEAR           첫 회차의 연도 (예: 2025). 없으면 올해로 본다.
+//   DG_GH_TOKEN             GitHub fine-grained 토큰 (Actions: Read and write 하나면 된다).
+//                           역시 코드나 저장소에 두지 말 것.
+//   DG_GH_REPO              owner/repo. 없으면 DG_GH_REPO_DEFAULT.
+//   DG_GH_WORKFLOW          워크플로 파일명. 없으면 DG_GH_WORKFLOW_DEFAULT.
 function DG_prop(key) {
   return PropertiesService.getScriptProperties().getProperty(key) || '';
 }
@@ -369,6 +389,132 @@ function DG_readHomework(ss, tz) {
 //   { session: '2025-11-02', batch: [{ name, phone, status }, ...] }
 //   { name, phone, status }                      ← 옛 형태도 받는다 (오늘 회차로 본다)
 // ===========================================================================
+/**
+ * 시트 → DB 동기화 워크플로를 실행한다.
+ *
+ * 워크플로 실행에는 GitHub 토큰이 필요한데 그 토큰을 앱에 넣을 수 없다.
+ * 저장소가 공개면 JS 를 누구나 읽고, 비공개여도 브라우저에 내려간 코드는 열린다.
+ * 그래서 앱 → GAS → GitHub 로 한 단계를 둔다. 토큰은 스크립트 속성에만 있다.
+ */
+function DG_requestSync() {
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty('DG_GH_TOKEN');
+  if (!token) {
+    return { success: false, message: 'DG_GH_TOKEN 이 없습니다 (프로젝트 설정 → 스크립트 속성).' };
+  }
+
+  // 연타 방지. 앱에서도 막지만 주소를 직접 부르는 경우가 남는다.
+  // 스크립트 속성은 쓰기가 느려서 캐시를 쓴다.
+  var cache = CacheService.getScriptCache();
+  if (cache.get('dg_sync_recent')) {
+    return { success: false, message: '방금 요청했습니다. 1분 뒤에 다시 눌러 주세요.' };
+  }
+
+  var repo = props.getProperty('DG_GH_REPO') || DG_GH_REPO_DEFAULT;
+  var wf = props.getProperty('DG_GH_WORKFLOW') || DG_GH_WORKFLOW_DEFAULT;
+
+  var res = UrlFetchApp.fetch(
+    'https://api.github.com/repos/' + repo + '/actions/workflows/' + wf + '/dispatches', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      },
+      // 입력은 비워서 워크플로의 기본값이 쓰이게 한다. 여기에 값을 실으면
+      // dry_run 같은 옵션이 실수로 켜질 수 있다.
+      payload: JSON.stringify({ ref: 'main', inputs: {} }),
+      muteHttpExceptions: true
+    });
+
+  var code = res.getResponseCode();
+  if (code === 204) {
+    cache.put('dg_sync_recent', '1', Math.ceil(DG_SYNC_MIN_INTERVAL_MS / 1000));
+    return { success: true, message: '동기화를 요청했습니다. 보통 1~2분 걸립니다.' };
+  }
+  // 401·404 를 나눠 보여주는 게 중요하다. 토큰이 틀렸는지, 저장소 이름이
+  // 틀렸는지, 워크플로 파일명이 틀렸는지가 한 번에 갈린다.
+  if (code === 401 || code === 403) {
+    return { success: false, message: '토큰이 거부됐습니다 (' + code + '). 만료됐거나 권한이 없습니다.' };
+  }
+  if (code === 404) {
+    return { success: false, message: '워크플로를 찾지 못했습니다 (' + repo + ' · ' + wf + ').' };
+  }
+  return { success: false, message: 'GitHub ' + code + ': ' + res.getContentText().slice(0, 200) };
+}
+
+/**
+ * 권한·설정 점검. **편집기에서 ▶ 실행**해 승인 창을 띄우는 것이 목적이다.
+ *
+ * doGet/doPost 는 URL 로 불려서 승인 창을 띄울 자리가 없다. 권한 없이 배포되면
+ * 조용히 실패한다. 이 함수를 실행해 승인한 **뒤에** 재배포할 것. 순서를 바꾸면
+ * 그대로다.
+ */
+function DG_authorizeAndCheck() {
+  var props = PropertiesService.getScriptProperties();
+  var repo = props.getProperty('DG_GH_REPO') || DG_GH_REPO_DEFAULT;
+  var wf = props.getProperty('DG_GH_WORKFLOW') || DG_GH_WORKFLOW_DEFAULT;
+  var token = props.getProperty('DG_GH_TOKEN');
+  var url = DG_prop('DG_SUPABASE_URL');
+  var key = DG_prop('DG_SUPABASE_SERVICE_KEY');
+  var lines = [];
+
+  try {
+    lines.push('시트 접근      : ✅ ' + SpreadsheetApp.openById(DG_SHEET_ID).getName());
+  } catch (e) {
+    lines.push('시트 접근      : ❌ ' + e.message);
+  }
+
+  // ⚠️ 외부 요청 확인을 GitHub 의 미인증 주소로 하면 안 된다. Google 서버 IP 는
+  //    공용이라 미인증 한도에 걸려 403 이 나고, 권한 문제로 오해하게 된다.
+  //    인증되는 곳(여기서는 Supabase)으로 확인한다.
+  if (!url || !key) {
+    lines.push('외부 요청      : ⚠️ Supabase 속성이 없어 건너뜀');
+  } else {
+    try {
+      var sb = UrlFetchApp.fetch(url + '/rest/v1/dg_members?select=id&limit=1', {
+        headers: { apikey: key, Authorization: 'Bearer ' + key },
+        muteHttpExceptions: true
+      });
+      lines.push('외부 요청      : ' + (sb.getResponseCode() === 200 ? '✅' : '❌ ' + sb.getResponseCode()));
+    } catch (e) {
+      lines.push('외부 요청      : ❌ ' + e.message);
+    }
+  }
+
+  if (!token) {
+    lines.push('GitHub         : ❌ DG_GH_TOKEN 없음');
+  } else {
+    var gh = {
+      Authorization: 'Bearer ' + token,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    };
+    var r1 = UrlFetchApp.fetch('https://api.github.com/repos/' + repo,
+                               { headers: gh, muteHttpExceptions: true });
+    var c1 = r1.getResponseCode();
+    if (c1 === 200) {
+      lines.push('GitHub 저장소  : ✅ ' + repo);
+      var r2 = UrlFetchApp.fetch(
+        'https://api.github.com/repos/' + repo + '/actions/workflows/' + wf,
+        { headers: gh, muteHttpExceptions: true });
+      lines.push('GitHub 워크플로: ' +
+        (r2.getResponseCode() === 200 ? '✅ ' + wf : '❌ ' + wf + ' 없음 (' + r2.getResponseCode() + ')'));
+    } else if (c1 === 401) {
+      lines.push('GitHub 저장소  : ❌ 401 토큰이 잘못됐거나 만료됐습니다');
+    } else if (c1 === 404) {
+      lines.push('GitHub 저장소  : ❌ 404 ' + repo + ' 없음 또는 토큰 범위에 미포함');
+    } else {
+      lines.push('GitHub 저장소  : ❌ ' + c1);
+    }
+  }
+
+  var out = lines.join('\n');
+  Logger.log(out);
+  return out;
+}
+
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
@@ -376,6 +522,14 @@ function doPost(e) {
     }
 
     var body = JSON.parse(e.postData.contents);
+
+    // 동기화 요청은 시트를 건드리지 않는다. 잠금을 잡기 전에 끝낸다 —
+    // 출석 저장이 진행 중이라고 막힐 이유가 없다.
+    if (body && body.action === 'sync') {
+      var sync = DG_requestSync();
+      return DG_json({ success: sync.success, version: DG_VERSION, message: sync.message });
+    }
+
     var tz = Session.getScriptTimeZone();
 
     // ---- 저장할 목록 정리 --------------------------------------------------
@@ -753,6 +907,7 @@ function DG_addMenu(ui) {
   ui.createMenu('DGfinder')
     .addItem('지금 DB 에 맞추기', 'DG_pushToDb')
     .addItem('10분 트리거 등록', 'DG_installTrigger')
+    .addItem('권한·설정 점검', 'DG_authorizeAndCheck')
     .addToUi();
 }
 

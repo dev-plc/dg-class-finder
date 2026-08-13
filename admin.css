@@ -108,6 +108,41 @@ body.dark-mode .logout-btn:hover {
     background: var(--white);
 }
 
+/* ==================== 시트 동기화 ==================== */
+.sync-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    background: var(--white);
+    border-radius: 14px;
+    box-shadow: var(--shadow-sm);
+}
+.sync-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--white);
+    background: linear-gradient(135deg, var(--midnight-blue) 0%, var(--navy) 100%);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    min-height: 42px;
+}
+.sync-btn.ghost {
+    color: var(--text-dark);
+    background: var(--milk-beige);
+    border: 1px solid var(--warm-beige);
+}
+.sync-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.sync-info { font-size: 12px; color: var(--text-light); flex: 1 1 220px; }
+.sync-info.ok   { color: #047857; font-weight: 600; }
+.sync-info.fail { color: #b91c1c; font-weight: 600; }
+body.dark-mode .sync-info.ok   { color: #6ee7b7; }
+body.dark-mode .sync-info.fail { color: #fca5a5; }
+
 /* ==================== 탭 네비게이션 ==================== */
 .tab-nav {
     display: flex;
@@ -619,12 +654,34 @@ body.dark-mode .badge-lunch-no {
 }
 .att-select:focus { outline: none; border-color: var(--midnight-blue); }
 
+.att-session-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+}
 .att-session-info {
     font-size: 15px;
     font-weight: 600;
     color: var(--text-dark);
-    margin-bottom: 14px;
 }
+.att-freshness { display: flex; align-items: center; gap: 8px; }
+.att-loaded-at { font-size: 12px; color: var(--text-light); }
+.att-loaded-at.stale { color: #b45309; font-weight: 700; }
+.att-mini-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dark);
+    background: var(--white);
+    border: 1px solid var(--warm-beige);
+    border-radius: 10px;
+    cursor: pointer;
+}
+.att-mini-btn:hover { border-color: var(--midnight-blue); }
+body.dark-mode .att-loaded-at.stale { color: #fbbf24; }
 .att-future { color: #b45309; font-weight: 700; font-size: 13px; }
 
 /* 편집 중에 새 데이터가 왔다는 알림. 덮지 않고 알리기만 한다 */

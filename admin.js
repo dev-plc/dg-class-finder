@@ -21,10 +21,12 @@ import {
     getSessions,
     getToday,
     isEditableStatus,
-    refreshAttendance,
+    loadAttendanceForSession,
+    refresh,
+    requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=50';
+} from './scripts/members-data.js?v=51';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -142,6 +144,54 @@ tabBtns.forEach(btn => {
         // 출결은 시트에서 읽어야 해서 왕복이 붙는다. 탭을 열 때 한 번만 부른다.
         if (tabName === 'attendance') loadAttendance();
     });
+});
+
+// ==================== 시트 동기화 ====================
+//
+// 두 단계인 이유: 동기화가 끝나도 앱은 캐시를 들고 있다. 누군가는 다시 읽어야
+// 하는데, 워크플로가 언제 끝나는지 앱은 모른다. 그래서 버튼을 나눠 둔다.
+
+const syncBtn = document.getElementById('syncBtn');
+const syncReloadBtn = document.getElementById('syncReloadBtn');
+const syncInfo = document.getElementById('syncInfo');
+
+function setSyncInfo(msg, kind = '') {
+    if (!syncInfo) return;
+    syncInfo.textContent = msg;
+    syncInfo.className = 'sync-info' + (kind ? ' ' + kind : '');
+}
+
+syncBtn?.addEventListener('click', async () => {
+    syncBtn.disabled = true;
+    setSyncInfo('요청하는 중...');
+    try {
+        const res = await requestSheetSync();
+        setSyncInfo(res.success
+            ? res.message + ' 끝나면 [화면 새로 고침] 을 눌러 주세요.'
+            : res.message, res.success ? 'ok' : 'fail');
+    } catch (err) {
+        console.log('동기화 요청 실패:', err);
+        setSyncInfo('요청 실패: ' + err.message, 'fail');
+    } finally {
+        // 연타 방지. GAS 쪽에서도 1분을 막지만, 주소를 직접 부르는 경우가 남으므로
+        // 양쪽에서 막는다.
+        setTimeout(() => { syncBtn.disabled = false; }, 60000);
+    }
+});
+
+syncReloadBtn?.addEventListener('click', async () => {
+    syncReloadBtn.disabled = true;
+    setSyncInfo('다시 읽는 중...');
+    try {
+        await refresh();
+        if (attReady) await loadSessionAttendance();
+        setSyncInfo('새 데이터를 읽었습니다.', 'ok');
+    } catch (err) {
+        console.log('화면 새로 고침 실패:', err);
+        setSyncInfo('다시 읽지 못했습니다: ' + err.message, 'fail');
+    } finally {
+        syncReloadBtn.disabled = false;
+    }
 });
 
 // ==================== 검색 모드 ====================
@@ -474,8 +524,9 @@ let attDraft = new Map();         // uuid → 화면에서 고른 값
 let attLocked = new Map();        // uuid → 시트 표기 (앱이 못 건드리는 값)
 let attSaving = false;
 let attStale = false;             // 편집 중에 새 데이터가 도착했다
-let attReady = false;             // 시트에서 출결을 받아왔는가
+let attReady = false;             // 이 회차의 출결을 받아왔는가
 let attLoading = false;
+let attLoadedAtMs = 0;            // 마지막으로 읽은 시각
 
 function attEsc(v) {
     return String(v ?? '').replace(/[&<>"']/g, (c) =>
@@ -590,6 +641,7 @@ function updateAttSummary() {
 
     attSummary.innerHTML = parts.join('');
     if (attStaleNotice) attStaleNotice.style.display = attStale ? 'flex' : 'none';
+    renderAttLoadedAt();
 }
 
 function refreshAttSaveBar() {
@@ -740,11 +792,16 @@ document.getElementById('attRevertBtn')?.addEventListener('click', () => {
     renderAttList();
 });
 
-attReloadBtn?.addEventListener('click', () => {
+function attReload() {
     if (attChanges().length &&
         !confirm('저장하지 않은 변경이 있습니다. 버리고 새로 불러올까요?')) return;
-    loadAttendance({ force: true });
-});
+    loadSessionAttendance();
+}
+attReloadBtn?.addEventListener('click', attReload);
+document.getElementById('attReloadBtn2')?.addEventListener('click', attReload);
+
+// '몇 분 전 읽음' 이 멈춰 있으면 방금 읽은 값으로 착각한다.
+setInterval(() => { if (attReady) renderAttLoadedAt(); }, 30000);
 
 // ---- 저장 ----------------------------------------------------------------
 
@@ -808,9 +865,9 @@ attSessionPicker?.addEventListener('change', (e) => {
     if (!attConfirmDiscard()) { e.target.value = attSessionDate; return; }
     attSessionDate = e.target.value;
     attSavePrefs();
-    attSnapshot();
-    renderAttList();
     renderAttSessionInfo();
+    // 회차마다 값이 다르므로 그 회차만 다시 읽는다.
+    loadSessionAttendance();
 });
 
 attTeamPicker?.addEventListener('change', (e) => {
@@ -832,27 +889,49 @@ function renderAttSessionInfo() {
 
 // ---- 초기화 ---------------------------------------------------------------
 
-async function loadAttendance({ force = false } = {}) {
-    if (attLoading) return;
-    if (attReady && !force) return;
-
+// 고른 회차 하나만 DB 에서 읽는다.
+//
+// 예전에는 GAS 로 시트 전체를 읽었다. 화면을 열 때도 주차를 바꿀 때도 몇 초씩
+// 걸렸는데, 정작 쓰는 건 한 회차뿐이다. 회차 하나면 인원수만큼의 행이라 빠르다.
+async function loadSessionAttendance() {
+    if (!attSessionDate) return;
     attLoading = true;
     renderAttList();
     try {
-        // 출결의 원본은 시트다. DB 는 동기화 간격만큼 뒤처지므로 원본을 읽는다.
-        await refreshAttendance();
+        await loadAttendanceForSession(attSessionDate);
         memberData = getMembers();
         attReady = true;
-        initAttendanceTab();
+        attLoadedAtMs = Date.now();
+        attSnapshot();
     } catch (err) {
         console.log('출결 불러오기 실패:', err);
         attReady = false;
-        renderAttList();
     } finally {
         attLoading = false;
+        renderAttList();
     }
 }
 
+// 화면이 스스로 다시 읽지 않으므로, 언제 읽은 값인지는 보여 줘야 한다.
+// 안 보여주면 몇 시간 전 값을 지금 값으로 알고 저장한다.
+function renderAttLoadedAt() {
+    const el = document.getElementById('attLoadedAt');
+    if (!el) return;
+    if (!attLoadedAtMs) { el.textContent = ''; return; }
+    const mins = Math.floor((Date.now() - attLoadedAtMs) / 60000);
+    const when = mins < 1 ? '방금' : `${mins}분 전`;
+    el.textContent = `${when} 읽음`;
+    el.classList.toggle('stale', mins >= 10);
+}
+
+async function loadAttendance({ force = false } = {}) {
+    if (attLoading) return;
+    if (attReady && !force) return;
+    initAttendanceTab();
+    await loadSessionAttendance();
+}
+
+// 회차 목록·조 목록은 이미 받아 둔 DB 데이터로 만든다. 통신이 없다.
 function initAttendanceTab() {
     const sessions = getSessions({ all: true });
     if (!sessions.length) { renderAttList(); return; }
@@ -872,8 +951,6 @@ function initAttendanceTab() {
     renderAttSessionPicker();
     renderAttTeamPicker();
     renderAttSessionInfo();
-    attSnapshot();
-    renderAttList();
 }
 
 // 저장하지 않고 창을 닫는 것을 막는다.

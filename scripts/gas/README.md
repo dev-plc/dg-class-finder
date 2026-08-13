@@ -1,4 +1,95 @@
-# GAS doGet 추가분
+# GAS 설정
+
+전체 코드는 `doGet.js` 다. 여기 문서는 **손으로 해야 하는 설정**만 적는다.
+
+---
+
+## v24 — '시트에서 지금 가져오기' 버튼 설정
+
+관리자 페이지의 버튼이 GAS 를 거쳐 GitHub Actions 동기화를 실행한다.
+토큰을 앱에 넣을 수 없어서 GAS 를 한 단계 두는 것이다 — 앱 JS 는 누구나 읽는다.
+
+```
+앱 [버튼] ──POST {action:"sync"}──▶ GAS doPost ──▶ GitHub Actions ──▶ 시트를 읽어 DB 에
+            (토큰 없음)              (토큰은 여기)
+```
+
+### 1. GitHub 토큰 발급
+
+`Settings → Developer settings → Personal access tokens → Fine-grained tokens`
+
+| 항목 | 값 |
+|---|---|
+| Repository access | **`dev-plc/dg-class-finder` 만** |
+| Permissions | **`Actions: Read and write`** 하나면 된다 |
+| Expiration | 넉넉히. 만료되면 버튼이 401 로 죽는다 |
+
+### 2. 스크립트 속성
+
+Apps Script 편집기 → `프로젝트 설정`(왼쪽 톱니) → `스크립트 속성`
+
+```
+DG_GH_TOKEN    = (발급받은 토큰)
+DG_GH_REPO     = dev-plc/dg-class-finder     ← 없으면 기본값이 쓰인다
+DG_GH_WORKFLOW = sync-db.yml                 ← .github/workflows/ 안의 파일명 (화면 제목 아님)
+```
+
+⚠️ 토큰은 스크립트 속성에만. 코드·저장소·채팅 어디에도 남기지 말 것.
+
+### 3. 매니페스트 — ⚠️ 여기서 제일 오래 막힌다
+
+`UrlFetchApp.fetch 을 호출할 수 있는 권한이 없습니다` 가 뜨고, **승인 창을
+아무리 다시 띄워도 안 풀린다.**
+
+GAS 는 보통 코드를 훑어 필요한 권한을 스스로 잡는데, `appsscript.json` 에
+`oauthScopes` 가 적혀 있으면 **그 목록 밖의 권한은 요청조차 하지 않는다.**
+승인할 것이 없으니 버튼을 눌러도 그대로다.
+
+`프로젝트 설정` → `"appsscript.json" 매니페스트 파일을 편집기에 표시` 체크 →
+파일 목록에 나타나면 이 저장소의 `scripts/gas/appsscript.json` 내용으로 맞춘다.
+
+```json
+"oauthScopes": [
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/script.external_request",
+  "https://www.googleapis.com/auth/script.scriptapp"
+]
+```
+
+| 권한 | 쓰임 |
+|---|---|
+| `spreadsheets` | 출석부·김밥·과제 탭 읽기·쓰기 |
+| `script.external_request` | Supabase 호출, GitHub 워크플로 실행 |
+| `script.scriptapp` | 10분 트리거 등록 (`DG_installTrigger`) |
+
+### 4. 승인 → 재배포 (순서가 중요)
+
+`doGet`/`doPost` 는 URL 로 불려서 **승인 창을 띄울 자리가 없다.** 권한 없이
+배포되면 조용히 실패한다. 사람이 편집기에서 함수를 실행해야 승인이 된다.
+
+1. 편집기에서 **`DG_authorizeAndCheck` ▶ 실행** → 승인 창 → 허용
+2. 실행 로그에서 네 줄이 전부 ✅ 인지 확인
+3. **그다음** 재배포 (`배포 → 배포 관리 → ✏️ → 버전: 새 버전`)
+
+순서를 바꾸면 그대로다. 2번에서 승인 창이 안 뜨면 이미 승인됐거나 목록이 아직
+안 바뀐 것이다. 후자라면 [Google 계정 → 보안 → 타사 앱](https://myaccount.google.com/permissions)
+에서 이 스크립트의 액세스를 지우고 다시 실행하면 처음부터 묻는다.
+
+로그 예시:
+
+```
+시트 접근      : ✅ DG 출석부
+외부 요청      : ✅
+GitHub 저장소  : ✅ dev-plc/dg-class-finder
+GitHub 워크플로: ✅ sync-db.yml
+```
+
+`401` 은 토큰, `404` 는 저장소 이름 또는 워크플로 파일명이다. 나눠 보여주는
+이유가 그것이다.
+
+---
+
+# GAS doGet 추가분 (v18 이전 기록)
 
 동기화 스크립트가 필요로 하는 값 두 가지를 `doGet` 응답에 더한다.
 기존 로직은 건드리지 않는다.

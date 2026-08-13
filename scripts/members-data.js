@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=50';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=50';
+import { matches as hangulMatches } from './hangul.js?v=51';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=51';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -466,6 +466,41 @@ export function getToday() {
 }
 
 /**
+ * 한 회차의 출결만 DB 에서 읽어 온다.
+ *
+ * 관리자 출석 관리가 쓴다. 예전에는 refreshAttendance() 로 GAS 를 불렀는데,
+ * 그건 시트 전체(229명 × 39회차)를 읽어 통째로 내려주기 때문에 화면을 열 때도
+ * 주차를 바꿀 때도 몇 초씩 걸렸다. 정작 화면이 쓰는 건 한 회차뿐이다.
+ *
+ * DB 는 시트보다 뒤처질 수 있지만 그 폭이 정해져 있다 —
+ * GAS 10분 트리거가 시트와 DB 를 맞추고, 앱에서 저장한 것은 저장하는 그 자리에서
+ * 밀어넣는다. 시트를 손으로 고친 직후가 급하면 '시트에서 지금 가져오기' 를 쓴다.
+ *
+ * 덮어쓰기 보호는 어차피 서버에서 한 번 더 걸린다 — GAS 가 시트의 현재 값을
+ * 보고 O/X 가 아닌 칸이면 거부(kept)하므로, DB 가 뒤처져 있어도 '◎' 가 O/X 로
+ * 덮이는 일은 없다.
+ */
+export async function loadAttendanceForSession(date) {
+  if (!date) return new Map();
+
+  const rows = await sbSelect(
+    `dg_attendance?select=member_id,status&session_date=eq.${encodeURIComponent(date)}&order=member_id`
+  );
+  const byUuid = new Map(rows.map(r => [r.member_id, r.status ?? '']));
+
+  for (const m of state.members) {
+    m.attendanceByDate = m.attendanceByDate || {};
+    m.attendanceByDate[date] = byUuid.get(m._uuid) ?? '';
+  }
+  if (date === state.session) {
+    for (const m of state.members) m.attendance = m.attendanceByDate[date] || '';
+  }
+
+  notify({ type: 'session-attendance-loaded', session: date });
+  return byUuid;
+}
+
+/**
  * 앱이 쓸 수 있는 출결 값인가.
  *
  * '◎'(지난 기수 이수) · '−'(집계 제외) · '돌봄' 같은 표기는 사람이 시트에
@@ -538,6 +573,26 @@ export async function saveAttendance(session, changes) {
     kept: result.kept || [],
     missing: result.missing || [],
   };
+}
+
+/**
+ * 시트 → DB 동기화를 지금 실행한다 (GitHub Actions).
+ *
+ * 명단·편성·위치·과제는 하루 한 번 도는 워크플로로만 DB 에 들어온다. 수업 직전에
+ * 장소를 옮기거나 인원을 추가하면 그때까지 앱에 안 나오는데, 지금까지는 관리자가
+ * GitHub 에 들어가 워크플로를 손으로 돌리는 것 말고 방법이 없었다.
+ *
+ * 워크플로 실행에는 토큰이 필요하고 그 토큰은 앱에 둘 수 없다. GAS 를 거친다.
+ */
+export async function requestSheetSync() {
+  const res = await fetch(GAS_API_URL, {
+    method: 'POST',
+    // application/json 으로 보내면 preflight 때문에 CORS 로 막힌다.
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'sync' }),
+  });
+  const result = await res.json();
+  return { success: !!result.success, message: result.message || '' };
 }
 
 // ============================================================================

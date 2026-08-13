@@ -12,8 +12,8 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=50">
-    <link rel="stylesheet" href="admin.css?v=50">
+    <link rel="stylesheet" href="style.css?v=51">
+    <link rel="stylesheet" href="admin.css?v=51">
 </head>
 <body class="dark-mode">
     <div class="admin-container">
@@ -54,6 +54,13 @@
                 </div>
             </div>
         </header>
+
+        <!-- 시트 동기화 -->
+        <div class="sync-bar">
+            <button type="button" id="syncBtn" class="sync-btn">⟳ 시트에서 지금 가져오기</button>
+            <button type="button" id="syncReloadBtn" class="sync-btn ghost">화면 새로 고침</button>
+            <span id="syncInfo" class="sync-info">시트를 고쳤으면 여기서 가져오세요. 보통 1~2분 걸립니다.</span>
+        </div>
 
         <!-- 탭 네비게이션 -->
         <nav class="tab-nav">
@@ -166,7 +173,13 @@
                     </label>
                 </div>
 
-                <div class="att-session-info" id="attSessionInfo"></div>
+                <div class="att-session-row">
+                    <div class="att-session-info" id="attSessionInfo"></div>
+                    <div class="att-freshness">
+                        <span id="attLoadedAt" class="att-loaded-at"></span>
+                        <button type="button" id="attReloadBtn2" class="att-mini-btn">↻ 다시 읽기</button>
+                    </div>
+                </div>
 
                 <!-- 편집 중 배경 갱신이 도착하면 여기에 알린다 (덮지 않는다) -->
                 <div class="att-stale" id="attStaleNotice" style="display: none;">
@@ -213,7 +226,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=50"></script>
+    <script type="module" src="admin.js?v=51"></script>
 </body>
 </html>
 
