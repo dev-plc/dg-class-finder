@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=56';
+} from './scripts/members-data.js?v=57';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1119,7 +1119,10 @@ function renderPrPreview() {
         const body = t.members.map((m, i) => `
             <tr>
                 <td class="pr-c-no">${i + 1}</td>
-                <td class="pr-left">${attEsc(m.name)}<span class="pr-phone">${attEsc(m.phone || '')}</span></td>
+                <td class="pr-name">
+                    <span class="pr-nm">${attEsc(m.name)}<span class="pr-phone">${attEsc(m.phone || '')}</span></span>
+                    ${prRoleLabel(m.role) ? `<span class="pr-role">${attEsc(prRoleLabel(m.role))}</span>` : ''}
+                </td>
                 ${prCol.lunch() ? `<td class="pr-c-mark">${prLunchSet.has(m._uuid) ? 'O' : ''}</td>` : ''}
                 ${prCol.lunchReq() ? '<td class="pr-c-wide"></td>' : ''}
                 <td class="pr-c-mark"></td>
@@ -1142,7 +1145,7 @@ function renderPrPreview() {
                         <thead>
                             <tr>
                                 <th class="pr-c-no">No.</th>
-                                <th class="pr-left">이름</th>
+                                <th class="pr-name">이름</th>
                                 ${prCol.lunch() ? '<th class="pr-c-mark">김밥</th>' : ''}
                                 ${prCol.lunchReq() ? '<th class="pr-c-wide">김밥신청</th>' : ''}
                                 <th class="pr-c-mark">출석</th>
@@ -1160,6 +1163,13 @@ function renderPrPreview() {
     // 매번 끝까지 넘겨야 한다.
     prPreview.innerHTML = (prCol.summary() ? renderPrSummaries(teams, head) : '') + sheets;
     updatePrCount();
+}
+
+// 이름 밑에 붙일 직책. '조원' 은 대부분이라 적어 봐야 눈만 어지럽다 —
+// 종이에서 찾아야 하는 건 조장·서브튜터가 누구인가다.
+function prRoleLabel(role) {
+    const r = String(role || '').trim();
+    return (!r || r === '조원') ? '' : r;
 }
 
 function prTeamStat(t) {

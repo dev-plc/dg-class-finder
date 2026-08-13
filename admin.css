@@ -945,6 +945,12 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
 .pr-table tbody td { height: var(--pr-row, 9mm); }
 .pr-table .pr-c-no   { width: 26px; }
 .pr-table .pr-left   { width: 122px; text-align: left; padding-left: 6px; font-weight: 600; }
+/* 이름 칸은 가운데. 이름 길이가 두 자~네 자로 들쭉날쭉해서 왼쪽 정렬이면
+   칸 오른쪽이 통째로 비어 보인다 */
+.pr-table .pr-name   { width: 122px; text-align: center; font-weight: 600; }
+.pr-nm { display: block; }
+/* 직책은 이름 아래 한 줄로. 옆에 붙이면 이름이 밀려 줄바꿈이 난다 */
+.pr-role { display: block; margin-top: 1px; font-size: 9px; font-weight: 700; color: #555; }
 .pr-table .pr-c-mark { width: 34px; }
 .pr-table .pr-c-wide { width: 64px; }   /* '김밥신청' 은 글자가 길다 */
 .pr-table .pr-c-memo { width: auto; }   /* 남는 폭은 여기가 먹는다 */
