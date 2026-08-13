@@ -958,7 +958,10 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
     font-weight: 700;
     font-size: 11px;
 }
-.pr-table tbody td { height: var(--pr-row, 9mm); }
+/* 합계 줄도 본문과 같은 높이로. 안 걸어 두면 글자 높이만큼 쪼그라들어
+   집계표 맨 아래만 유독 얇아진다 */
+.pr-table tbody td,
+.pr-table tfoot td { height: var(--pr-row, 9mm); }
 /* 한 줄 걸러 옅게 — 스물다섯 줄을 손으로 훑을 때 줄을 놓치지 않게 */
 .pr-table tbody tr:nth-child(even) td { background: var(--pr-stripe); }
 .pr-table .pr-c-no   { width: 26px; font-size: 11px; }

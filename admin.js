@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=59';
+} from './scripts/members-data.js?v=60';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
