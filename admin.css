@@ -972,6 +972,9 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
 /* 번호는 옅게 — 읽을 것은 이름이지 번호가 아니다. 머리글은 제외한다 */
 .pr-table tbody .pr-c-no { color: var(--pr-sub); }
 .pr-table .pr-left   { width: 122px; text-align: left; padding-left: 6px; font-weight: 600; }
+/* 집계표의 조 이름 칸. 남는 폭을 여기가 먹는다 — 출석·메모 칸을 뺀 뒤로
+   auto 를 가진 칸이 없으면 숫자 칸들이 쓸데없이 벌어진다 */
+.pr-table .pr-sum-name { width: auto; text-align: left; padding-left: 6px; font-weight: 600; }
 /* 이름 칸은 가운데. 이름 길이가 두 자~네 자로 들쭉날쭉해서 왼쪽 정렬이면
    칸 오른쪽이 통째로 비어 보인다 */
 .pr-table .pr-name   { width: 122px; text-align: center; font-weight: 600; }

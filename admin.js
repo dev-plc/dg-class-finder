@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=62';
+} from './scripts/members-data.js?v=63';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1035,6 +1035,27 @@ function prSaveCols() {
     } catch { /* 무시 */ }
 }
 
+/**
+ * 출력에서 뺀 조를 기억한다. 매번 다시 고르게 하면 안 된다.
+ *
+ * 조 이름으로 기억하므로 주차나 범위를 바꿔도 뜻이 살아 있다 — 범위 밖으로
+ * 나간 조는 그냥 안 그려질 뿐이고, 다시 범위에 들어오면 뺀 채로 나온다.
+ */
+const PR_SKIP_KEY = 'dg_admin_print_skip_v1';
+
+function prSaveSkip() {
+    try {
+        localStorage.setItem(PR_SKIP_KEY, JSON.stringify([...prSkip]));
+    } catch { /* 무시 */ }
+}
+
+function prLoadSkip() {
+    try {
+        const arr = JSON.parse(localStorage.getItem(PR_SKIP_KEY) || '[]');
+        if (Array.isArray(arr)) prSkip = new Set(arr.filter(v => typeof v === 'string'));
+    } catch { /* 무시 */ }
+}
+
 function prLoadCols() {
     try {
         const saved = JSON.parse(localStorage.getItem(PR_COLS_KEY) || 'null');
@@ -1277,20 +1298,22 @@ function renderPrSummaries(teams, head) {
 // showLocation — 여러 장소가 섞인 '전체' 장에서만 장소 열을 둔다.
 // 장소별 장은 머리말에 이미 있어서 열로 두면 같은 값이 줄마다 반복된다.
 function renderPrSummary(key, title, teams, head, showLocation) {
-    // 조 순서는 어디서나 오름차순이다 — 집계표와 조별 출석부의 차례가 어긋나면
-    // 한 장씩 짚어 가며 대조할 수가 없다.
-    const sorted = [...teams].sort((a, b) => compareTeamName(a.name, b.name));
+    // 집계표는 인원 많은 조부터. 손이 많이 가는 조가 위에 있어야 한다.
+    // (조별 출석부는 조 번호 순 그대로다 — 그쪽은 한 장씩 짚어 가며 쓰는 종이라
+    //  번호 순서가 어긋나면 찾기 어렵다. 두 표의 기준이 다른 건 의도한 것이다.)
+    const sorted = [...teams].sort((a, b) =>
+        b.members.length - a.members.length || compareTeamName(a.name, b.name));
 
+    // 출석·메모 칸은 두지 않는다. 집계표는 눈으로 보는 표이지 손으로 적는
+    // 종이가 아니다 — 그건 조별 출석부가 한다.
     const rows = sorted.map(t => {
         const s = prTeamStat(t);
         return `<tr>
-            <td class="pr-left">${attEsc(t.name)}</td>
+            <td class="pr-sum-name">${attEsc(t.name)}</td>
             ${showLocation ? `<td class="pr-left">${attEsc(t.location || '-')}</td>` : ''}
             <td class="pr-c-mark">${s.n}</td>
             <td class="pr-c-mark">${s.lunch}</td>
             <td class="pr-c-mark">${s.hw}</td>
-            <td class="pr-c-mark"></td>
-            <td class="pr-c-memo"></td>
         </tr>`;
     }).join('');
 
@@ -1314,19 +1337,17 @@ function renderPrSummary(key, title, teams, head, showLocation) {
                 <div class="pr-table-wrap">
                 <table class="pr-table">
                     <thead><tr>
-                        <th class="pr-left">조</th>
+                        <th class="pr-sum-name">조</th>
                         ${showLocation ? '<th class="pr-left">장소</th>' : ''}
                         <th class="pr-c-mark">인원</th><th class="pr-c-mark">김밥</th>
-                        <th class="pr-c-mark">과제</th><th class="pr-c-mark">출석</th>
-                        <th class="pr-c-memo">메모</th>
+                        <th class="pr-c-mark">과제</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                     <tfoot><tr class="pr-total">
-                        <td class="pr-left">합계</td>
+                        <td class="pr-sum-name">합계</td>
                         ${showLocation ? '<td class="pr-left"></td>' : ''}
                         <td class="pr-c-mark">${sum.n}</td><td class="pr-c-mark">${sum.lunch}</td>
-                        <td class="pr-c-mark">${sum.hw}</td><td class="pr-c-mark"></td>
-                        <td class="pr-c-memo"></td>
+                        <td class="pr-c-mark">${sum.hw}</td>
                     </tr></tfoot>
                 </table>
                 </div>
@@ -1349,6 +1370,7 @@ prPreview?.addEventListener('change', (e) => {
     const sheet = box.closest('.pr-sheet');
     if (box.checked) { prSkip.delete(team); sheet.classList.remove('pr-skip'); }
     else { prSkip.add(team); sheet.classList.add('pr-skip'); }
+    prSaveSkip();
     updatePrCount();
 });
 
@@ -1361,6 +1383,7 @@ function prSetAll(on) {
         if (on) prSkip.delete(sheet.dataset.team);
         else prSkip.add(sheet.dataset.team);
     });
+    prSaveSkip();
     updatePrCount();
 }
 
@@ -1393,17 +1416,16 @@ document.getElementById('prColLunchReq')?.addEventListener('change', () => {
     renderPrPreview();
 });
 
+// 주차·범위를 바꿔도 뺀 조는 그대로 둔다. 조 이름으로 기억하고 있어서
+// 범위 밖으로 나가면 안 그려질 뿐이고, 다시 들어오면 뺀 채로 나온다.
 prSessionPicker?.addEventListener('change', (e) => {
     prSessionDate = e.target.value;
-    // 범위가 달라지면 뺐던 조가 목록에 없을 수도 있어 그 선택은 뜻을 잃는다.
-    prSkip.clear();
     prApplyAutoLunchReq();
     loadPrintData();
 });
 
 prScopePicker?.addEventListener('change', (e) => {
     prScope = e.target.value;
-    prSkip.clear();
     renderPrPreview();
 });
 
@@ -1442,6 +1464,7 @@ function initPrintTab() {
     prSessionDate = nearestSessionDate(sessions, today) || sessions[sessions.length - 1].date;
 
     renderPrPickers();
+    prLoadSkip();          // 지난번에 뺀 조
     prLoadCols();          // 기억해 둔 칸을 먼저 되살리고
     prApplyAutoLunchReq(); // 김밥신청은 그 위에 자동 판단으로 덮는다
 }
