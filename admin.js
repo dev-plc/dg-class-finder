@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=61';
+} from './scripts/members-data.js?v=62';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1002,7 +1002,49 @@ let prReady = false;
 let prLoading = false;
 // 사람이 '김밥신청' 을 직접 토글하면 그 뜻을 존중한다. 주차를 바꿔도 되돌리지
 // 않는다. 자동 판단이 사람 판단을 덮으면 신뢰를 잃는다.
+//
+// 이 값은 화면을 새로 열면 초기화된다 — 아래 prSaveCols 참고.
 let prLunchReqTouched = false;
+
+/**
+ * 표시할 칸을 기억한다. 매번 다시 체크하게 하면 안 된다.
+ *
+ * '김밥신청' 만 뺀다. 그 칸은 '이 주차가 그 달의 마지막 수업인가' 로 자동으로
+ * 정해지는데, 한 번 손댄 것을 영구히 기억해 버리면 그 판단이 영영 죽는다.
+ * 다음 달 마지막 주에 칸이 안 나오고, 왜 안 나오는지도 알 수 없다.
+ *
+ * 그래서 김밥신청은 화면을 열 때마다 자동 판단으로 시작하고, 그 화면을 보는
+ * 동안 직접 토글한 것만 지킨다.
+ */
+const PR_COLS_KEY = 'dg_admin_print_cols_v1';
+const PR_SAVED_COLS = [
+    ['prColLunch', 'lunch'],
+    ['prColHw', 'hw'],
+    ['prColMemo', 'memo'],
+    ['prColSummary', 'summary'],
+];
+
+function prSaveCols() {
+    try {
+        const out = {};
+        for (const [id, key] of PR_SAVED_COLS) {
+            const el = document.getElementById(id);
+            if (el) out[key] = el.checked;
+        }
+        localStorage.setItem(PR_COLS_KEY, JSON.stringify(out));
+    } catch { /* 무시 */ }
+}
+
+function prLoadCols() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(PR_COLS_KEY) || 'null');
+        if (!saved) return;
+        for (const [id, key] of PR_SAVED_COLS) {
+            const el = document.getElementById(id);
+            if (el && typeof saved[key] === 'boolean') el.checked = saved[key];
+        }
+    } catch { /* 무시 */ }
+}
 
 const prCol = {
     lunch: () => document.getElementById('prColLunch')?.checked,
@@ -1339,9 +1381,13 @@ document.getElementById('prPrintBtn')?.addEventListener('click', () => {
 // 칸 토글 — 성격이 다른 칸을 한 체크박스로 묶지 않는다.
 // '김밥 현황'(데이터)과 '김밥신청'(빈칸)을 묶었다가 신청 칸을 끄면 현황까지
 // 사라지는 일이 있었다.
-['prColLunch', 'prColHw', 'prColMemo', 'prColSummary'].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', renderPrPreview);
-});
+for (const [id] of PR_SAVED_COLS) {
+    document.getElementById(id)?.addEventListener('change', () => {
+        prSaveCols();
+        renderPrPreview();
+    });
+}
+// 김밥신청은 기억하지 않는다 (위 prSaveCols 주석 참고).
 document.getElementById('prColLunchReq')?.addEventListener('change', () => {
     prLunchReqTouched = true;
     renderPrPreview();
@@ -1396,7 +1442,8 @@ function initPrintTab() {
     prSessionDate = nearestSessionDate(sessions, today) || sessions[sessions.length - 1].date;
 
     renderPrPickers();
-    prApplyAutoLunchReq();
+    prLoadCols();          // 기억해 둔 칸을 먼저 되살리고
+    prApplyAutoLunchReq(); // 김밥신청은 그 위에 자동 판단으로 덮는다
 }
 
 async function openPrintTab() {
