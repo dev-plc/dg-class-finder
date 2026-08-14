@@ -8,7 +8,7 @@
 // ⚠️ 아래 로그인 확인은 화면 전환일 뿐 보호 장치가 아니다. 콘솔에서
 //    sessionStorage 한 줄이면 통과한다. 이 화면이 보여주는 값은 모두 anon 키로
 //    읽히는 것이라, 진짜로 가리려면 Supabase Auth 로 경로를 나눠야 한다.
-import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=66';
+import { ensureLoaded, getMembers, subscribe } from './scripts/members-data.js?v=67';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
