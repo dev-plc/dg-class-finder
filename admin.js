@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=63';
+} from './scripts/members-data.js?v=64';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1259,11 +1259,11 @@ function prRoleLabel(role) {
     return (!r || r === '조원') ? '' : r;
 }
 
+// 집계표에 싣는 값. 과제는 넣지 않는다 — 조별 출석부의 과제 칸이 그 일을 한다.
 function prTeamStat(t) {
     return {
         n: t.members.length,
         lunch: t.members.filter(m => prLunchSet.has(m._uuid)).length,
-        hw: t.members.filter(m => prHwSet.has(m._uuid)).length,
     };
 }
 
@@ -1304,8 +1304,8 @@ function renderPrSummary(key, title, teams, head, showLocation) {
     const sorted = [...teams].sort((a, b) =>
         b.members.length - a.members.length || compareTeamName(a.name, b.name));
 
-    // 출석·메모 칸은 두지 않는다. 집계표는 눈으로 보는 표이지 손으로 적는
-    // 종이가 아니다 — 그건 조별 출석부가 한다.
+    // 출석·과제·메모 칸은 두지 않는다. 집계표는 몇 명이고 김밥이 몇 개인지
+    // 한눈에 보는 표다 — 사람별로 따지는 것은 조별 출석부가 한다.
     const rows = sorted.map(t => {
         const s = prTeamStat(t);
         return `<tr>
@@ -1313,14 +1313,13 @@ function renderPrSummary(key, title, teams, head, showLocation) {
             ${showLocation ? `<td class="pr-left">${attEsc(t.location || '-')}</td>` : ''}
             <td class="pr-c-mark">${s.n}</td>
             <td class="pr-c-mark">${s.lunch}</td>
-            <td class="pr-c-mark">${s.hw}</td>
         </tr>`;
     }).join('');
 
     const sum = sorted.reduce((acc, t) => {
         const s = prTeamStat(t);
-        return { n: acc.n + s.n, lunch: acc.lunch + s.lunch, hw: acc.hw + s.hw };
-    }, { n: 0, lunch: 0, hw: 0 });
+        return { n: acc.n + s.n, lunch: acc.lunch + s.lunch };
+    }, { n: 0, lunch: 0 });
 
     const id = '__summary__:' + key;
     return `
@@ -1340,14 +1339,12 @@ function renderPrSummary(key, title, teams, head, showLocation) {
                         <th class="pr-sum-name">조</th>
                         ${showLocation ? '<th class="pr-left">장소</th>' : ''}
                         <th class="pr-c-mark">인원</th><th class="pr-c-mark">김밥</th>
-                        <th class="pr-c-mark">과제</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                     <tfoot><tr class="pr-total">
                         <td class="pr-sum-name">합계</td>
                         ${showLocation ? '<td class="pr-left"></td>' : ''}
                         <td class="pr-c-mark">${sum.n}</td><td class="pr-c-mark">${sum.lunch}</td>
-                        <td class="pr-c-mark">${sum.hw}</td>
                     </tr></tfoot>
                 </table>
                 </div>
