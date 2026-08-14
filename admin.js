@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=65';
+} from './scripts/members-data.js?v=66';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1319,7 +1319,6 @@ function renderPrSummary(key, title, teams, head, showLocation) {
             ${showLocation ? `<td class="pr-left">${attEsc(t.location || '-')}</td>` : ''}
             <td class="pr-c-mark">${s.n}</td>
             <td class="pr-c-mark">${s.lunch}</td>
-            <td class="pr-c-fill"></td>
         </tr>`;
     }).join('');
 
@@ -1341,21 +1340,17 @@ function renderPrSummary(key, title, teams, head, showLocation) {
                 </div>
                 <div class="pr-sub">${sorted.length}개 조 · 인원 ${sum.n}명</div>
                 <div class="pr-table-wrap">
-                <table class="pr-table">
+                <table class="pr-table pr-sum-table">
                     <thead><tr>
                         <th class="pr-sum-name">조</th>
                         ${showLocation ? '<th class="pr-left">장소</th>' : ''}
                         <th class="pr-c-mark">인원</th><th class="pr-c-mark">김밥</th>
-                        <!-- 남는 폭을 먹는 테두리 없는 칸. 이게 없으면 fixed 레이아웃이
-                             남는 폭을 앞 칸들에 나눠 줘서 조 이름 칸만 커진다 -->
-                        <th class="pr-c-fill"></th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                     <tfoot><tr class="pr-total">
                         <td class="pr-sum-name">합계</td>
                         ${showLocation ? '<td class="pr-left"></td>' : ''}
                         <td class="pr-c-mark">${sum.n}</td><td class="pr-c-mark">${sum.lunch}</td>
-                        <td class="pr-c-fill"></td>
                     </tr></tfoot>
                 </table>
                 </div>

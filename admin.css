@@ -972,9 +972,17 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
 /* 번호는 옅게 — 읽을 것은 이름이지 번호가 아니다. 머리글은 제외한다 */
 .pr-table tbody .pr-c-no { color: var(--pr-sub); }
 .pr-table .pr-left   { width: 122px; text-align: left; padding-left: 6px; font-weight: 600; }
-/* 집계표의 조 이름 칸. 'Y1' 처럼 짧아서 넓을 이유가 없다 —
-   남는 폭은 맨 끝 pr-c-fill 이 먹는다 */
-.pr-table .pr-sum-name { width: 96px; text-align: left; padding-left: 6px; font-weight: 600; }
+.pr-table .pr-sum-name { text-align: left; padding-left: 6px; font-weight: 600; }
+
+/* 집계표는 칸이 넷뿐이라 px 로 잡으면 종이 왼쪽에만 몰린다.
+   비율로 잡아 A4 폭을 채운다.
+   장소 칸이 없는 장(장소별 집계표)에서는 fixed 레이아웃이 남는 폭을 비율대로
+   나눠 주므로 30·15·15 가 50·25·25 로 늘어난다 — 거기서도 폭이 찬다. */
+.pr-sum-table .pr-sum-name { width: 30%; }
+.pr-sum-table .pr-left     { width: 40%; }   /* 장소 */
+.pr-sum-table .pr-c-mark   { width: 15%; }
+/* 칸이 넓어진 만큼 글자도 키운다. 12px 는 이 폭에서 파묻힌다 */
+.pr-sum-table th, .pr-sum-table td { font-size: 13px; }
 /* 이름 칸은 가운데. 이름 길이가 두 자~네 자로 들쭉날쭉해서 왼쪽 정렬이면
    칸 오른쪽이 통째로 비어 보인다 */
 .pr-table .pr-name   { width: 122px; text-align: center; font-weight: 600; }
