@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=64';
+} from './scripts/members-data.js?v=65';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -306,7 +306,10 @@ searchNameInput.addEventListener('input', hideSearchError);
 let allTeams = []; // 전체 조 데이터 저장
 
 // 조 이름 자연 정렬. 출석 관리 탭도 같은 순서를 써야 두 화면이 어긋나지 않는다.
-const TEAM_PREFERRED_ORDER = ['새', '남', '여', 'DG', 'C', 'O', 'V', 'Y', 'M', 'W'];
+//
+// 앞의 넷(Y 청년부 · C 청년부부 · 남 남장년부 · 여 여장년부)이 부서 차례다.
+// 뒤의 것들은 여기 없는 접두어를 위한 자리로, 나오면 이 순서로 따라붙는다.
+const TEAM_PREFERRED_ORDER = ['Y', 'C', '남', '여', 'O', '새', 'DG', 'V', 'M', 'W'];
 
 function compareTeamName(a, b) {
     const getPrefix = (str) => (String(str).match(/^[가-힣A-Za-z]+/)?.[0] || '');
@@ -1289,7 +1292,11 @@ function renderPrSummaries(teams, head) {
         return renderPrSummary(loc, loc, teams, head, false);
     }
 
-    const locs = [...byLoc.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko'));
+    // 장 순서는 인원 많은 장소부터. 사람이 많은 곳이 먼저 나와야 한다.
+    // (장 안의 조 차례는 조 이름 순 — 아래 renderPrSummary 참고)
+    const sizeOf = (ts) => ts.reduce((n, t) => n + t.members.length, 0);
+    const locs = [...byLoc.entries()].sort(
+        (a, b) => sizeOf(b[1]) - sizeOf(a[1]) || a[0].localeCompare(b[0], 'ko'));
 
     return renderPrSummary('__all__', '전체', teams, head, true)
          + locs.map(([loc, ts]) => renderPrSummary(loc, loc, ts, head, false)).join('');
@@ -1298,11 +1305,10 @@ function renderPrSummaries(teams, head) {
 // showLocation — 여러 장소가 섞인 '전체' 장에서만 장소 열을 둔다.
 // 장소별 장은 머리말에 이미 있어서 열로 두면 같은 값이 줄마다 반복된다.
 function renderPrSummary(key, title, teams, head, showLocation) {
-    // 집계표는 인원 많은 조부터. 손이 많이 가는 조가 위에 있어야 한다.
-    // (조별 출석부는 조 번호 순 그대로다 — 그쪽은 한 장씩 짚어 가며 쓰는 종이라
-    //  번호 순서가 어긋나면 찾기 어렵다. 두 표의 기준이 다른 건 의도한 것이다.)
-    const sorted = [...teams].sort((a, b) =>
-        b.members.length - a.members.length || compareTeamName(a.name, b.name));
+    // 표 안의 조는 이름 순(Y · C · 남 · 여). 인원순으로 섞으면 조별 출석부와
+    // 차례가 어긋나 한 장씩 짚어 가며 대조할 수가 없다.
+    // 인원 많은 순은 장 순서에만 쓴다 (위 renderPrSummaries 참고).
+    const sorted = [...teams].sort((a, b) => compareTeamName(a.name, b.name));
 
     // 출석·과제·메모 칸은 두지 않는다. 집계표는 몇 명이고 김밥이 몇 개인지
     // 한눈에 보는 표다 — 사람별로 따지는 것은 조별 출석부가 한다.
@@ -1313,6 +1319,7 @@ function renderPrSummary(key, title, teams, head, showLocation) {
             ${showLocation ? `<td class="pr-left">${attEsc(t.location || '-')}</td>` : ''}
             <td class="pr-c-mark">${s.n}</td>
             <td class="pr-c-mark">${s.lunch}</td>
+            <td class="pr-c-fill"></td>
         </tr>`;
     }).join('');
 
@@ -1339,12 +1346,16 @@ function renderPrSummary(key, title, teams, head, showLocation) {
                         <th class="pr-sum-name">조</th>
                         ${showLocation ? '<th class="pr-left">장소</th>' : ''}
                         <th class="pr-c-mark">인원</th><th class="pr-c-mark">김밥</th>
+                        <!-- 남는 폭을 먹는 테두리 없는 칸. 이게 없으면 fixed 레이아웃이
+                             남는 폭을 앞 칸들에 나눠 줘서 조 이름 칸만 커진다 -->
+                        <th class="pr-c-fill"></th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                     <tfoot><tr class="pr-total">
                         <td class="pr-sum-name">합계</td>
                         ${showLocation ? '<td class="pr-left"></td>' : ''}
                         <td class="pr-c-mark">${sum.n}</td><td class="pr-c-mark">${sum.lunch}</td>
+                        <td class="pr-c-fill"></td>
                     </tr></tfoot>
                 </table>
                 </div>
