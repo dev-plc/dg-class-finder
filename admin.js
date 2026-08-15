@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=75';
+} from './scripts/members-data.js?v=76';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -97,9 +97,13 @@ subscribe((event) => {
         }
     }
 
-    // 출석부 출력도 스냅숏이다. 시트에서 새로 가져왔으면 김밥·과제를 다시
-    // 읽어야 한다 — 안 그러면 동기화를 했는데도 옛 체크가 그대로 남는다.
-    if (prSessionDate) loadPrintData();
+    // 출석부 출력도 스냅숏이다. 시트에서 새로 가져왔으면 **주차 목록부터**
+    // 다시 세우고 김밥·과제를 다시 읽는다 — 이번 주 회차가 새로 생겼을 수도,
+    // 옛 체크가 그대로 남아 있을 수도 있다.
+    if (prSessionDate) {
+        prSyncSessions();
+        loadPrintData();
+    }
 
     // 출석 관리 탭만 값을 스냅숏으로 떠 놓는다. 목록 화면은 그릴 때마다 최신을
     // 읽지만 여기는 로드 시점 값을 붙들고 있어, 새 데이터가 와도 모른다.
@@ -1008,6 +1012,7 @@ const prPickToggle = document.getElementById('prPickToggleBtn');
 const prCount = document.getElementById('prCount');
 
 let prSessionDate = null;
+let prSessionTouched = false;     // 사람이 주차를 직접 골랐는가
 let prScope = 'all';              // 'all' | 'loc:웨슬리홀' | 'team:Y1'
 let prSkip = new Set();           // 출력에서 뺀 조
 let prLunchSet = new Set();
@@ -1559,6 +1564,7 @@ document.getElementById('prColLunchReq')?.addEventListener('change', () => {
 // 범위 밖으로 나가면 안 그려질 뿐이고, 다시 들어오면 뺀 채로 나온다.
 prSessionPicker?.addEventListener('change', (e) => {
     prSessionDate = e.target.value;
+    prSessionTouched = true;   // 사람이 고른 것은 새로 고쳐도 덮지 않는다
     prApplyAutoLunchReq();
     loadPrintData();
 });
@@ -1600,8 +1606,7 @@ function initPrintTab() {
 
     // 기본값은 오늘과 가장 가까운 회차. 출석 관리와 같은 기준이라
     // 탭을 옮겨도 같은 주차를 보게 된다.
-    const today = getToday();
-    prSessionDate = nearestSessionDate(sessions, today) || sessions[sessions.length - 1].date;
+    prSessionDate = nearestSessionDate(sessions, getToday()) || sessions[sessions.length - 1].date;
 
     renderPrPickers();
     prLoadSkip();          // 지난번에 뺀 조
@@ -1609,9 +1614,40 @@ function initPrintTab() {
     prApplyAutoLunchReq(); // 김밥신청은 그 위에 자동 판단으로 덮는다
 }
 
+/**
+ * 주차 목록을 지금 데이터에 맞춘다.
+ *
+ * 주차는 탭을 처음 열 때 한 번 고르고 끝이었다. 그래서 시트에 이번 주 회차를
+ * 새로 넣고 가져와도, 목록에는 그 주차가 아예 없고 지난 주차가 골라진 채로
+ * 남았다 — 출석부를 뽑으면 지난주 것이 나온다.
+ *
+ * 사람이 직접 고른 주차는 건드리지 않는다. 다만 그 주차가 목록에서 사라졌다면
+ * 붙들고 있을 수 없으므로 가장 가까운 회차로 돌아간다.
+ *
+ * @returns {boolean} 주차가 바뀌었는가 (바뀌었으면 다시 읽어야 한다)
+ */
+function prSyncSessions() {
+    const sessions = getSessions({ all: true });
+    if (!sessions.length) return false;
+
+    const before = prSessionDate;
+    if (!prSessionTouched || !sessions.some(s => s.date === prSessionDate)) {
+        prSessionDate = nearestSessionDate(sessions, getToday()) || sessions[sessions.length - 1].date;
+    }
+
+    renderPrPickers();
+    if (prSessionDate !== before) prApplyAutoLunchReq();
+    return prSessionDate !== before;
+}
+
 async function openPrintTab() {
     if (prLoading) return;
-    if (prReady) return;
+    if (prReady) {
+        // 다시 열 때도 맞춰 본다. 화면을 켜 둔 채 자정을 넘겼거나
+        // 그사이 회차가 늘었을 수 있다.
+        if (prSyncSessions()) await loadPrintData();
+        return;
+    }
     initPrintTab();
     await loadPrintData();
 }
