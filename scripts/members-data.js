@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=74';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=74';
+import { matches as hangulMatches } from './hangul.js?v=75';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=75';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -200,6 +200,9 @@ export async function refresh() {
   }
 
   Object.assign(state, fresh, { cohortId, loaded: true });
+  // 과제는 여기서 받아오지 않지만, 시트에서 새로 가져온 뒤라면 그것도 옛것이다.
+  // 버려 두면 다음에 필요할 때 다시 받는다.
+  homeworkAllCache = null;
   writeCacheSync();
 
   if (previous && previous !== cohortId) {
@@ -421,6 +424,12 @@ export function isClassSession(name) {
 
 // 과제는 회차 날짜가 없고 강의명만 있다. 회차를 바꿀 때마다 다시 받을 이유가
 // 없으므로 한 번 받아 두고 강의명으로 걸러 쓴다.
+//
+// 두 가지를 지켜야 한다.
+//   1. **실패를 캐시하지 않는다.** 못 받은 것을 빈 배열로 넣어 두면 그 뒤로는
+//      조회조차 하지 않아, 과제 칸이 영영 비는데 오류도 안 난다.
+//   2. **시트에서 새로 가져오면 버린다.** 안 그러면 동기화를 해도 옛 과제가
+//      그대로 남는다 — refresh() 가 지운다.
 let homeworkAllCache = null;
 
 /**
@@ -430,10 +439,17 @@ let homeworkAllCache = null;
  * 전 인원(229명)이면 uuid 목록만 8KB 가 넘어 주소가 감당하지 못한다.
  * 회차로 좁히면 인원수만큼의 행이라 그럴 필요가 없다.
  *
- * @returns { lunch: Set(uuid), homework: Set(uuid) }
+ * 과제가 왜 안 붙었는지도 같이 돌려준다. 빈 칸만 보여 주면 아무도 원인을
+ * 알 수 없다 — 회차 이름이 없는 것과, 폼에 다르게 적힌 것은 손볼 곳이 다르다.
+ *
+ * @returns { lunch: Set(uuid), homework: Set(uuid),
+ *            hwLoaded: boolean,          // 과제를 실제로 읽었는가
+ *            hwTotal: number,            // 전체 과제 건수
+ *            hwNear: [{lecture, n}] }    // 숫자는 같은데 표기가 다른 것
  */
 export async function getSessionExtras(sessionDate, lectureName) {
-  const empty = { lunch: new Set(), homework: new Set() };
+  const empty = { lunch: new Set(), homework: new Set(),
+                  hwLoaded: false, hwTotal: 0, hwNear: [] };
   if (!sessionDate) return empty;
 
   const lunchRows = await sbSelect(
@@ -441,19 +457,59 @@ export async function getSessionExtras(sessionDate, lectureName) {
     `&applied=is.true&order=member_id`
   ).catch(() => []);
 
+  let hwLoaded = true;
   if (!homeworkAllCache) {
-    homeworkAllCache = await sbSelect(
-      'dg_homework?select=member_id,lecture&order=member_id,lecture'
-    ).catch(() => []);
+    try {
+      homeworkAllCache = await sbSelect(
+        'dg_homework?select=member_id,lecture&order=member_id,lecture'
+      );
+    } catch (err) {
+      console.log('과제 조회 실패:', err);
+      hwLoaded = false;      // 캐시에 남기지 않는다 — 다음에 다시 받는다
+    }
   }
+  const hwRows = homeworkAllCache || [];
 
   // 강의명은 시트와 폼에 따로 적혀 글자가 어긋난다. 정규화한 뒤에 견준다.
   const key = normalizeLecture(lectureName);
   const homework = new Set(
-    key ? homeworkAllCache.filter(r => normalizeLecture(r.lecture) === key).map(r => r.member_id) : []
+    key ? hwRows.filter(r => normalizeLecture(r.lecture) === key).map(r => r.member_id) : []
   );
 
-  return { lunch: new Set(lunchRows.map(r => r.member_id)), homework };
+  return {
+    lunch: new Set(lunchRows.map(r => r.member_id)),
+    homework,
+    hwLoaded,
+    hwTotal: hwRows.length,
+    hwNear: homework.size ? [] : nearbyLectures(hwRows, lectureName),
+  };
+}
+
+/**
+ * 붙지 않은 이유를 화면이 말할 수 있게, 숫자는 같은데 표기가 다른 것을 모은다.
+ *
+ *   회차 '18강' · 폼 '18과' → [{ lecture: '18과', n: 3 }]
+ *
+ * 정규화가 '제18강' · '18 강' 까지는 흡수하므로, 여기 걸리는 것은 사람이
+ * 시트나 폼에서 직접 고쳐야 하는 것들이다.
+ */
+function nearbyLectures(rows, lectureName) {
+  const num = String(lectureName || '').match(/\d+/)?.[0];
+  if (!num) return [];
+
+  const key = normalizeLecture(lectureName);
+  const count = new Map();
+  for (const r of rows) {
+    const raw = String(r.lecture || '').trim();
+    if (!raw || normalizeLecture(raw) === key) continue;
+    if (!raw.includes(num)) continue;
+    count.set(raw, (count.get(raw) || 0) + 1);
+  }
+
+  return [...count.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([lecture, n]) => ({ lecture, n }));
 }
 
 /**

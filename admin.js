@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=74';
+} from './scripts/members-data.js?v=75';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -96,6 +96,10 @@ subscribe((event) => {
             console.log('자동 재검색 무시:', e);
         }
     }
+
+    // 출석부 출력도 스냅숏이다. 시트에서 새로 가져왔으면 김밥·과제를 다시
+    // 읽어야 한다 — 안 그러면 동기화를 했는데도 옛 체크가 그대로 남는다.
+    if (prSessionDate) loadPrintData();
 
     // 출석 관리 탭만 값을 스냅숏으로 떠 놓는다. 목록 화면은 그릴 때마다 최신을
     // 읽지만 여기는 로드 시점 값을 붙들고 있어, 새 데이터가 와도 모른다.
@@ -1008,6 +1012,8 @@ let prScope = 'all';              // 'all' | 'loc:웨슬리홀' | 'team:Y1'
 let prSkip = new Set();           // 출력에서 뺀 조
 let prLunchSet = new Set();
 let prHwSet = new Set();
+// 과제가 왜 안 붙었는지 — 화면이 이유를 말하는 데 쓴다
+let prExtras = { hwLoaded: false, hwTotal: 0, hwNear: [] };
 let prReady = false;
 let prLoading = false;
 // 사람이 '김밥신청' 을 직접 토글하면 그 뜻을 존중한다. 주차를 바꿔도 되돌리지
@@ -1198,8 +1204,46 @@ function prSessionMeta() {
     return getSessions({ all: true }).find(s => s.date === prSessionDate) || null;
 }
 
+/**
+ * 김밥·과제가 몇 명에게 붙었는지, 안 붙었으면 왜인지.
+ *
+ * 과제는 회차 날짜가 아니라 **강의명**으로 붙는다. 시트의 회차 이름과 폼에
+ * 적은 강의명이 한 글자라도 다르면 한 명도 안 붙는데, 화면에는 그냥 빈 칸이라
+ * 손볼 곳이 시트인지 폼인지 알 수가 없다. 여기서 말해 준다.
+ */
+function renderPrDataInfo() {
+    const el = document.getElementById('prDataInfo');
+    if (!el) return;
+
+    if (!prReady) { el.innerHTML = ''; return; }
+
+    const name = (prSessionMeta()?.name || '').trim();
+    const info = `🍙 김밥 ${prLunchSet.size}명 · 📝 과제 ${prHwSet.size}명`
+               + (name ? ` (‘${attEsc(name)}’ 기준)` : '');
+
+    let warn = '';
+    if (!name) {
+        warn = '⚠️ 이 주차는 시트에 회차 이름이 없어 과제를 붙일 수 없습니다. '
+             + '시트의 회차 이름(예: 18강)을 채우고 다시 가져오세요.';
+    } else if (!prExtras.hwLoaded) {
+        warn = '⚠️ 과제를 불러오지 못했습니다. 주차를 다시 고르면 다시 시도합니다.';
+    } else if (!prHwSet.size && prExtras.hwTotal) {
+        warn = `⚠️ ‘${attEsc(name)}’ 으로 낸 과제가 없습니다.`;
+        if (prExtras.hwNear.length) {
+            warn += ' 폼에는 '
+                 + prExtras.hwNear.map(x => `‘${attEsc(x.lecture)}’ ${x.n}건`).join(' · ')
+                 + ' 로 적혀 있습니다. 시트나 폼의 표기를 맞춰 주세요.';
+        }
+    }
+
+    el.innerHTML = `<span class="pr-data-count">${info}</span>`
+                 + (warn ? `<span class="pr-data-warn">${warn}</span>` : '');
+}
+
 function renderPrPreview() {
     if (!prPreview) return;
+
+    renderPrDataInfo();
 
     if (!prReady) {
         prPreview.innerHTML = `<div class="att-empty">${prLoading ? '불러오는 중...' : '불러오지 못했습니다.'}</div>`;
@@ -1539,6 +1583,7 @@ async function loadPrintData() {
         const extras = await getSessionExtras(prSessionDate, s?.name || '');
         prLunchSet = extras.lunch;
         prHwSet = extras.homework;
+        prExtras = { hwLoaded: extras.hwLoaded, hwTotal: extras.hwTotal, hwNear: extras.hwNear };
         prReady = true;
     } catch (err) {
         console.log('출석부 자료 조회 실패:', err);

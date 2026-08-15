@@ -890,6 +890,21 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
 .pr-chk input { width: 16px; height: 16px; cursor: pointer; }
 .pr-count { font-size: 13px; font-weight: 700; color: var(--text-light); margin-left: auto; }
 
+/* 김밥·과제가 몇 명에게 붙었는지. 안 붙은 이유는 눈에 띄어야 한다 */
+.pr-data-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.pr-data-info:empty { display: none; }
+.pr-data-count { font-weight: 700; color: var(--text-light); }
+.pr-data-warn {
+    flex: 1 1 240px;
+    padding: 6px 10px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: #92400e;
+    background: rgba(245, 158, 11, 0.16);
+    border-radius: 8px;
+}
+body.dark-mode .pr-data-warn { color: #fbbf24; }
+
 /* 목록을 여는 버튼. 열려 있는 동안은 눌린 티가 나야 한다 —
    조작부가 sticky 라 목록이 화면 밖으로 밀려도 상태를 알 수 있다 */
 .pr-pick-toggle.on { border-color: var(--midnight-blue); background: var(--milk-beige); }
