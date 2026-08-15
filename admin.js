@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=69';
+} from './scripts/members-data.js?v=70';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -994,6 +994,7 @@ window.addEventListener('beforeunload', (e) => {
 const prSessionPicker = document.getElementById('prSessionPicker');
 const prScopePicker = document.getElementById('prScopePicker');
 const prPreview = document.getElementById('prPreview');
+const prPickList = document.getElementById('prPickList');
 const prCount = document.getElementById('prCount');
 
 let prSessionDate = null;
@@ -1196,6 +1197,7 @@ function renderPrPreview() {
 
     if (!prReady) {
         prPreview.innerHTML = `<div class="att-empty">${prLoading ? '불러오는 중...' : '불러오지 못했습니다.'}</div>`;
+        renderPrPickList();
         updatePrCount();
         return;
     }
@@ -1204,6 +1206,7 @@ function renderPrPreview() {
     const teams = prScopedTeams();
     if (!teams.length) {
         prPreview.innerHTML = '<div class="att-empty">해당하는 조가 없습니다.</div>';
+        renderPrPickList();
         updatePrCount();
         return;
     }
@@ -1229,7 +1232,8 @@ function renderPrPreview() {
             </tr>`).join('');
 
         return `
-            <div class="pr-sheet${prSkip.has(t.name) ? ' pr-skip' : ''}" data-team="${attEsc(t.name)}">
+            <div class="pr-sheet${prSkip.has(t.name) ? ' pr-skip' : ''}"
+                 data-team="${attEsc(t.name)}" data-label="${attEsc(t.name)}">
                 <label class="pr-pick">
                     <input type="checkbox" data-team="${attEsc(t.name)}"${prSkip.has(t.name) ? '' : ' checked'}> 출력
                 </label>
@@ -1265,6 +1269,7 @@ function renderPrPreview() {
     // 집계표가 맨 앞이다. 나눠 주는 사람이 먼저 보는 장이라 뒤에 있으면
     // 매번 끝까지 넘겨야 한다.
     prPreview.innerHTML = (prCol.summary() ? renderPrSummaries(teams, head) : '') + sheets;
+    renderPrPickList();
     updatePrCount();
 }
 
@@ -1343,7 +1348,7 @@ function renderPrSummary(key, title, teams, head, showLocation) {
 
     const id = '__summary__:' + key;
     return `
-        <div class="pr-sheet" data-team="${attEsc(id)}">
+        <div class="pr-sheet" data-team="${attEsc(id)}" data-label="집계표 · ${attEsc(title)}">
             <label class="pr-pick">
                 <input type="checkbox" data-team="${attEsc(id)}"${prSkip.has(id) ? '' : ' checked'}> 출력
             </label>
@@ -1382,26 +1387,60 @@ function updatePrCount() {
     prCount.textContent = all ? `${all}장 중 ${live}장 출력` : '';
 }
 
-// 체크를 눌러도 다시 그리지 않는다. 다시 그리면 다른 장의 체크가 전부 초기화된다.
-prPreview?.addEventListener('change', (e) => {
-    const box = e.target.closest('.pr-pick input');
+/**
+ * 한 장을 넣거나 뺀다.
+ *
+ * 체크는 두 곳에 있다 — 상단 목록과 장 위. 어느 쪽을 눌러도 둘 다 맞춰 준다.
+ * **다시 그리지는 않는다.** 다시 그리면 다른 장의 체크가 전부 초기화된다.
+ */
+function prApplySkip(team, skip) {
+    if (skip) prSkip.add(team); else prSkip.delete(team);
+
+    const sel = `[data-team="${CSS.escape(team)}"]`;
+    const sheet = prPreview?.querySelector(`.pr-sheet${sel}`);
+    if (sheet) {
+        sheet.classList.toggle('pr-skip', skip);
+        const box = sheet.querySelector('.pr-pick input');
+        if (box) box.checked = !skip;
+    }
+    const chip = prPickList?.querySelector(`input${sel}`);
+    if (chip) {
+        chip.checked = !skip;
+        chip.closest('.pr-pick-chip')?.classList.toggle('off', skip);
+    }
+}
+
+function prOnPickChange(e) {
+    const box = e.target.closest('input[type="checkbox"][data-team]');
     if (!box) return;
-    const team = box.dataset.team;
-    const sheet = box.closest('.pr-sheet');
-    if (box.checked) { prSkip.delete(team); sheet.classList.remove('pr-skip'); }
-    else { prSkip.add(team); sheet.classList.add('pr-skip'); }
+    prApplySkip(box.dataset.team, !box.checked);
     prSaveSkip();
     updatePrCount();
-});
+}
+
+prPreview?.addEventListener('change', prOnPickChange);
+prPickList?.addEventListener('change', prOnPickChange);
+
+// 상단 장 목록. 33장을 넘겨 가며 하나씩 끄는 대신 여기서 바로 고른다.
+function renderPrPickList() {
+    if (!prPickList) return;
+    const sheets = [...(prPreview?.querySelectorAll('.pr-sheet') || [])];
+    if (!sheets.length) { prPickList.innerHTML = ''; return; }
+
+    prPickList.innerHTML = sheets.map(sheet => {
+        const team = sheet.dataset.team;
+        const label = sheet.dataset.label || team;
+        return `<label class="pr-pick-chip${prSkip.has(team) ? ' off' : ''}">
+                    <input type="checkbox" data-team="${attEsc(team)}"${prSkip.has(team) ? '' : ' checked'}>
+                    ${attEsc(label)}
+                </label>`;
+    }).join('');
+}
 
 function prSetAll(on) {
     if (!prPreview) return;
     prPreview.querySelectorAll('.pr-sheet').forEach(sheet => {
-        const box = sheet.querySelector('.pr-pick input');
-        if (box) box.checked = on;
-        sheet.classList.toggle('pr-skip', !on);
-        if (on) prSkip.delete(sheet.dataset.team);
-        else prSkip.add(sheet.dataset.team);
+        prApplySkip(sheet.dataset.team, !on);
     });
     prSaveSkip();
     updatePrCount();
