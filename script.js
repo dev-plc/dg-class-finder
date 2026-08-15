@@ -17,7 +17,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=72';
+} from './scripts/members-data.js?v=73';
 
 // 1-1. 내 정보 기억
 //
@@ -304,6 +304,9 @@ function renderSessionPicker() {
     ).join('');
 }
 
+// 최근 몇 회차를 펴 두는가. 나머지는 '이전 N회차 더 보기' 뒤로 접는다.
+const MY_ATT_OPEN = 10;
+
 // 5-1. 본인 출석 현황
 //
 // 조원도 자기 이력은 볼 수 있어야 한다. 조 전체 출석표는 조장 것이다.
@@ -346,14 +349,18 @@ async function renderMyAttendance(member) {
         ].filter(Boolean).join(' · ');
     }
 
-    grid.innerHTML = rows.map(r => {
+    // 앞쪽(오래된) 회차를 접는다. 차례는 그대로 1강 → 최근이다 —
+    // 최근 것만 남긴다고 순서를 뒤집으면 어느 회차인지 읽기 어려워진다.
+    const folded = Math.max(0, rows.length - MY_ATT_OPEN);
+
+    grid.innerHTML = rows.map((r, i) => {
         const st = classifyStatus(r.status);
         const badges = (r.lunch ? '🍙' : '') + (r.homework ? '📝' : '');
         const tip = [r.key, r.name, st.title,
                      r.lunch ? '🍙 김밥 신청' : '', r.homework ? '📝 과제 제출' : '']
                     .filter(Boolean).join(' · ');
 
-        return `<div class="att-chip ${st.cls}" title="${escapeAttr(tip)}">
+        return `<div class="att-chip ${st.cls}${i < folded ? ' old' : ''}" title="${escapeAttr(tip)}">
                     <span class="att-date">${escapeHtml(r.key)}</span>
                     ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}
                     <span class="att-mark">${escapeHtml(st.label)}</span>
@@ -361,8 +368,32 @@ async function renderMyAttendance(member) {
                 </div>`;
     }).join('');
 
+    setMyAttFold(folded, false);
+
     section.style.display = 'block';
     renderMyLunch(rows);
+}
+
+/**
+ * 지난 회차 접기·펼치기.
+ *
+ * 사람을 새로 조회할 때마다 접힌 채로 시작한다 — 펼친 상태를 기억하면
+ * 다음 사람을 볼 때 또 화면을 다 먹는다.
+ *
+ * 버튼은 격자 위에 둔다. 접힌 회차가 격자 앞쪽(오래된 쪽)이라, 버튼이
+ * 아래에 있으면 펼치는 순간 방금 누른 버튼이 화면 밖으로 밀려난다.
+ */
+function setMyAttFold(hidden, open) {
+    const grid = document.getElementById('myAttendanceGrid');
+    const btn = document.getElementById('myAttendanceMoreBtn');
+    if (!grid || !btn) return;
+
+    grid.classList.toggle('folded', hidden > 0 && !open);
+    btn.hidden = hidden === 0;
+    btn.dataset.hidden = String(hidden);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.textContent = open ? `↑ 최근 ${MY_ATT_OPEN}회차만 보기`
+                           : `↓ 이전 ${hidden}회차 더 보기`;
 }
 
 // 5-1-1. 김밥 신청 요약
@@ -863,6 +894,15 @@ function initEventListeners() {
     // 출결 일괄 저장
     const saveBtn = document.getElementById('saveAttendanceBtn');
     if (saveBtn) saveBtn.addEventListener('click', saveAttendanceChanges);
+
+    // 지난 회차 펼치기·접기
+    const attMore = document.getElementById('myAttendanceMoreBtn');
+    if (attMore) {
+        attMore.addEventListener('click', () => {
+            setMyAttFold(Number(attMore.dataset.hidden || 0),
+                         attMore.getAttribute('aria-expanded') !== 'true');
+        });
+    }
 
     // 전체 출석표
     const matrixBtn = document.getElementById('openMatrixBtn');

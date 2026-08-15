@@ -1208,6 +1208,24 @@ body.large-text .map-image {
     grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
     gap: 6px;
 }
+/* 지난 회차는 접어 둔다 — 30회차면 폰에서 여덟 줄이라, 이 격자 하나가
+   화면을 다 먹고 아래의 김밥·과제·조원 명단이 안 보인다.
+   접어도 요약 줄(총 N회차 · 출석 · 결석)이 전체 상황을 말해 준다. */
+.my-attendance-grid.folded .att-chip.old { display: none; }
+.att-more-btn {
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 7px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-light);
+    background: var(--milk-beige);
+    border: 1px dashed var(--warm-beige);
+    border-radius: 8px;
+    cursor: pointer;
+}
+.att-more-btn:hover { color: var(--text-dark); border-style: solid; }
+.att-more-btn[hidden] { display: none; }
 .att-chip {
     display: flex;
     flex-direction: column;
