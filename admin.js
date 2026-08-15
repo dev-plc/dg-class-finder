@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=70';
+} from './scripts/members-data.js?v=71';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1330,9 +1330,10 @@ function renderPrSummary(key, title, teams, head, showLocation) {
 
     // 출석·과제 칸은 두지 않는다. 사람별로 따지는 것은 조별 출석부가 한다.
     // 메모는 조 단위로 적을 것이 있어서 남긴다.
-    const rows = sorted.map(t => {
+    const rows = sorted.map((t, i) => {
         const s = prTeamStat(t);
         return `<tr>
+            <td class="pr-c-no">${i + 1}</td>
             <td class="pr-sum-name">${attEsc(t.name)}</td>
             ${showLocation ? `<td class="pr-sum-loc">${attEsc(t.location || '-')}</td>` : ''}
             <td class="pr-c-mark">${s.n}</td>
@@ -1362,6 +1363,7 @@ function renderPrSummary(key, title, teams, head, showLocation) {
                 <div class="pr-table-wrap">
                 <table class="pr-table pr-sum-table">
                     <thead><tr>
+                        <th class="pr-c-no">No.</th>
                         <th class="pr-sum-name">조</th>
                         ${showLocation ? '<th class="pr-sum-loc">장소</th>' : ''}
                         <th class="pr-c-mark">인원</th><th class="pr-c-mark">김밥</th>
@@ -1369,6 +1371,7 @@ function renderPrSummary(key, title, teams, head, showLocation) {
                     </tr></thead>
                     <tbody>${rows}</tbody>
                     <tfoot><tr class="pr-total">
+                        <td class="pr-c-no"></td>
                         <td class="pr-sum-name">합계</td>
                         ${showLocation ? '<td class="pr-sum-loc"></td>' : ''}
                         <td class="pr-c-mark">${sum.n}</td><td class="pr-c-mark">${sum.lunch}</td>
