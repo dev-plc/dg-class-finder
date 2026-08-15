@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=73';
+} from './scripts/members-data.js?v=74';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -309,7 +309,12 @@ let allTeams = []; // 전체 조 데이터 저장
 //
 // 앞의 넷(Y 청년부 · C 청년부부 · 남 남장년부 · 여 여장년부)이 부서 차례다.
 // 뒤의 것들은 여기 없는 접두어를 위한 자리로, 나오면 이 순서로 따라붙는다.
-const TEAM_PREFERRED_ORDER = ['Y', 'C', '남', '여', 'O', '새', 'DG', 'V', 'M', 'W'];
+//
+// 청년부가 YF · YM 으로 갈렸다. 접두어를 통째로 견주기 때문에 'YF' 를
+// 여기 적어 두지 않으면 'Y' 로 읽히지 않고 **모르는 접두어**가 되어
+// C · 남 · 여 뒤로 밀린다. 예전 Y 자리를 그대로 쓰게 둘 것.
+// 'Y' 는 지난 기수 데이터에 남아 있어 자리를 비우지 않는다.
+const TEAM_PREFERRED_ORDER = ['YF', 'YM', 'Y', 'C', '남', '여', 'O', '새', 'DG', 'V', 'M', 'W'];
 
 function compareTeamName(a, b) {
     const getPrefix = (str) => (String(str).match(/^[가-힣A-Za-z]+/)?.[0] || '');
@@ -353,7 +358,7 @@ function renderTeamsView(filterText = '') {
         teamGroups[member.team].members.push(member);
     });
     
-    // 조 이름 오름차순 정렬 (새1, 새2, ..., 남1, 남2, ..., C1, C2, O1, O2, V1, Y1, ...)
+    // 조 이름 차례 (YF1, YF2, ..., YM1, ..., C1, ..., 남1, ..., 여1, ...)
     const sortedTeams = Object.values(teamGroups).sort((a, b) => compareTeamName(a.name, b.name));
 
     allTeams = sortedTeams;
