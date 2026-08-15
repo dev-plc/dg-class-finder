@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=68';
+} from './scripts/members-data.js?v=69';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1104,6 +1104,19 @@ function prRowHeightMm(count) {
     return Math.floor(Math.min(22, Math.max(8, usable / count)) * 10) / 10;
 }
 
+/**
+ * 집계표 줄 높이. 조가 많으면 한 장을 넘긴다 —
+ * 33개 조면 9mm × 34줄(합계 포함) = 306mm 로 A4(233mm)를 훌쩍 넘는다.
+ * 화면에서는 .pr-page 가 늘어나 한 장처럼 보이지만 인쇄하면 두 장으로 갈린다.
+ *
+ * 특이사항 상자가 없으니 233mm 를 통째로 나눠 쓴다. 아래로는 막지 않는다 —
+ * 넘치는 것보다 얇은 게 낫다. (글자 높이가 실질 하한이라 그 아래로는 안 간다)
+ */
+function prSummaryRowMm(rowCount) {
+    if (!rowCount) return 9;
+    return Math.floor(Math.min(12, PR_AVAIL_MM / rowCount) * 10) / 10;
+}
+
 // 남는 높이를 특이사항 상자가 먹는다. 다만 한없이 키우지는 않는다 —
 // 5명짜리 조에서 100mm 짜리 상자가 되면 그것대로 이상하다.
 function prNoteHeightMm(count) {
@@ -1334,7 +1347,8 @@ function renderPrSummary(key, title, teams, head, showLocation) {
             <label class="pr-pick">
                 <input type="checkbox" data-team="${attEsc(id)}"${prSkip.has(id) ? '' : ' checked'}> 출력
             </label>
-            <section class="pr-page" style="--pr-row: 9mm">
+            <!-- 합계 줄도 --pr-row 를 쓰므로 줄 수에 +1 -->
+            <section class="pr-page" style="--pr-row: ${prSummaryRowMm(sorted.length + 1)}mm">
                 <div class="pr-head">
                     <h2 class="pr-title">조별 집계표 · ${attEsc(title)}</h2>
                     <span class="pr-when">${head}</span>
