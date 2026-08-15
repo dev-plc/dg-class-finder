@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v24)
+// DGfinder — Google Apps Script 전체 코드 (v25)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,14 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v25
+//   - 김밥 칸을 O/X 로 읽는다. 예전에는 **값이 있기만 하면 신청**으로 봐서
+//     X 도 신청으로 세어졌다 (시트 1명 → 화면 3명). 빈칸과 부정 표기(X · - · 0
+//     · 취소 …)만 걸러내고 나머지는 그대로 신청으로 둔다.
+//   - lunchDates 를 함께 내려준다. 김밥 시트에서 읽은 회차 목록이라,
+//     동기화가 '시트에서 지워진 신청' 을 DB 에서 지울 수 있다. 신청자가 하나도
+//     없는 회차도 들어간다 — 그래야 전원 취소된 회차도 비울 수 있다.
 //
 // v24
 //   - doPost 가 { action: "sync" } 를 받으면 GitHub Actions 의 동기화 워크플로를
@@ -69,7 +77,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 24;
+var DG_VERSION = 25;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -280,21 +288,24 @@ function DG_readSessionLabels(values, headerRowIdx, sessions) {
 function DG_readLunchByDate(ss, tz) {
   var sheet = ss.getSheetByName(DG_TAB_LUNCH);
   var out = {};
-  if (!sheet) return out;
+  // dates 는 '이 회차를 시트에서 읽었다' 는 뜻이다. 신청자가 하나도 없는
+  // 회차도 들어간다 — 동기화가 그 회차의 옛 신청을 지우는 근거로 쓴다.
+  var none = { byId: out, dates: [] };
+  if (!sheet) return none;
 
   var values = sheet.getDataRange().getValues();
   var headerIdx = DG_findHeaderRow(values);
-  if (headerIdx === -1) return out;
+  if (headerIdx === -1) return none;
 
   var header = values[headerIdx];
   var idIdx = header.map(function (h) {
     return String(h).trim().toLowerCase();
   }).indexOf('id');
-  if (idIdx === -1) return out;
+  if (idIdx === -1) return none;
 
   // 날짜 열은 출석부와 같은 방식으로 읽는다 (연도까지 확정).
   var cols = DG_buildSessions(header, tz);
-  if (!cols.length) return out;
+  if (!cols.length) return none;
 
   for (var r = headerIdx + 1; r < values.length; r++) {
     var id = String(values[r][idIdx]).replace(/[^a-zA-Z0-9가-힣]/g, '');
@@ -306,11 +317,27 @@ function DG_readLunchByDate(ss, tz) {
       var val = cell instanceof Date
         ? Utilities.formatDate(cell, tz, 'yyyy-MM-dd')
         : String(cell == null ? '' : cell).trim();
-      if (val) map[cols[c].date] = 'O';   // 값이 있으면 신청한 것으로 본다
+      if (DG_isLunchApplied(val)) map[cols[c].date] = 'O';
     }
     out[id] = map;
   }
-  return out;
+  return { byId: out, dates: cols.map(function (c) { return c.date; }) };
+}
+
+/**
+ * 김밥 칸이 '신청' 인가.
+ *
+ * 예전에는 값이 있기만 하면 신청으로 봤다. 그래서 **X 도 신청으로 세어져**
+ * 시트에는 한 명인데 화면에는 세 명으로 나왔다. 안 한다고 적은 것을 했다고
+ * 읽으면 김밥을 그만큼 더 시킨다.
+ *
+ * 빈칸과 부정 표기만 걸러낸다. 그 밖의 표기(수량·메모 등)는 사람이 적어 둔
+ * 뜻이 있을 수 있으므로 신청으로 남긴다.
+ */
+function DG_isLunchApplied(val) {
+  var v = String(val == null ? '' : val).trim();
+  if (!v) return false;
+  return !/^(x|×|✕|✗|ｘ|n|no|0|영|-|－|ㅡ|–|—|\.|·|없음|안함|미신청|취소)$/i.test(v);
 }
 
 /**
@@ -1031,7 +1058,8 @@ function doGet(e) {
     var sessionLabels = labelInfo.map;
 
     // 김밥 — 회차별. 결과 카드의 한 줄(kimbapMap) 은 그대로 두고 이력을 더한다.
-    var lunchByDate = DG_readLunchByDate(ss, tz);
+    var lunchInfo = DG_readLunchByDate(ss, tz);
+    var lunchByDate = lunchInfo.byId;
 
     // 대상 표식
     var cohortHint = '';
@@ -1118,6 +1146,9 @@ function doGet(e) {
       sessions: sessions.map(function (s) {
         return { key: s.key, date: s.date, label: sessionLabels[s.date] || '' };
       }),
+      // 김밥 시트에서 읽은 회차 날짜. 동기화가 '시트에서 지워진 신청' 을
+      // 가려내는 데 쓴다 — 신청자가 없는 회차도 들어 있어야 한다.
+      lunchDates: lunchInfo.dates,
       // 과제 제출 목록. 인원마다 넣지 않고 따로 둔다 (대부분 몇 건 없다).
       homework: DG_readHomework(ss, tz),
       // 옛 동기화 스크립트 호환

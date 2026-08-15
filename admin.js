@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=76';
+} from './scripts/members-data.js?v=77';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1223,8 +1223,17 @@ function renderPrDataInfo() {
     if (!prReady) { el.innerHTML = ''; return; }
 
     const name = (prSessionMeta()?.name || '').trim();
-    const info = `🍙 김밥 ${prLunchSet.size}명 · 📝 과제 ${prHwSet.size}명`
-               + (name ? ` (‘${attEsc(name)}’ 기준)` : '');
+
+    // 화면에 나온 장들과 같은 사람만 센다. DB 에는 지금 명단에 없는 사람의
+    // 신청도 남아 있어서, 그냥 세면 집계표 합계와 어긋난다.
+    const people = prScopedTeams().flatMap(t => t.members);
+    const lunchN = people.filter(m => prLunchSet.has(m._uuid)).length;
+    const hwN = people.filter(m => prHwSet.has(m._uuid)).length;
+    const offList = prScope === 'all' ? prLunchSet.size - lunchN : 0;
+
+    const info = `🍙 김밥 ${lunchN}명 · 📝 과제 ${hwN}명`
+               + (name ? ` (‘${attEsc(name)}’ 기준)` : '')
+               + (offList > 0 ? ` · 지금 명단에 없는 ${offList}명 제외` : '');
 
     let warn = '';
     if (!name) {
@@ -1232,7 +1241,7 @@ function renderPrDataInfo() {
              + '시트의 회차 이름(예: 18강)을 채우고 다시 가져오세요.';
     } else if (!prExtras.hwLoaded) {
         warn = '⚠️ 과제를 불러오지 못했습니다. 주차를 다시 고르면 다시 시도합니다.';
-    } else if (!prHwSet.size && prExtras.hwTotal) {
+    } else if (!hwN && prExtras.hwTotal) {
         warn = `⚠️ ‘${attEsc(name)}’ 으로 낸 과제가 없습니다.`;
         if (prExtras.hwNear.length) {
             warn += ' 폼에는 '

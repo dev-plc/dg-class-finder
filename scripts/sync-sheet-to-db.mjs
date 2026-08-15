@@ -7,8 +7,11 @@
 //
 // 환경변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GAS_API_URL
 //
-// 이 스크립트는 upsert 만 한다. 시트에서 지운 행은 DB 에 남는다.
+// 대체로 upsert 만 한다. 시트에서 지운 행은 DB 에 남는다.
 // 인원은 지우지 않고 status='inactive' 로 내린다 — 이력을 잃지 않으려는 것.
+//
+// 김밥은 예외로 지운다. 신청을 취소했는데 계속 세면 그만큼 더 시키게 된다.
+// 지금 명단에 있는 사람의 것만 지운다 (내려간 사람 이력은 그대로 둔다).
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -368,6 +371,7 @@ if (sessionRows.length) {
 {
   const uuidById = new Map(saved.map(m => [`${m.name}${m.phone || ''}`, m.id]));
   const lunchRows = [];
+  const appliedByDate = new Map();      // 'YYYY-MM-DD' → Set(uuid)
   for (const r of rows) {
     const uuid = uuidById.get(`${trim(r.name)}${trim(r.phone)}`);
     if (!uuid) continue;
@@ -376,14 +380,60 @@ if (sessionRows.length) {
       lunchRows.push({
         cohort_id: COHORT_ID, member_id: uuid, session_date: date, applied: true,
       });
+      if (!appliedByDate.has(date)) appliedByDate.set(date, new Set());
+      appliedByDate.get(date).add(uuid);
     }
   }
+
+  // 시트에서 읽은 회차 목록. GAS v25 부터 준다. 없으면 신청이 있는 회차만
+  // 아는 셈이라, 전원이 취소한 회차는 비우지 못한다.
+  const lunchDates = Array.isArray(gas.lunchDates) && gas.lunchDates.length
+    ? gas.lunchDates
+    : [...appliedByDate.keys()];
+
   if (lunchRows.length) {
     console.log('▶ dg_lunch');
     await upsert('dg_lunch', lunchRows, 'cohort_id,member_id,session_date');
     console.log(`   ${lunchRows.length}건 반영`);
   } else {
     console.log('▶ 김밥 건너뜀 — GAS 가 lunchByDate 를 주지 않았습니다 (v21 로 재배포 필요)');
+  }
+
+  // 시트에서 지운 신청은 DB 에서도 지운다.
+  //
+  // upsert 만 하면 한 번 신청한 것은 영영 남는다. 취소했는데 계속 세어져
+  // 김밥을 그만큼 더 시키게 된다. 원본은 시트이므로 시트에 없으면 없는 것이다.
+  //
+  // 다만 **지금 명단에 있는 사람만** 건드린다. 시트에서 내려간 사람(inactive)의
+  // 옛 신청까지 지우면 이력이 사라진다 — 그건 시트가 '취소' 라고 말한 적이 없다.
+  // (DRY RUN 은 위에서 이미 끝났다. 여기까지 왔으면 실제로 쓴다.)
+  const rosterIds = new Set(saved.map(m => m.id));
+  if (lunchDates.length) {
+    let removed = 0;
+    for (const date of lunchDates) {
+      const { data: have, error } = await sb.from('dg_lunch')
+        .select('member_id').eq('cohort_id', COHORT_ID).eq('session_date', date);
+      if (error) throw new Error(`dg_lunch 조회 실패(${date}): ${error.message}`);
+
+      const keep = appliedByDate.get(date) || new Set();
+      const stale = (have || []).map(r => r.member_id)
+        .filter(id => rosterIds.has(id) && !keep.has(id));
+
+      // 한 번에 다 싣지 않는다. uuid 250개면 주소가 9KB 를 넘는다.
+      for (let i = 0; i < stale.length; i += 100) {
+        const { error: delErr } = await sb.from('dg_lunch').delete()
+          .eq('cohort_id', COHORT_ID).eq('session_date', date)
+          .in('member_id', stale.slice(i, i + 100));
+        if (delErr) throw new Error(`dg_lunch 정리 실패(${date}): ${delErr.message}`);
+      }
+      removed += stale.length;
+    }
+    if (removed) console.log(`   🧹 시트에서 지워진 신청 ${removed}건 삭제`);
+  }
+
+  if (!Array.isArray(gas.lunchDates)) {
+    console.log('   ℹ️ GAS 가 lunchDates 를 주지 않습니다 (v25 로 재배포하면 ' +
+                '전원이 취소한 회차도 비웁니다).');
   }
 }
 
