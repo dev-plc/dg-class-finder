@@ -890,8 +890,14 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
 .pr-chk input { width: 16px; height: 16px; cursor: pointer; }
 .pr-count { font-size: 13px; font-weight: 700; color: var(--text-light); margin-left: auto; }
 
+/* 목록을 여는 버튼. 열려 있는 동안은 눌린 티가 나야 한다 —
+   조작부가 sticky 라 목록이 화면 밖으로 밀려도 상태를 알 수 있다 */
+.pr-pick-toggle.on { border-color: var(--midnight-blue); background: var(--milk-beige); }
+.pr-pick-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* 장 목록 — 33장을 넘겨 가며 하나씩 끄지 않게. 조가 많아도 조작부가 화면을
    다 먹지 않도록 높이를 막고 그 안에서 넘긴다 */
+.pr-picklist[hidden] { display: none; }
 .pr-picklist {
     display: flex;
     flex-wrap: wrap;

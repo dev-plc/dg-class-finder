@@ -27,7 +27,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=71';
+} from './scripts/members-data.js?v=72';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -995,6 +995,7 @@ const prSessionPicker = document.getElementById('prSessionPicker');
 const prScopePicker = document.getElementById('prScopePicker');
 const prPreview = document.getElementById('prPreview');
 const prPickList = document.getElementById('prPickList');
+const prPickToggle = document.getElementById('prPickToggleBtn');
 const prCount = document.getElementById('prCount');
 
 let prSessionDate = null;
@@ -1384,10 +1385,29 @@ function renderPrSummary(key, title, teams, head, showLocation) {
 }
 
 function updatePrCount() {
-    if (!prCount || !prPreview) return;
+    if (!prPreview) return;
     const all = prPreview.querySelectorAll('.pr-sheet').length;
     const live = prPreview.querySelectorAll('.pr-sheet:not(.pr-skip)').length;
-    prCount.textContent = all ? `${all}장 중 ${live}장 출력` : '';
+    if (prCount) prCount.textContent = all ? `${all}장 중 ${live}장 출력` : '';
+    updatePrPickToggle(all, all - live);
+}
+
+/**
+ * '부분 선택' 버튼.
+ *
+ * 목록을 늘 펼쳐 두면 조가 33개일 때 그것만으로 화면을 먹는다. 그래서 접어 두고
+ * 이 버튼으로 연다. 대신 **접혀 있는 동안 무엇이 빠졌는지 안 보이므로**
+ * 버튼이 뺀 장 수를 대신 말한다 — 접어 놓은 채로 인쇄하고 나서 왜 세 장이
+ * 안 나왔는지 찾게 만들면 안 된다.
+ */
+function updatePrPickToggle(all = 0, off = 0) {
+    if (!prPickToggle) return;
+    const open = !!prPickList && !prPickList.hidden;
+    prPickToggle.disabled = !all;
+    prPickToggle.classList.toggle('on', open);
+    prPickToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    prPickToggle.textContent = open ? '▴ 목록 닫기'
+        : (off ? `▾ 부분 선택 (${off}장 뺌)` : '▾ 부분 선택');
 }
 
 /**
@@ -1451,6 +1471,14 @@ function prSetAll(on) {
 
 document.getElementById('prAllBtn')?.addEventListener('click', () => prSetAll(true));
 document.getElementById('prNoneBtn')?.addEventListener('click', () => prSetAll(false));
+
+// 열고 닫기만 한다. 연 상태를 기억하지는 않는다 — 늘 떠 있는 게 거슬려서
+// 접은 것이므로, 화면을 새로 열면 다시 접힌 채로 시작하는 게 맞다.
+prPickToggle?.addEventListener('click', () => {
+    if (!prPickList) return;
+    prPickList.hidden = !prPickList.hidden;
+    updatePrCount();
+});
 
 document.getElementById('prPrintBtn')?.addEventListener('click', () => {
     if (!prPreview) return;

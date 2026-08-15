@@ -12,8 +12,8 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=71">
-    <link rel="stylesheet" href="admin.css?v=71">
+    <link rel="stylesheet" href="style.css?v=72">
+    <link rel="stylesheet" href="admin.css?v=72">
 </head>
 <body class="dark-mode">
     <div class="admin-container">
@@ -242,12 +242,15 @@
                     <button type="button" id="prPrintBtn" class="sync-btn">🖨️ 인쇄</button>
                     <button type="button" id="prAllBtn" class="att-bulk-btn">전체 선택</button>
                     <button type="button" id="prNoneBtn" class="att-bulk-btn">전체 해제</button>
+                    <button type="button" id="prPickToggleBtn" class="att-bulk-btn pr-pick-toggle"
+                            aria-expanded="false" aria-controls="prPickList">▾ 부분 선택</button>
                     <span class="pr-count" id="prCount"></span>
                 </div>
 
-                <!-- 장 목록. 미리보기를 33장 넘기며 하나씩 끄는 대신
-                     여기서 바로 고른다. -->
-                <div class="pr-picklist" id="prPickList"></div>
+                <!-- 장 목록. 미리보기를 33장 넘기며 하나씩 끄는 대신 여기서 바로
+                     고른다. 다만 조가 33개면 늘 펼쳐 두는 것만으로 화면을 먹는다 —
+                     '부분 선택' 을 눌렀을 때만 연다. -->
+                <div class="pr-picklist" id="prPickList" hidden></div>
             </div>
 
             <div class="pr-preview" id="prPreview"></div>
@@ -267,7 +270,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=71"></script>
+    <script type="module" src="admin.js?v=72"></script>
 </body>
 </html>
 
