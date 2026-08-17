@@ -20,6 +20,7 @@
 // 건드리지 않는 곳
 //   - 외부 URL (https://www.gstatic.com/... 등) — ?v= 를 붙이면 깨진다
 //   - scripts/gas/ — Apps Script 소스이지 웹 자산이 아니다
+//   - tests/ — 검증 스크립트. 여기 import 에 ?v= 가 붙으면 매번 흔들린다
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -29,7 +30,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SW_PATH = join(ROOT, 'sw.js');
 
 const EXCLUDE_DIRS = new Set(['node_modules', '.git', 'images', 'icons', 'assets']);
-const EXCLUDE_PATHS = ['scripts/gas/', '교리교육 조배치 검색기/'];
+const EXCLUDE_PATHS = ['scripts/gas/', '교리교육 조배치 검색기/', 'tests/'];
 const EXTS = /\.(html|js|mjs|css)$/i;
 
 const args = process.argv.slice(2);
