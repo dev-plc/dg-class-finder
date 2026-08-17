@@ -113,11 +113,13 @@ await page.uncheck('.attendance-check >> nth=1');
 await page.waitForTimeout(800);
 ok('체크만으로는 저장하지 않음', posted.length === 0, `요청 ${posted.length}건`);
 
+// 버튼은 '실제로 쓸 인원' 을 보여준다 (명단 전체를 O/X 로 쓴다).
+// 변경 건수는 그 옆 정보 줄이 말한다.
 const btnText = await page.$eval('#saveAttendanceBtn', el => el.textContent.trim());
-ok('저장 버튼이 변경 건수를 보여줌', btnText.includes('1건'), btnText);
-
-const info = await page.$eval('#attendanceSaveInfo', el => el.textContent.trim());
-ok('저장 바가 출석/결석 수를 보여줌', /출석 \d+ · 결석 \d+/.test(info), info);
+ok('저장 버튼이 쓸 인원을 보여줌', btnText.includes('2명'), btnText);
+const infoText = await page.$eval('#attendanceSaveInfo', el => el.textContent.trim());
+ok('정보 줄이 변경 건수와 출결 수를 보여줌',
+   /변경 1건/.test(infoText) && /출석 1/.test(infoText) && /결석 1/.test(infoText), infoText);
 
 await page.click('#saveAttendanceBtn');
 await page.waitForTimeout(1200);
@@ -125,9 +127,14 @@ await page.waitForTimeout(1200);
 const body = posted[0];
 ok('저장 요청에 session 포함', !!body && body.session === '2025-11-02',
    body ? JSON.stringify(body) : '(요청 없음)');
-ok('바뀐 사람만 보냄 (1명)', !!body && Array.isArray(body.batch) && body.batch.length === 1,
-   body ? `batch ${body.batch?.length}건` : '');
-ok('상태값이 X', !!body && body.batch?.[0]?.status === 'X');
+// 명단 전체를 O/X 로 보낸다. 예전에는 바뀐 사람만 보내서, 체크 안 한 사람이
+// 빈칸(기록 없음)으로 남았다 — 출석도 결석도 아닌 칸이 되어 수료를 따질 때
+// 한 명씩 되짚어야 했다.
+const st = Object.fromEntries((body?.batch || []).map(b => [b.name, b.status]));
+ok('명단 전체를 보낸다 (2명)', !!body && body.batch.length === 2,
+   body ? JSON.stringify(body.batch) : '(요청 없음)');
+ok('체크를 푼 사람은 X', st['이조원'] === 'X', JSON.stringify(st));
+ok('체크한 사람은 O 그대로', st['김조장'] === 'O', JSON.stringify(st));
 
 const doneText = await page.$eval('#saveAttendanceBtn', el => el.textContent.trim());
 ok('저장 직후 완료 표시', doneText === '✅ 저장됨', doneText);

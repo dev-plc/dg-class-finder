@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v25)
+// DGfinder — Google Apps Script 전체 코드 (v26)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,11 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v26
+//   - 인원마다 sheetRow(출석부 시트의 줄 번호)를 담는다. 앱의 명단 차례를
+//     시트와 똑같이 맞추려는 것. 예전에는 'No.' 열로 정렬했는데, 그 칸이 비어
+//     있거나 조를 다시 짜면서 어긋나 있으면 그 사람만 명단 끝으로 밀렸다.
 //
 // v25
 //   - 김밥 칸을 O/X 로 읽는다. 예전에는 **값이 있기만 하면 신청**으로 봐서
@@ -77,7 +82,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 25;
+var DG_VERSION = 26;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -1109,6 +1114,10 @@ function doGet(e) {
       obj['location'] = locIdx !== -1 ? String(data[i][locIdx]).trim() : '';
       obj['role'] = roleIdx !== -1 ? String(data[i][roleIdx]).trim() : '';
       obj['team_no'] = noIdx !== -1 ? String(data[i][noIdx]).trim() : '';
+      // 시트에서 몇 번째 줄인가. 화면의 명단 차례를 시트와 똑같이 맞추는 데 쓴다.
+      // 'No.' 열로는 안 된다 — 비어 있거나 조를 다시 짜면서 어긋난 칸이 있고,
+      // 그러면 그 사람만 명단 끝으로 밀려 시트와 순서가 달라진다.
+      obj['sheetRow'] = i;
       obj['age'] = ageIdx !== -1 ? String(data[i][ageIdx]).trim() : '';
 
       obj['telegramLink'] = telegramMap[obj['team']] || '';

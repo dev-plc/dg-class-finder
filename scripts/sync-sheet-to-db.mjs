@@ -127,6 +127,9 @@ for (const r of rows) {
     phone,
     team: trim(r.team),
     team_no: toInt(r['no.'] ?? r.team_no),
+    // 시트에서 몇 번째 줄인가. 명단 차례를 시트와 똑같이 맞추는 데 쓴다.
+    // GAS v26 부터 온다. 없으면 null 이고, 그때는 team_no 로 정렬한다.
+    sheet_row: toInt(r.sheetRow),
     location: trim(r.location),
     role: trim(r.role),
     age: toInt(r.age),
@@ -328,6 +331,16 @@ if (DRY_RUN) {
     console.log(`   인원 레코드 필드: ${Object.keys(sample).filter(k => k !== '_id').join(', ')}`);
   }
   process.exit(0);
+}
+
+// sheet_row 열이 아직 없을 수 있다 (supabase/dg_sheet_row.sql 을 안 돌렸을 때).
+// 그대로 밀면 동기화 전체가 실패한다. 빼고 진행하고 크게 알린다 —
+// 동기화가 멈추는 것보다 명단 차례가 어긋나는 편이 낫다.
+const { error: probeErr } = await sb.from('dg_members').select('sheet_row').limit(1);
+if (probeErr) {
+  console.log('⚠️ dg_members.sheet_row 열이 없습니다 — 명단 차례가 시트와 어긋날 수 있습니다.');
+  console.log('   supabase/dg_sheet_row.sql 을 Supabase SQL Editor 에서 한 번 실행하세요.');
+  for (const m of members) delete m.sheet_row;
 }
 
 console.log('▶ dg_members');

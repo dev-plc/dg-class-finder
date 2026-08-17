@@ -197,28 +197,44 @@ ok('   변경 줄에 파란 띠', await page.$eval('.att-row.changed', el => !!e
 const unmarkedBar = await page.$$eval('.att-row.unmarked', els => els.length);
 ok('   미기록 줄에 주황 띠', unmarkedBar === 2, `${unmarkedBar}줄`);
 
+// 손대지 않은 빈칸(강조장 · 윤조원)도 결석으로 함께 나간다.
+// 버튼의 수는 실제로 쓰는 수여야 한다 — 2 라 적고 4명을 쓰면 안 된다.
 const saveText = await page.$eval('#attSaveBtn', el => el.textContent.trim());
-ok('   저장 버튼이 변경 인원 표시', saveText === '2명 저장', saveText);
+ok('   저장 버튼이 실제로 쓸 인원 표시 (변경 2 + 빈칸 2)', saveText === '4명 저장', saveText);
+const saveInfo = await page.$eval('#attSaveInfo', el => el.textContent.trim());
+ok('   빈칸이 결석으로 나간다고 알린다', /빈칸 2명은 결석/.test(saveInfo), saveInfo);
 
 await page.click('#attSaveBtn');
 await page.waitForTimeout(800);
 
 const body1 = posted[0];
-ok('1. 바뀐 두 명만 전송', !!body1 && body1.batch.length === 2,
+const st1 = Object.fromEntries((body1?.batch || []).map(b => [b.name, b.status]));
+ok('1. 바뀐 두 명 + 빈칸 두 명 전송', !!body1 && body1.batch.length === 4,
    body1 ? JSON.stringify(body1.batch) : '(요청 없음)');
+ok('1. 손대지 않은 빈칸은 X 로 나간다',
+   st1['강조장'] === 'X' && st1['윤조원'] === 'X', JSON.stringify(st1));
+ok('1. 찍은 값은 그대로', st1['김조장'] === 'O' && st1['최빈칸'] === 'X', JSON.stringify(st1));
+ok('1. 시트에도 결석으로 들어간다',
+   ATT['강조장2001']['2026-08-09'] === 'X' && ATT['윤조원2002']['2026-08-09'] === 'X',
+   `강조장=${ATT['강조장2001']['2026-08-09']} 윤조원=${ATT['윤조원2002']['2026-08-09']}`);
 ok('1. 회차가 함께 전송', body1?.session === '2026-08-09', body1?.session);
 ok('1. ◎ − 돌봄 인 사람은 전송에 없음',
    !!body1 && !body1.batch.some(b => ['이수료', '박제외', '한돌봄'].includes(b.name)),
    body1 ? body1.batch.map(b => b.name).join(',') : '');
 
 // --- 검증 2: ◎ 가 있는 조에서 '빈칸 → 결석' -------------------------------
+//
+// 위 저장으로 빈칸이 하나도 남지 않았다. 강조장의 X 를 다시 눌러 비워 둔다.
+await page.click('.att-state[data-uuid="u6"][data-status="X"]');
+await page.waitForTimeout(150);
+
 dialogs.length = 0;
 await page.click('#attBlankAbsentBtn');
 await page.waitForTimeout(300);
 
 const confirmMsg = dialogs.find(d => d.type === 'confirm')?.message || '';
 ok('2. 빈칸→결석 은 확인을 묻는다', !!confirmMsg, confirmMsg.split('\n')[0]);
-ok('2. 대상 명단을 보여준다', /강조장|윤조원/.test(confirmMsg), confirmMsg.replace(/\n/g, ' | '));
+ok('2. 대상 명단을 보여준다', /강조장/.test(confirmMsg), confirmMsg.replace(/\n/g, ' | '));
 
 const afterBlank = await page.evaluate(() => {
   const out = {};
@@ -247,7 +263,10 @@ ok('3. 같은 버튼 재클릭 → 빈칸', cleared === 0, `${cleared}개 남음
 
 await page.click('#attSaveBtn');
 await page.waitForTimeout(800);
-ok('3. 빈칸이 저장 요청으로 전송', posted[0]?.batch?.[0]?.status === '',
+// 사람이 일부러 지운 칸은 '결석' 이 아니라 '기록 없음' 이다.
+// 여기서 X 로 바꿔 버리면 '전체 지우기' 로 잘못 찍은 것을 되돌릴 수가 없다.
+const st3 = Object.fromEntries((posted[0]?.batch || []).map(b => [b.name, b.status]));
+ok('3. 일부러 지운 칸은 빈 값으로 전송', st3['김조장'] === '',
    JSON.stringify(posted[0]?.batch));
 ok('3. 시트에서 기록이 지워짐', ATT['김조장1001']['2026-08-09'] === '',
    JSON.stringify(ATT['김조장1001']));

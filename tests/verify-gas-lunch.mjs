@@ -82,6 +82,15 @@ ok('신청자가 없는 회차도 목록에 든다', (got.dates || []).some(d =>
 // --- 응답에 실려 나가는가 ---------------------------------------------------
 ok('doGet 응답에 lunchDates 를 싣는다', /lunchDates:\s*lunchInfo\.dates/.test(src));
 ok('호출부가 새 모양(byId)을 쓴다', /var lunchByDate = lunchInfo\.byId;/.test(src));
-ok('버전을 올렸다', /var DG_VERSION = 25;/.test(src));
+// 번호를 콕 박아 두면 다음에 GAS 를 고칠 때마다 이 검사가 깨진다.
+// 확인할 것은 '김밥 O/X 가 든 버전 이상인가' 와 '머리말과 상수가 같은가' 다.
+const ver = Number(src.match(/var DG_VERSION = (\d+);/)?.[1]);
+const headVer = Number(src.match(/전체 코드 \(v(\d+)\)/)?.[1]);
+ok('v25 이상 (김밥 O/X 가 든 버전)', ver >= 25, `v${ver}`);
+ok('머리말 버전과 DG_VERSION 이 같다', ver === headVer,
+   `머리말 v${headVer} · DG_VERSION ${ver}`);
+
+// 명단 차례를 시트와 맞추는 데 쓰는 값 (v26)
+ok('인원에 sheetRow(시트 줄 번호)를 담는다', /obj\['sheetRow'\] = i;/.test(src));
 
 done();

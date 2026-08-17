@@ -16,6 +16,7 @@
 // 쓰기는 DB 로 곧장 가지 않는다. 출결의 원본은 시트이고, 바뀐 사람만 모아
 // GAS 로 보내면 GAS 가 시트에 쓴 뒤 DB 에 밀어넣는다 (members-data.js 참고).
 import {
+    compareMemberOrder,
     ensureLoaded,
     getMembers,
     getSessions,
@@ -27,7 +28,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=77';
+} from './scripts/members-data.js?v=78';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -579,6 +580,25 @@ function attChanges() {
     return out;
 }
 
+/**
+ * 손대지 않은 빈칸 = 결석.
+ *
+ * 출석부에 안 찍힌 사람은 결석이다. 예전에는 O 만 나가고 빈칸은 빈칸으로
+ * 남아서, 결석자가 '기록 없음' 으로 쌓였다 — 수료 판정에서 출석도 결석도
+ * 아닌 칸이 되어 나중에 한 명씩 되짚어야 했다.
+ *
+ * **사람이 일부러 지운 칸은 여기 들어오지 않는다.** 시트에 O 가 있던 것을
+ * 화면에서 지웠다면 그건 '기록을 없애라' 는 뜻이므로 attChanges 쪽으로
+ * 빈 값이 나간다 ('전체 지우기' 가 그 용도다).
+ */
+function attBlanks() {
+    const out = [];
+    for (const [uuid, status] of attDraft) {
+        if (status === '' && (attBaseline.get(uuid) ?? '') === '') out.push({ uuid, status: 'X' });
+    }
+    return out;
+}
+
 function attReadOnly() {
     return !!attSessionDate && attSessionDate > getToday();
 }
@@ -687,13 +707,18 @@ function updateAttSummary() {
 function refreshAttSaveBar() {
     if (!attSaveBtn || !attSaveInfo) return;
     const n = attChanges().length;
+    const blanks = attBlanks().length;
     const readOnly = attReadOnly();
 
+    // 빈칸도 함께 나가므로 버튼의 수가 실제로 쓰는 수여야 한다.
+    // 버튼에 3 이라 적고 12명을 쓰면, 나중에 왜 결석이 늘었는지 알 수 없다.
     attSaveBtn.disabled = attSaving || n === 0 || readOnly;
-    attSaveBtn.textContent = attSaving ? '저장 중...' : n ? `${n}명 저장` : '저장';
+    attSaveBtn.textContent = attSaving ? '저장 중...' : n ? `${n + blanks}명 저장` : '저장';
     attSaveInfo.textContent = readOnly
         ? '아직 지나지 않은 회차라 저장할 수 없습니다'
-        : n ? `${n}명 변경됨` : '변경 사항 없음';
+        : !n ? '변경 사항 없음'
+        : blanks ? `${n}명 변경 · 빈칸 ${blanks}명은 결석(X)으로 함께 저장`
+        : `${n}명 변경됨`;
 }
 
 function renderAttList() {
@@ -726,9 +751,8 @@ function renderAttList() {
     }
 
     const html = [...groups.keys()].sort(compareTeamName).map(team => {
-        const rows = groups.get(team)
-            .sort((a, b) => (Number(a.team_no) || 999) - (Number(b.team_no) || 999)
-                            || a.name.localeCompare(b.name, 'ko'))
+        // 명단 차례는 시트의 출석부 순서와 같게 (compareMemberOrder 주석 참고)
+        const rows = groups.get(team).slice().sort(compareMemberOrder)
             .map(m => {
                 const locked = attLocked.has(m._uuid);
                 const cur = attDraft.get(m._uuid) ?? '';
@@ -859,7 +883,7 @@ async function saveAttChanges() {
         `지난 기수 이수(◎) ${demoted.length}명을 결석으로 바꿉니다. 계속할까요?`)) return;
 
     const payload = [];
-    for (const c of changes) {
+    for (const c of [...changes, ...attBlanks()]) {
         const m = byUuid.get(c.uuid);
         if (!m) continue;
         payload.push({ name: m.name, phone: m.phone, status: c.status });
@@ -1159,10 +1183,8 @@ function prTeams() {
         if (!groups.has(t)) groups.set(t, { name: t, location: m.location || '', members: [] });
         groups.get(t).members.push(m);
     }
-    for (const g of groups.values()) {
-        g.members.sort((a, b) => (Number(a.team_no) || 999) - (Number(b.team_no) || 999)
-                                 || a.name.localeCompare(b.name, 'ko'));
-    }
+    // 종이 출석부를 시트와 나란히 놓고 짚어 갈 수 있어야 한다 — 같은 차례로.
+    for (const g of groups.values()) g.members.sort(compareMemberOrder);
     return [...groups.values()].sort((a, b) => compareTeamName(a.name, b.name));
 }
 

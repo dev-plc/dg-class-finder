@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=77';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=77';
+import { matches as hangulMatches } from './hangul.js?v=78';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=78';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -97,6 +97,8 @@ function buildMemberRow(m, teamLinks, attByMember) {
     phone: m.phone || '',
     team: m.team || '',
     team_no: m.team_no ?? '',
+    // 출석부 시트의 줄 번호. 명단 차례를 시트와 똑같이 맞추는 데 쓴다.
+    sheet_row: m.sheet_row ?? null,
     location: m.location || '',
     role: m.role || '',
     age: m.age ?? '',
@@ -415,6 +417,27 @@ export async function getTeamExtras(members) {
   }
 
   return { lunch, homework };
+}
+
+/**
+ * 조원 명단 차례 — **시트의 출석부 순서와 같게.**
+ *
+ * 종이 출석부와 시트를 나란히 놓고 짚어 가며 대조하는 것이 이 앱의 주 용도다.
+ * 두 순서가 다르면 한 사람을 찾을 때마다 명단 전체를 훑게 되고, 그러다 옆줄에
+ * 체크한다.
+ *
+ * 'No.' 열(team_no)로 정렬하던 것을 시트 줄 번호(sheet_row)로 바꿨다. No. 는
+ * 비어 있거나 조를 다시 짜면서 어긋난 칸이 있어서, 그 사람만 명단 끝으로 밀렸다.
+ * sheet_row 가 아직 없는 데이터(동기화 전)에서는 예전 규칙으로 물러난다.
+ */
+export function compareMemberOrder(a, b) {
+  const n = (v) => {
+    const x = Number(v);
+    return v === null || v === undefined || v === '' || !Number.isFinite(x) ? Infinity : x;
+  };
+  return n(a.sheet_row) - n(b.sheet_row)
+      || n(a.team_no) - n(b.team_no)
+      || String(a.name || '').localeCompare(String(b.name || ''), 'ko');
 }
 
 /** 회차 이름이 강의인지 (수료에 들어가는지). '자유교제' 같은 주는 아니다. */

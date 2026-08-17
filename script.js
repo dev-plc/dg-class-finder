@@ -17,7 +17,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=77';
+} from './scripts/members-data.js?v=78';
 
 // 1-1. 내 정보 기억
 //
@@ -607,10 +607,12 @@ function refreshSaveBar() {
     const present = checks.filter(cb => cb.checked).length;
     const changes = changedChecks().length;
 
+    // 저장은 명단 전체를 O/X 로 쓴다. 버튼의 수도 실제로 쓰는 수여야 한다 —
+    // '변경 1건' 이라 적고 12명을 쓰면 나중에 결석이 왜 늘었는지 알 수 없다.
     info.textContent = `출석 ${present} · 결석 ${checks.length - present}`
         + (changes ? ` · 변경 ${changes}건` : '');
     btn.disabled = changes === 0;
-    btn.textContent = changes === 0 ? '변경 사항 없음' : `출석 반영 (${changes}건)`;
+    btn.textContent = changes === 0 ? '변경 사항 없음' : `출석 반영 (${checks.length}명)`;
     bar.classList.toggle('has-changes', changes > 0);
 }
 
@@ -635,9 +637,16 @@ async function saveAttendanceChanges() {
         return;
     }
 
-    // 바뀐 사람만 보낸다. 전원을 O/X 로 보내면 시트에 사람이 직접 넣은
-    // 다른 표기가 한 번에 지워진다.
-    const changes = changed.map(cb => ({
+    // 체크한 사람은 O, 체크 안 한 사람은 X 로 보낸다.
+    //
+    // 예전에는 '바뀐 사람만' 보냈다. 그러면 O 만 나가고 손대지 않은 빈칸은
+    // 빈칸으로 남아, 결석자가 '기록 없음' 으로 쌓였다 — 출석도 결석도 아닌
+    // 칸이라 수료를 따질 때 한 명씩 되짚어야 했다.
+    //
+    // 그래도 전원을 보내는 것이지 전원을 덮는 것은 아니다. ◎ · − · 돌봄 처럼
+    // 사람이 시트에 직접 넣은 표기는 체크박스가 아니라 배지로 그려서 여기
+    // 목록에 아예 들어오지 않는다 (위 renderTeamMembers 참고).
+    const changes = attendanceChecks().map(cb => ({
         name: cb.dataset.name,
         phone: cb.dataset.phone,
         status: cb.checked ? 'O' : 'X',
@@ -650,8 +659,10 @@ async function saveAttendanceChanges() {
     try {
         const { saved, kept, missing } = await saveAttendance(session, changes);
 
-        // 저장된 것만 새 기준선으로 삼는다
-        for (const cb of changed) cb.dataset.initial = cb.checked ? '1' : '0';
+        // 이제 전원을 보내므로 기준선도 전원을 다시 뜬다.
+        // (kept·missing 은 실제로 안 바뀌었지만 체크 모양은 그대로 두는 게 맞다 —
+        //  다음 저장에서 다시 시도된다)
+        for (const cb of attendanceChecks()) cb.dataset.initial = cb.checked ? '1' : '0';
 
         const notes = [];
         if (kept && kept.length) notes.push(`다른 표기가 있어 두었습니다: ${kept.join(', ')}`);

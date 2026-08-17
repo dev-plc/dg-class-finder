@@ -28,7 +28,12 @@ const MEMBERS = SPEC.flatMap(s => Array.from({ length: s.n }, (_, i) => {
   return {
     id: `u${uid}`, cohort_id: COHORT,
     name: `${s.team}원${String(i + 1).padStart(2, '0')}`, phone: String(1000 + uid),
-    team: s.team, team_no: i + 1, location: s.location,
+    team: s.team, location: s.location,
+    // 시트 줄 번호. 명단 차례는 **이것**을 따라야 한다 (시트와 같은 순서).
+    sheet_row: uid + 5,
+    // 'No.' 열은 일부러 어긋나게 둔다 — 예전에는 이 값으로 정렬해서,
+    // Y1 은 거꾸로 나오고 여1 의 빈칸인 사람은 명단 끝으로 밀렸다.
+    team_no: s.team === 'Y1' ? s.n - i : (s.team === '여1' && i === 1 ? null : i + 1),
     role: i === 0 ? '조장' : '조원', lunch: 'O', status: 'active', age: 30,
   };
 }));
@@ -213,6 +218,26 @@ const nameCells = await page.$$eval('.pr-sheet[data-team="Y1"] tbody .pr-name', 
 ok('조장은 이름 아래 직책이 붙는다', nameCells[0].role === '조장',
    `${nameCells[0].nm} / ${nameCells[0].role || '(없음)'}`);
 ok('조장 표시가 이름 아래 줄로', nameCells[0].roleBlock === 'block', nameCells[0].roleBlock);
+// --- 명단 차례가 시트와 같은가 --------------------------------------------
+//
+// 종이 출석부와 시트를 나란히 놓고 짚어 가며 대조하는 것이 주 용도다.
+// 순서가 다르면 한 사람을 찾을 때마다 명단을 훑게 되고, 그러다 옆줄에 체크한다.
+// 이 조들은 'No.' 열이 거꾸로거나 비어 있다 — 그래도 시트 줄 차례로 나와야 한다.
+const orderOf = (team) => page.$$eval(`.pr-sheet[data-team="${team}"] tbody .pr-nm`,
+  els => els.map(e => e.textContent.trim().replace(/\d{4}$/, '')));
+
+const y1Order = await orderOf('Y1');
+ok('No. 가 거꾸로여도 시트 줄 차례로 나온다',
+   y1Order.join(',') === 'Y1원01,Y1원02,Y1원03,Y1원04,Y1원05', y1Order.join(' → '));
+
+const yeoOrder = await orderOf('여1');
+ok('No. 가 빈 사람도 제자리 (끝으로 밀리지 않는다)',
+   yeoOrder.join(',') === '여1원01,여1원02,여1원03,여1원04', yeoOrder.join(' → '));
+
+const noCol = await page.$$eval('.pr-sheet[data-team="Y1"] tbody .pr-c-no',
+  els => els.map(e => e.textContent.trim()));
+ok('번호 칸은 종이에서 1부터 다시 매긴다', noCol.join(',') === '1,2,3,4,5', noCol.join(','));
+
 ok('조원은 직책을 적지 않는다', nameCells.slice(1).every(c => c.role === ''),
    nameCells.slice(1).map(c => c.role || '·').join(','));
 ok('이름 칸이 가운데정렬', nameCells.every(c => c.align === 'center'),
