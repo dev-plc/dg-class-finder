@@ -18,7 +18,8 @@ node tests/verify-print.mjs       # 하나만
 |---|---|
 | `verify-print.mjs` | 출석부 출력 — A4 한 장 안에 드는가, 집계표, 장 고르기, 김밥·과제 붙기 |
 | `verify-admin.mjs` | 관리자 화면 — 검색·조별·개인별, 조 차례(YF · YM · C · 남 · 여) |
-| `verify-admin-att.mjs` | 출석 관리 — 스냅숏·일괄 버튼·보호값(◎ − 돌봄) |
+| `verify-admin-att.mjs` | 출석 관리 — 스냅숏·일괄 버튼·보호값(◎ − 돌봄)·빈칸→결석 |
+| `verify-absence.mjs` | 결석 현황 — 이 주차 결석자, 2회 이상 결석자, 세는 규칙 |
 | `verify-attendance.mjs` | 회차 선택과 출결 저장 (바뀐 사람만 보내는가) |
 | `verify-matrix.mjs` | 전체 출석표 — 조원 × 회차, 🍙 · 📝 |
 | `verify-myatt.mjs` | 내 출석 현황 — 최근 10회차만 펴 두는가 |

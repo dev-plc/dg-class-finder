@@ -12,8 +12,8 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=78">
-    <link rel="stylesheet" href="admin.css?v=78">
+    <link rel="stylesheet" href="style.css?v=79">
+    <link rel="stylesheet" href="admin.css?v=79">
 </head>
 <body class="dark-mode">
     <div class="admin-container">
@@ -68,6 +68,7 @@
             <button class="tab-btn" data-tab="teams">조별 보기</button>
             <button class="tab-btn" data-tab="members">개인별 보기</button>
             <button class="tab-btn" data-tab="attendance">출석 관리</button>
+            <button class="tab-btn" data-tab="absence">결석 현황</button>
             <button class="tab-btn" data-tab="print">출석부 출력</button>
         </nav>
 
@@ -213,6 +214,46 @@
             </div>
         </div>
 
+        <!-- 결석 현황 -->
+        <div class="tab-content" id="absenceTab">
+            <div class="ab-controls">
+                <label class="att-picker">
+                    <span class="att-picker-label">주차</span>
+                    <select id="abSessionPicker" class="att-select"></select>
+                </label>
+                <button type="button" id="abReloadBtn" class="att-mini-btn">↻ 다시 읽기</button>
+                <span id="abLoadedAt" class="att-loaded-at"></span>
+            </div>
+
+            <!-- 이 주차 결석자 -->
+            <section class="ab-block">
+                <div class="ab-head">
+                    <h3 class="ab-title">이 주차 결석자</h3>
+                    <span class="ab-count" id="abWeekCount"></span>
+                    <button type="button" id="abWeekCopyBtn" class="att-mini-btn">📋 명단 복사</button>
+                </div>
+                <!-- 아직 안 찍은 회차와 '전원 출석' 은 다른 이야기다. 구별해서 알린다. -->
+                <div class="ab-note" id="abWeekNote"></div>
+                <div class="ab-list" id="abWeekList"></div>
+            </section>
+
+            <!-- 누적 결석자 -->
+            <section class="ab-block">
+                <div class="ab-head">
+                    <h3 class="ab-title">2회 이상 결석자</h3>
+                    <span class="ab-count" id="abTotalCount"></span>
+                    <div class="ab-thresholds" id="abThresholds">
+                        <button type="button" class="att-bulk-btn on" data-min="2">2회 이상</button>
+                        <button type="button" class="att-bulk-btn" data-min="3">3회 이상</button>
+                        <button type="button" class="att-bulk-btn" data-min="4">4회 이상</button>
+                    </div>
+                    <button type="button" id="abTotalCopyBtn" class="att-mini-btn">📋 명단 복사</button>
+                </div>
+                <div class="ab-note" id="abTotalNote"></div>
+                <div class="ab-list" id="abTotalList"></div>
+            </section>
+        </div>
+
         <!-- 출석부 출력 -->
         <div class="tab-content" id="printTab">
             <!-- 조가 13개면 미리보기가 13장이다. 조작부가 안 붙어 있으면
@@ -274,7 +315,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=78"></script>
+    <script type="module" src="admin.js?v=79"></script>
 </body>
 </html>
 

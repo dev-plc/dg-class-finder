@@ -18,17 +18,20 @@
 import {
     compareMemberOrder,
     ensureLoaded,
+    getAttendanceHistory,
     getMembers,
     getSessions,
     getSessionExtras,
     getToday,
+    isAbsent,
+    isClassSession,
     isEditableStatus,
     loadAttendanceForSession,
     refresh,
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=78';
+} from './scripts/members-data.js?v=79';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -98,6 +101,9 @@ subscribe((event) => {
         }
     }
 
+    // 결석 현황도 받아 둔 값이다. 새로 가져왔으면 다시 센다.
+    if (abHistory) { abHistory = null; loadAbsence(); }
+
     // 출석부 출력도 스냅숏이다. 시트에서 새로 가져왔으면 **주차 목록부터**
     // 다시 세우고 김밥·과제를 다시 읽는다 — 이번 주 회차가 새로 생겼을 수도,
     // 옛 체크가 그대로 남아 있을 수도 있다.
@@ -153,6 +159,7 @@ tabBtns.forEach(btn => {
 
         // 출결·출석부 자료는 탭을 열 때 한 번만 받는다.
         if (tabName === 'attendance') loadAttendance();
+        if (tabName === 'absence') openAbsenceTab();
         if (tabName === 'print') openPrintTab();
     });
 });
@@ -1019,6 +1026,230 @@ function initAttendanceTab() {
 // 저장하지 않고 창을 닫는 것을 막는다.
 window.addEventListener('beforeunload', (e) => {
     if (attChanges().length > 0) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ==================== 결석 현황 ====================
+//
+// 두 가지를 본다.
+//   이 주차 결석자   — 방금 끝난 수업에서 빠진 사람. 연락할 명단이다.
+//   2회 이상 결석자  — 누적. 하차·상담 판단에 쓴다.
+//
+// 세는 규칙을 좁게 잡는다. 넓게 잡으면 엉뚱한 사람이 명단에 올라오고, 한 번
+// 그런 일이 있으면 이 화면을 아무도 믿지 않는다.
+//
+//   결석 = X 만.  빈칸은 '아직 안 찍음' 이지 결석이 아니다.
+//                 ◎(지난 기수 이수) · −(수업 없음) · 돌봄 도 아니다.
+//   회차 = 지나간 강의 회차만. '자유교제' 처럼 수료에 안 들어가는 주는 뺀다
+//          (전체 출석표에서 흐리게 칠하는 그 회차들이다).
+
+const abSessionPicker = document.getElementById('abSessionPicker');
+const abThresholds = document.getElementById('abThresholds');
+
+let abSessionDate = null;
+let abHistory = null;          // Map(uuid → Map(date → status))
+let abMin = 2;                 // 몇 회 이상을 보여줄까
+let abLoading = false;
+let abLoadedAtMs = 0;
+
+/** 결석을 세는 회차 — 지나간 강의 회차만 */
+function abClassSessions() {
+    const today = getToday();
+    return getSessions({ all: true }).filter(s => s.date <= today && isClassSession(s.name));
+}
+
+async function openAbsenceTab() {
+    if (abLoading) return;
+    const sessions = abClassSessions();
+    if (!abSessionDate || !sessions.some(s => s.date === abSessionDate)) {
+        abSessionDate = sessions.length
+            ? (nearestSessionDate(sessions, getToday()) || sessions[sessions.length - 1].date)
+            : null;
+    }
+    renderAbSessionPicker();
+    if (!abHistory) await loadAbsence();
+    else renderAbsence();
+}
+
+function renderAbSessionPicker() {
+    if (!abSessionPicker) return;
+    const sessions = abClassSessions();
+    abSessionPicker.innerHTML = sessions.map(s =>
+        `<option value="${attEsc(s.date)}"${s.date === abSessionDate ? ' selected' : ''}>` +
+        `${attEsc(s.key)}${s.name ? ' · ' + attEsc(s.name) : ''}</option>`).join('');
+}
+
+async function loadAbsence() {
+    abLoading = true;
+    renderAbsence();
+    try {
+        abHistory = await getAttendanceHistory();
+        abLoadedAtMs = Date.now();
+    } catch (err) {
+        console.log('결석 현황 조회 실패:', err);
+        abHistory = null;
+    } finally {
+        abLoading = false;
+        renderAbsence();
+    }
+}
+
+/** 사람별 결석 회차 목록 (강의 회차만, 결석 많은 순) */
+function abCounts() {
+    const sessions = abClassSessions();
+    const out = [];
+    for (const m of memberData) {
+        if (!m._uuid) continue;
+        const byDate = abHistory?.get(m._uuid);
+        if (!byDate) continue;
+        const dates = sessions.filter(s => isAbsent(byDate.get(s.date))).map(s => s.key);
+        if (dates.length) out.push({ m, dates });
+    }
+    return out.sort((a, b) => b.dates.length - a.dates.length
+        || compareTeamName(a.m.team, b.m.team)
+        || compareMemberOrder(a.m, b.m));
+}
+
+function abRow(m, extra = '') {
+    return `<div class="ab-row">
+                <span class="ab-team">${attEsc(m.team || '-')}</span>
+                <span class="ab-name">${attEsc(m.name)}<span class="ab-phone">${attEsc(m.phone || '')}</span></span>
+                <span class="ab-extra">${extra}</span>
+            </div>`;
+}
+
+function renderAbsence() {
+    const weekList = document.getElementById('abWeekList');
+    const weekCount = document.getElementById('abWeekCount');
+    const weekNote = document.getElementById('abWeekNote');
+    const totalList = document.getElementById('abTotalList');
+    const totalCount = document.getElementById('abTotalCount');
+    const totalNote = document.getElementById('abTotalNote');
+    if (!weekList || !totalList) return;
+
+    const loadedAt = document.getElementById('abLoadedAt');
+    if (loadedAt) {
+        loadedAt.textContent = abLoadedAtMs
+            ? `${Math.max(0, Math.round((Date.now() - abLoadedAtMs) / 60000))}분 전 읽음`.replace('0분 전', '방금')
+            : '';
+    }
+
+    if (abLoading || !abHistory) {
+        const msg = abLoading ? '불러오는 중...' : '불러오지 못했습니다.';
+        weekList.innerHTML = `<div class="att-empty">${msg}</div>`;
+        totalList.innerHTML = '';
+        if (weekCount) weekCount.textContent = '';
+        if (totalCount) totalCount.textContent = '';
+        if (weekNote) weekNote.textContent = '';
+        if (totalNote) totalNote.textContent = '';
+        return;
+    }
+
+    const sessions = abClassSessions();
+    const cur = sessions.find(s => s.date === abSessionDate);
+
+    // ---- 이 주차 ----
+    const roster = memberData.filter(m => m._uuid);
+    const marked = roster.filter(m => String(abHistory.get(m._uuid)?.get(abSessionDate) ?? '').trim() !== '');
+    const absentees = roster
+        .filter(m => isAbsent(abHistory.get(m._uuid)?.get(abSessionDate)))
+        .sort((a, b) => compareTeamName(a.team, b.team) || compareMemberOrder(a, b));
+
+    if (weekCount) weekCount.textContent = cur ? `${cur.key} · ${absentees.length}명` : '';
+
+    // '전원 출석' 과 '아직 안 찍음' 은 다른 이야기다. 안 찍은 회차를 '결석 0명' 으로
+    // 보여주면 없는 사실을 만들어 내는 것이다.
+    const unmarked = roster.length - marked.length;
+    if (weekNote) {
+        weekNote.textContent = !marked.length
+            ? '⚠️ 이 주차는 아직 출석을 찍지 않았습니다 (기록 0건).'
+            : unmarked ? `※ ${unmarked}명은 아직 기록이 없습니다 — 결석으로 세지 않았습니다.`
+            : '';
+        weekNote.classList.toggle('warn', !marked.length);
+    }
+
+    // 몇 주 연속인지 — 연락할 때 이게 첫마디가 된다
+    const streakOf = (m) => {
+        const byDate = abHistory.get(m._uuid);
+        const upto = sessions.filter(s => s.date <= abSessionDate);
+        let n = 0;
+        for (let i = upto.length - 1; i >= 0; i--) {
+            if (!isAbsent(byDate?.get(upto[i].date))) break;
+            n++;
+        }
+        return n;
+    };
+
+    weekList.innerHTML = absentees.length
+        ? absentees.map(m => {
+            const st = streakOf(m);
+            return abRow(m, st > 1 ? `<b class="ab-streak">${st}주 연속</b>` : '');
+        }).join('')
+        : `<div class="att-empty">${marked.length ? '이 주차 결석자가 없습니다.' : ''}</div>`;
+
+    // ---- 누적 ----
+    const all = abCounts();
+    const hit = all.filter(r => r.dates.length >= abMin);
+    if (totalCount) totalCount.textContent = `${hit.length}명`;
+    if (totalNote) {
+        totalNote.textContent = `강의 ${sessions.length}회차 기준 · 결석(X)만 셉니다`
+            + ` (빈칸 · ◎ · − · 돌봄 은 제외)`;
+    }
+
+    totalList.innerHTML = hit.length
+        ? hit.map(r => abRow(r.m,
+            `<b class="ab-n">${r.dates.length}회</b>`
+            + `<span class="ab-dates">${r.dates.map(d => `<span class="ab-chip">${attEsc(d)}</span>`).join('')}</span>`)).join('')
+        : `<div class="att-empty">${abMin}회 이상 결석한 사람이 없습니다.</div>`;
+}
+
+/** 카톡에 붙일 명단. 화면에서 눈으로 옮겨 적게 하지 않는다. */
+async function abCopy(rows, title) {
+    if (!rows.length) return alert('복사할 명단이 없습니다.');
+    const text = `${title}\n` + rows.map(r => {
+        const m = r.m || r;
+        const tail = r.dates ? ` (${r.dates.length}회: ${r.dates.join(' ')})` : '';
+        return `${m.team} ${m.name}${tail}`;
+    }).join('\n');
+    try {
+        await navigator.clipboard.writeText(text);
+        alert(`${rows.length}명을 복사했습니다.`);
+    } catch {
+        // 클립보드가 막힌 브라우저에서도 옮겨 적게 두지 않는다
+        prompt('복사해서 쓰세요 (Ctrl+C)', text.replace(/\n/g, ' / '));
+    }
+}
+
+abSessionPicker?.addEventListener('change', (e) => {
+    abSessionDate = e.target.value;
+    renderAbsence();
+});
+
+document.getElementById('abReloadBtn')?.addEventListener('click', () => {
+    abHistory = null;
+    loadAbsence();
+});
+
+abThresholds?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-min]');
+    if (!btn) return;
+    abMin = Number(btn.dataset.min) || 2;
+    abThresholds.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === btn));
+    renderAbsence();
+});
+
+document.getElementById('abWeekCopyBtn')?.addEventListener('click', () => {
+    const roster = memberData.filter(m => m._uuid);
+    const rows = roster
+        .filter(m => isAbsent(abHistory?.get(m._uuid)?.get(abSessionDate)))
+        .sort((a, b) => compareTeamName(a.team, b.team) || compareMemberOrder(a, b));
+    const cur = abClassSessions().find(s => s.date === abSessionDate);
+    abCopy(rows, `${cur ? cur.key + ' ' : ''}결석자 ${rows.length}명`);
+});
+
+document.getElementById('abTotalCopyBtn')?.addEventListener('click', () => {
+    if (!abHistory) return alert('복사할 명단이 없습니다.');
+    const hit = abCounts().filter(r => r.dates.length >= abMin);
+    abCopy(hit, `${abMin}회 이상 결석 ${hit.length}명`);
 });
 
 // ==================== 출석부 출력 ====================

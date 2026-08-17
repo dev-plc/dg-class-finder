@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=78';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=78';
+import { matches as hangulMatches } from './hangul.js?v=79';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=79';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -614,6 +614,46 @@ export async function loadAttendanceForSession(date) {
 
   notify({ type: 'session-attendance-loaded', session: date });
   return byUuid;
+}
+
+/**
+ * 지나간 회차 전체의 출결을 한 번에 받는다. 결석 현황이 쓴다.
+ *
+ * 회차마다 따로 부르면 20회차면 20번 왕복이다. 한 번에 받아 사람별로 접는다.
+ * 인원 250명 × 20회차 = 5000행 정도라 order 를 붙여 나눠 받으면 된다.
+ *
+ * 기수를 dg_members 로 좁힌다 — 지난 기수 행까지 세면 결석 수가 부풀어
+ * 엉뚱한 사람이 하차 대상으로 올라온다.
+ *
+ * @returns Map(uuid → Map('YYYY-MM-DD' → status))
+ */
+export async function getAttendanceHistory() {
+  const cohortId = state.cohortId || await getActiveCohortId();
+  const enc = encodeURIComponent(cohortId);
+
+  const rows = await sbSelect(
+    `dg_attendance?select=member_id,session_date,status,` +
+    `dg_members!inner(cohort_id)&dg_members.cohort_id=eq.${enc}` +
+    `&order=member_id,session_date`
+  );
+
+  const out = new Map();
+  for (const r of rows) {
+    if (!out.has(r.member_id)) out.set(r.member_id, new Map());
+    out.get(r.member_id).set(r.session_date, String(r.status ?? '').trim());
+  }
+  return out;
+}
+
+/**
+ * 출결 표기가 '결석' 인가.
+ *
+ * X 만 결석이다. 빈칸은 '아직 안 찍음' 이지 결석이 아니고, ◎(지난 기수 이수) ·
+ * −(수업 없음) · 돌봄 도 결석이 아니다. 여기서 빈칸을 결석으로 세면 이번 주
+ * 출석을 아직 안 찍은 조가 통째로 하차 대상으로 올라온다.
+ */
+export function isAbsent(status) {
+  return String(status ?? '').trim().toUpperCase() === 'X';
 }
 
 /**
