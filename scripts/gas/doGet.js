@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v26)
+// DGfinder — Google Apps Script 전체 코드 (v27)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,11 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v27
+//   - 인원마다 pastor(담당교역자)를 담는다. 결석 현황을 교역자별로 갈라 보려는
+//     것. 열 이름은 '담당교역자 · 교역자 · pastor · 담당' 을 차례로 찾는다.
+//     ⚠️ 이 탭의 다른 개인정보 열(연락처 · 결혼 등)은 여전히 내보내지 않는다.
 //
 // v26
 //   - 인원마다 sheetRow(출석부 시트의 줄 번호)를 담는다. 앱의 명단 차례를
@@ -82,7 +87,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 26;
+var DG_VERSION = 27;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -1110,6 +1115,12 @@ function doGet(e) {
       var roleIdx = headers.indexOf('role');
       var noIdx = headers.indexOf('no.');
       var ageIdx = headers.indexOf('age');
+      // 담당교역자. 시트마다 열 이름이 조금씩 달라 몇 가지를 순서대로 본다.
+      var pastorIdx = -1;
+      var pastorNames = ['담당교역자', '교역자', 'pastor', '담당'];
+      for (var pn = 0; pn < pastorNames.length && pastorIdx === -1; pn++) {
+        pastorIdx = headers.indexOf(pastorNames[pn]);
+      }
       obj['team'] = teamIdx !== -1 ? String(data[i][teamIdx]).trim() : '';
       obj['location'] = locIdx !== -1 ? String(data[i][locIdx]).trim() : '';
       obj['role'] = roleIdx !== -1 ? String(data[i][roleIdx]).trim() : '';
@@ -1119,6 +1130,9 @@ function doGet(e) {
       // 그러면 그 사람만 명단 끝으로 밀려 시트와 순서가 달라진다.
       obj['sheetRow'] = i;
       obj['age'] = ageIdx !== -1 ? String(data[i][ageIdx]).trim() : '';
+      // 하차·상담을 교역자별로 나눠 보려면 이 값이 있어야 한다.
+      // (연락처·결혼 같은 열은 여전히 내보내지 않는다 — 화면이 쓰는 것만 담는다)
+      obj['pastor'] = pastorIdx !== -1 ? String(data[i][pastorIdx]).trim() : '';
 
       obj['telegramLink'] = telegramMap[obj['team']] || '';
       obj['lunch'] = kimbapMap[obj['id']] || 'X';

@@ -24,15 +24,18 @@ const SESSIONS = [
 ];
 const D = Object.fromEntries(SESSIONS.map(s => [s.label, s.session_date]));
 
+// 담당교역자를 조 차례와 어긋나게 둔다 — 그래야 정렬을 실제로 검증할 수 있다.
+//   조 차례  : 한번결석(YF1) · 세번결석(YF1) · 연속결석(YM1)
+//   교역자   : 세번결석(김목사) · 연속결석(김목사) · 한번결석(이목사)
 const MEMBERS = [
-  { id: 'u1', name: '한번결석', team: 'YF1', team_no: 1, role: '조장' },
-  { id: 'u2', name: '세번결석', team: 'YF1', team_no: 2, role: '조원' },
-  { id: 'u3', name: '연속결석', team: 'YM1', team_no: 1, role: '조원' },
-  { id: 'u4', name: '개근이', team: 'YM1', team_no: 2, role: '조원' },
-  { id: 'u5', name: '빈칸이', team: 'C1', team_no: 1, role: '조원' },
-  { id: 'u6', name: '돌봄이', team: 'C1', team_no: 2, role: '조원' },
-  { id: 'u7', name: '이수료', team: 'C1', team_no: 3, role: '조원' },
-  { id: 'u8', name: '자유만빠짐', team: 'C1', team_no: 4, role: '조원' },
+  { id: 'u1', name: '한번결석', team: 'YF1', team_no: 1, role: '조장', pastor: '이목사' },
+  { id: 'u2', name: '세번결석', team: 'YF1', team_no: 2, role: '조원', pastor: '김목사' },
+  { id: 'u3', name: '연속결석', team: 'YM1', team_no: 1, role: '조원', pastor: '김목사' },
+  { id: 'u4', name: '개근이', team: 'YM1', team_no: 2, role: '조원', pastor: '김목사' },
+  { id: 'u5', name: '빈칸이', team: 'C1', team_no: 1, role: '조원', pastor: '이목사' },
+  { id: 'u6', name: '돌봄이', team: 'C1', team_no: 2, role: '조원', pastor: '' },
+  { id: 'u7', name: '이수료', team: 'C1', team_no: 3, role: '조원', pastor: '' },
+  { id: 'u8', name: '자유만빠짐', team: 'C1', team_no: 4, role: '조원', pastor: '' },
 ].map((m, i) => ({ ...m, cohort_id: COHORT, phone: String(1001 + i), sheet_row: i + 1,
                    location: '웨슬리홀', lunch: 'O', status: 'active', age: 30 }));
 
@@ -124,7 +127,8 @@ ok('기본 주차 = 오늘과 가장 가까운 강의 회차',
 // --- 이 주차 결석자 --------------------------------------------------------
 const week = () => page.$$eval('#abWeekList .ab-row', els => els.map(r => ({
   team: r.querySelector('.ab-team').textContent.trim(),
-  name: r.querySelector('.ab-name').textContent.trim().replace(/\d{4}$/, ''),
+  name: r.querySelector('.ab-name').childNodes[0].textContent.trim(),
+  pastor: r.querySelector('.ab-pastor')?.textContent.trim() || '',
   extra: r.querySelector('.ab-extra').textContent.trim(),
 })));
 
@@ -153,7 +157,7 @@ ok('기록 없는 사람은 결석으로 세지 않았다고 알린다', /기록
 
 // --- 2회 이상 결석자 -------------------------------------------------------
 const total = () => page.$$eval('#abTotalList .ab-row', els => els.map(r => ({
-  name: r.querySelector('.ab-name').textContent.trim().replace(/\d{4}$/, ''),
+  name: r.querySelector('.ab-name').childNodes[0].textContent.trim(),
   n: r.querySelector('.ab-n')?.textContent.trim() || '',
   dates: [...r.querySelectorAll('.ab-chip')].map(c => c.textContent.trim()),
 })));
@@ -206,6 +210,32 @@ await page.waitForTimeout(400);
 await page.selectOption('#abSessionPicker', '2026-08-09');
 await page.waitForTimeout(400);
 
+// --- 담당교역자별 정렬 -----------------------------------------------------
+//
+// 하차·상담은 교역자가 나눠 맡는다. 조 순서로만 나오면 자기 몫을 매번 눈으로
+// 골라내야 한다.
+ok('교역자 이름이 줄에 보인다', (await week()).every(x => x.pastor),
+   (await week()).map(x => `${x.name}:${x.pastor || '-'}`).join(' | '));
+
+await page.selectOption('#abSortPicker', 'pastor');
+await page.waitForTimeout(400);
+const wp = await week();
+ok('교역자별로 묶인다', wp.map(x => x.pastor).join(',') === '김목사,김목사,이목사',
+   wp.map(x => `${x.pastor} ${x.name}`).join(' | '));
+ok('묶음 안에서는 조 차례',
+   wp.map(x => x.name).join(',') === '세번결석,연속결석,한번결석',
+   wp.map(x => x.name).join(','));
+
+const tp = await total();
+ok('누적도 교역자별로 묶인다', tp.map(x => x.name).join(',') === '세번결석,연속결석',
+   tp.map(x => x.name).join(','));
+
+await page.selectOption('#abSortPicker', 'team');
+await page.waitForTimeout(400);
+ok('조 순서로 되돌린다',
+   (await week()).map(x => x.name).join(',') === '한번결석,세번결석,연속결석',
+   (await week()).map(x => x.name).join(','));
+
 // --- 명단 복사 -------------------------------------------------------------
 await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 dialogs.length = 0;
@@ -216,6 +246,17 @@ ok('이 주차 명단을 클립보드로 복사한다',
    /한번결석/.test(copied) && /세번결석/.test(copied) && !/개근이/.test(copied),
    copied.replace(/\n/g, ' / '));
 ok('복사했다고 알린다', dialogs.some(d => /3명/.test(d)), dialogs.join(' | '));
+
+// 교역자별로 보고 있으면 복사 명단에도 붙는다 — 그대로 나눠 보내는 글이다
+await page.selectOption('#abSortPicker', 'pastor');
+await page.waitForTimeout(300);
+await page.click('#abWeekCopyBtn');
+await page.waitForTimeout(500);
+const copiedP = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''));
+ok('교역자별로 볼 때는 복사 명단에도 교역자가 붙는다',
+   /\[김목사\] YF1 세번결석/.test(copiedP), copiedP.replace(/\n/g, ' / '));
+await page.selectOption('#abSortPicker', 'team');
+await page.waitForTimeout(300);
 
 dialogs.length = 0;
 await page.click('#abTotalCopyBtn');

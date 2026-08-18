@@ -17,7 +17,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=82';
+} from './scripts/members-data.js?v=83';
 
 // 1-1. 내 정보 기억
 //
@@ -864,16 +864,30 @@ function initEventListeners() {
         e.preventDefault();
         const id = document.getElementById('adminId').value;
         const pw = document.getElementById('adminPassword').value;
+        const errorElement = document.getElementById('adminLoginError');
+
+        // 맞으면 그냥 들여보낸다. '로그인 성공!' 을 한 번 더 누르게 할 이유가 없다.
+        // 알림은 틀렸을 때만 — 그때만 사람이 할 일이 남는다.
         if (id === 'plc' && pw === 'plc1234') {
-            alert("로그인 성공!");
-            sessionStorage.setItem('adminLoggedIn', 'true'); 
-            window.location.href = 'admin.html'; 
-        } else {
-            const errorElement = document.getElementById('adminLoginError');
+            sessionStorage.setItem('adminLoggedIn', 'true');
+            window.location.href = 'admin.html';
+            return;
+        }
+
+        if (errorElement) {
             errorElement.style.display = 'block';
-            errorElement.textContent = "아이디 또는 비밀번호가 틀렸습니다.";
+            errorElement.textContent = '아이디 또는 비밀번호가 틀렸습니다.';
         }
     });
+
+    // 다시 입력하기 시작하면 빨간 글씨를 지운다. 고치는 중에도 남아 있으면
+    // 방금 친 것이 또 틀린 줄 안다.
+    for (const id of ['adminId', 'adminPassword']) {
+        document.getElementById(id)?.addEventListener('input', () => {
+            const err = document.getElementById('adminLoginError');
+            if (err) err.style.display = 'none';
+        });
+    }
     elements.phoneInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter' && !elements.searchBtn.disabled) searchMember();
     });

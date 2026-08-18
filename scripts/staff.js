@@ -1,5 +1,5 @@
 // Firebase 설정 import
-import { db, collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from './firebase-config.js?v=82';
+import { db, collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from './firebase-config.js?v=83';
 
 // DOM 요소
 const ordersListContainer = document.getElementById('ordersList');

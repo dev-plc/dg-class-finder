@@ -31,7 +31,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=82';
+} from './scripts/members-data.js?v=83';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1048,6 +1048,7 @@ const abThresholds = document.getElementById('abThresholds');
 let abSessionDate = null;
 let abHistory = null;          // Map(uuid → Map(date → status))
 let abMin = 2;                 // 몇 회 이상을 보여줄까
+let abSort = 'team';           // 'team' | 'pastor'
 let abLoading = false;
 let abLoadedAtMs = 0;
 
@@ -1093,6 +1094,26 @@ async function loadAbsence() {
     }
 }
 
+/**
+ * 명단 차례.
+ *
+ * 기본은 조 순서다. '담당교역자' 를 고르면 교역자로 먼저 묶는다 — 하차·상담은
+ * 교역자가 나눠 맡는데, 조 순서로만 나오면 자기 몫을 매번 눈으로 골라내야 한다.
+ * 교역자가 비어 있는 사람은 맨 뒤로 보낸다 (중간에 끼면 묶음이 끊어져 보인다).
+ */
+function abCompare(a, b) {
+    if (abSort === 'pastor') {
+        const pa = (a.pastor || '').trim();
+        const pb = (b.pastor || '').trim();
+        if (pa !== pb) {
+            if (!pa) return 1;
+            if (!pb) return -1;
+            return pa.localeCompare(pb, 'ko');
+        }
+    }
+    return compareTeamName(a.team, b.team) || compareMemberOrder(a, b);
+}
+
 /** 사람별 결석 회차 목록 (강의 회차만, 결석 많은 순) */
 function abCounts() {
     const sessions = abClassSessions();
@@ -1104,15 +1125,19 @@ function abCounts() {
         const dates = sessions.filter(s => isAbsent(byDate.get(s.date))).map(s => s.key);
         if (dates.length) out.push({ m, dates });
     }
-    return out.sort((a, b) => b.dates.length - a.dates.length
-        || compareTeamName(a.m.team, b.m.team)
-        || compareMemberOrder(a.m, b.m));
+    // 교역자별로 볼 때는 교역자가 먼저다. 그 안에서 결석 많은 순.
+    return out.sort((a, b) => (abSort === 'pastor'
+        ? (abCompare(a.m, b.m) || b.dates.length - a.dates.length)
+        : (b.dates.length - a.dates.length || abCompare(a.m, b.m))));
 }
 
 function abRow(m, extra = '') {
+    // 교역자는 있을 때만 적는다. 빈 칸을 자리만 잡아 두면 줄이 성글어 보인다.
+    const pastor = (m.pastor || '').trim();
     return `<div class="ab-row">
                 <span class="ab-team">${attEsc(m.team || '-')}</span>
-                <span class="ab-name">${attEsc(m.name)}<span class="ab-phone">${attEsc(m.phone || '')}</span></span>
+                <span class="ab-name">${attEsc(m.name)}<span class="ab-phone">${attEsc(m.phone || '')}</span>
+                    ${pastor ? `<span class="ab-pastor">${attEsc(pastor)}</span>` : ''}</span>
                 <span class="ab-extra">${extra}</span>
             </div>`;
 }
@@ -1152,7 +1177,7 @@ function renderAbsence() {
     const marked = roster.filter(m => String(abHistory.get(m._uuid)?.get(abSessionDate) ?? '').trim() !== '');
     const absentees = roster
         .filter(m => isAbsent(abHistory.get(m._uuid)?.get(abSessionDate)))
-        .sort((a, b) => compareTeamName(a.team, b.team) || compareMemberOrder(a, b));
+        .sort(abCompare);
 
     if (weekCount) weekCount.textContent = cur ? `${cur.key} · ${absentees.length}명` : '';
 
@@ -1208,7 +1233,10 @@ async function abCopy(rows, title) {
     const text = `${title}\n` + rows.map(r => {
         const m = r.m || r;
         const tail = r.dates ? ` (${r.dates.length}회: ${r.dates.join(' ')})` : '';
-        return `${m.team} ${m.name}${tail}`;
+        // 교역자별로 보고 있다면 붙여 준다 — 그대로 나눠 보내는 명단이다.
+        const head = abSort === 'pastor' && (m.pastor || '').trim()
+            ? `[${m.pastor.trim()}] ` : '';
+        return `${head}${m.team} ${m.name}${tail}`;
     }).join('\n');
     try {
         await navigator.clipboard.writeText(text);
@@ -1221,6 +1249,11 @@ async function abCopy(rows, title) {
 
 abSessionPicker?.addEventListener('change', (e) => {
     abSessionDate = e.target.value;
+    renderAbsence();
+});
+
+document.getElementById('abSortPicker')?.addEventListener('change', (e) => {
+    abSort = e.target.value === 'pastor' ? 'pastor' : 'team';
     renderAbsence();
 });
 
@@ -1241,7 +1274,7 @@ document.getElementById('abWeekCopyBtn')?.addEventListener('click', () => {
     const roster = memberData.filter(m => m._uuid);
     const rows = roster
         .filter(m => isAbsent(abHistory?.get(m._uuid)?.get(abSessionDate)))
-        .sort((a, b) => compareTeamName(a.team, b.team) || compareMemberOrder(a, b));
+        .sort(abCompare);
     const cur = abClassSessions().find(s => s.date === abSessionDate);
     abCopy(rows, `${cur ? cur.key + ' ' : ''}결석자 ${rows.length}명`);
 });
