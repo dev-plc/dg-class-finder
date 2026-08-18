@@ -22,7 +22,7 @@ const MEMBERS = [
 // 시트에는 소문자로 적혀 있다. 명단의 조 이름은 대문자다.
 const LINKS = [
   { team: 'o1', chat_url: 'https://t.me/o1room' },
-  { team: '온라인', chat_url: 'https://t.me/online' },
+  { team: '온라인', chat_url: 'https://t.me/online' },   // 시트에는 예전 이름 그대로
   { team: '청년부', chat_url: 'https://t.me/young' },
 ];
 
@@ -84,9 +84,11 @@ async function lookup(name, phone) {
 const o1 = await lookup('온라인원', '1001');
 ok('대소문자가 달라도 조 방을 찾는다', o1.team?.href === 'https://t.me/o1room',
    JSON.stringify(o1.team));
-ok('조 방 버튼에 조 이름을 적는다', o1.team?.text === 'O1조 방 입장하기', o1.team?.text);
+ok('조 방 버튼에 조 이름을 적는다', o1.team?.text === 'O1조 방', o1.team?.text);
+// 버튼 글자는 '온라인DG' 지만 시트에는 '온라인' 으로 적혀 있다.
+// 둘을 하나로 두면 글자를 바꾸는 순간 링크를 못 찾는다.
 ok('O 로 시작하면 온라인 부서 방이 함께 붙는다',
-   o1.group?.href === 'https://t.me/online' && o1.group?.text === '온라인 안내방',
+   o1.group?.href === 'https://t.me/online' && o1.group?.text === '온라인DG 안내방',
    JSON.stringify(o1.group));
 
 // 줄을 나눠 각각 이름표를 단다 — 한 줄에 묶어 두면 어느 버튼이 무엇인지 모른다
@@ -118,6 +120,8 @@ const on = await lookup('온라인장', '1004');
 ok('조 이름이 곧 부서면 부서 방을 또 달지 않는다', on.group === null, JSON.stringify(on));
 ok('그 조의 방은 그대로 나온다', on.team?.href === 'https://t.me/online',
    JSON.stringify(on.team));
+ok('버튼에 입장하기 를 붙이지 않는다',
+   !/입장하기/.test(o1.team?.text + o1.group?.text), `${o1.team?.text} · ${o1.group?.text}`);
 
 // 실제로 어떻게 보이는지 한 장 남긴다
 await lookup('온라인원', '1001');

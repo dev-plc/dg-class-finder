@@ -17,7 +17,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=81';
+} from './scripts/members-data.js?v=82';
 
 // 1-1. 내 정보 기억
 //
@@ -162,18 +162,21 @@ function displayResult(member) {
 
     // 안내방은 둘이다 — 소속 부서 방과 자기 조 방. 줄을 나눠 각각 이름표를 단다.
     //
-    //   안내방   ✈️ 온라인 안내방
-    //   조별방   ✈️ O1조 방 입장하기
+    //   안내방   ✈️ 온라인DG 안내방
+    //   조별방   ✈️ O1조 방
     //
     // 한 줄에 묶어 두면 어느 버튼이 무엇인지 눌러 보기 전에는 모른다.
     // 두 줄을 따로 켜고 끈다 — 예전에는 조 방 링크가 없으면 줄을 통째로 감춰서
     // 부서 방까지 같이 사라졌다.
+    //
+    // key 는 시트(DG링크 탭)에 적힌 이름이고, label 은 버튼에 찍는 이름이다.
+    // 둘을 하나로 두면 버튼 글자를 바꾸는 순간 링크를 못 찾는다.
     const GROUP_PREFIX_MAP = [
-        { prefix: 'Y', group: '청년부' },
-        { prefix: 'O', group: '온라인' },
-        { prefix: 'C', group: '청년부부' },
-        { prefix: '남', group: '남장년부' },
-        { prefix: '여', group: '여장년부' }
+        { prefix: 'Y', key: '청년부',   label: '청년부' },
+        { prefix: 'O', key: '온라인',   label: '온라인DG' },
+        { prefix: 'C', key: '청년부부', label: '청년부부' },
+        { prefix: '남', key: '남장년부', label: '남장년부' },
+        { prefix: '여', key: '여장년부', label: '여장년부' }
     ];
 
     const teamName = member.team ? member.team.trim() : '';
@@ -182,10 +185,16 @@ function displayResult(member) {
     // 조 이름 앞 글자로 소속 부서를 고른다. 이름이 곧 부서인 줄(예: '온라인')은
     // 자기 자신을 가리키므로 뺀다.
     let matchedGroup = null;
-    for (const { prefix, group } of GROUP_PREFIX_MAP) {
-        if (teamName.startsWith(prefix) && teamName !== group) { matchedGroup = group; break; }
+    for (const g of GROUP_PREFIX_MAP) {
+        if (teamName.startsWith(g.prefix) && teamName !== g.key && teamName !== g.label) {
+            matchedGroup = g;
+            break;
+        }
     }
-    const groupLink = matchedGroup ? getTeamLink(matchedGroup) : '';
+    // 시트에 어느 이름으로 적혀 있어도 찾도록 둘 다 본다.
+    const groupLink = matchedGroup
+        ? (getTeamLink(matchedGroup.label) || getTeamLink(matchedGroup.key) || '')
+        : '';
 
     // 줄은 '조' 줄을 본떠 만든다. 정보 줄의 생김새(라벨 폭·정렬)를 따로 적어 두면
     // 나중에 카드 디자인을 고칠 때 이 줄만 어긋난다.
@@ -231,9 +240,9 @@ function displayResult(member) {
     };
 
     showRoom(groupRow, 'resultGroupTelegramLink', 'groupTelegramLinkText',
-             groupLink, `${matchedGroup} 안내방`);
+             groupLink, `${matchedGroup?.label ?? ''} 안내방`);
     showRoom(teamRoomRow, 'resultTelegramLink', 'telegramLinkText',
-             teamLink, `${teamName}조 방 입장하기`);
+             teamLink, `${teamName}조 방`);
 
     const mapUrl = getLocationImage(member.location);
     if (mapUrl) {
