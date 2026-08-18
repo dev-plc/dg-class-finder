@@ -1,5 +1,5 @@
 // Firebase 설정 import
-import { db, collection, doc, onSnapshot, updateDoc } from './firebase-config.js?v=83';
+import { db, collection, doc, onSnapshot, updateDoc } from './firebase-config.js?v=84';
 
 // DOM 요소
 const orderNumberElement = document.getElementById('orderNumber');

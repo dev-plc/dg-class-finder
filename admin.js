@@ -31,7 +31,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=83';
+} from './scripts/members-data.js?v=84';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1095,6 +1095,24 @@ async function loadAbsence() {
 }
 
 /**
+ * 고른 주차까지 몇 주 연속으로 빠졌는가.
+ *
+ * 연락할 때 이게 첫마디가 된다 — '지난주도 안 오셨죠' 와 '오랜만이에요' 는
+ * 다른 말이다. 화면에도 붙이고 복사 명단에도 붙인다.
+ */
+function abStreak(m) {
+    const byDate = abHistory?.get(m._uuid);
+    if (!byDate) return 0;
+    const upto = abClassSessions().filter(s => s.date <= abSessionDate);
+    let n = 0;
+    for (let i = upto.length - 1; i >= 0; i--) {
+        if (!isAbsent(byDate.get(upto[i].date))) break;
+        n++;
+    }
+    return n;
+}
+
+/**
  * 명단 차례.
  *
  * 기본은 조 순서다. '담당교역자' 를 고르면 교역자로 먼저 묶는다 — 하차·상담은
@@ -1192,21 +1210,9 @@ function renderAbsence() {
         weekNote.classList.toggle('warn', !marked.length);
     }
 
-    // 몇 주 연속인지 — 연락할 때 이게 첫마디가 된다
-    const streakOf = (m) => {
-        const byDate = abHistory.get(m._uuid);
-        const upto = sessions.filter(s => s.date <= abSessionDate);
-        let n = 0;
-        for (let i = upto.length - 1; i >= 0; i--) {
-            if (!isAbsent(byDate?.get(upto[i].date))) break;
-            n++;
-        }
-        return n;
-    };
-
     weekList.innerHTML = absentees.length
         ? absentees.map(m => {
-            const st = streakOf(m);
+            const st = abStreak(m);
             return abRow(m, st > 1 ? `<b class="ab-streak">${st}주 연속</b>` : '');
         }).join('')
         : `<div class="att-empty">${marked.length ? '이 주차 결석자가 없습니다.' : ''}</div>`;
@@ -1232,7 +1238,11 @@ async function abCopy(rows, title) {
     if (!rows.length) return alert('복사할 명단이 없습니다.');
     const text = `${title}\n` + rows.map(r => {
         const m = r.m || r;
-        const tail = r.dates ? ` (${r.dates.length}회: ${r.dates.join(' ')})` : '';
+        // 누적이면 회차를, 이 주차면 몇 주 연속인지를 붙인다.
+        // 화면에 보이는 것이 복사본에 없으면 옮겨 적을 때 빠진다.
+        const streak = r.dates ? 0 : abStreak(m);
+        const tail = r.dates ? ` (${r.dates.length}회: ${r.dates.join(' ')})`
+                   : streak > 1 ? ` (${streak}주 연속)` : '';
         // 교역자별로 보고 있다면 붙여 준다 — 그대로 나눠 보내는 명단이다.
         const head = abSort === 'pastor' && (m.pastor || '').trim()
             ? `[${m.pastor.trim()}] ` : '';

@@ -245,6 +245,11 @@ const copied = await page.evaluate(() => navigator.clipboard.readText().catch(()
 ok('이 주차 명단을 클립보드로 복사한다',
    /한번결석/.test(copied) && /세번결석/.test(copied) && !/개근이/.test(copied),
    copied.replace(/\n/g, ' / '));
+// 화면에 보이는 것이 복사본에 없으면 옮겨 적을 때 빠진다
+ok('연속 결석 표시도 함께 복사된다', /연속결석 \(2주 연속\)/.test(copied),
+   copied.replace(/\n/g, ' / '));
+ok('한 번만 빠진 사람에게는 붙지 않는다', /한번결석$|한번결석\n/m.test(copied + '\n'),
+   copied.replace(/\n/g, ' / '));
 ok('복사했다고 알린다', dialogs.some(d => /3명/.test(d)), dialogs.join(' | '));
 
 // 교역자별로 보고 있으면 복사 명단에도 붙는다 — 그대로 나눠 보내는 글이다
