@@ -17,7 +17,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=80';
+} from './scripts/members-data.js?v=81';
 
 // 1-1. 내 정보 기억
 //
@@ -160,42 +160,14 @@ function displayResult(member) {
     const lunchStatus = (member.lunch && String(member.lunch).trim().toUpperCase() === 'O') ? 'O' : 'X';
     toggleRow(lunchRow, lunchStatus, elements.resultLunch);
 
-    // ✨ 텔레그램 링크 동적 렌더링
-    let telegramRow = document.getElementById('telegramRow');
-    if (!telegramRow && teamRow) {
-        telegramRow = teamRow.cloneNode(true);
-        telegramRow.id = 'telegramRow';
-
-        if (telegramRow.children.length >= 2) {
-            const label = telegramRow.children[0];
-            if(label) label.textContent = '안내방';
-
-            const valueContainer = telegramRow.children[1];
-            if(valueContainer) {
-                valueContainer.innerHTML = `
-                    <div style="display: flex; flex-direction: column; gap: 8px; align-items: stretch;">
-                        <a id="resultTelegramLink" href="" target="_blank" class="telegram-btn">
-                            <span style="font-size: 1.1em;">✈️</span>
-                            <span id="telegramLinkText"></span>
-                        </a>
-                        <a id="resultGroupTelegramLink" href="" target="_blank" class="telegram-btn" style="display: none;">
-                            <span style="font-size: 1.1em;">✈️</span>
-                            <span id="groupTelegramLinkText"></span>
-                        </a>
-                    </div>
-                `;
-                valueContainer.id = '';
-            }
-        }
-        teamRow.parentNode.insertBefore(telegramRow, teamRow.nextSibling);
-    }
-
-    // 안내방은 둘이다 — 자기 조 방과 소속 부서 방.
+    // 안내방은 둘이다 — 소속 부서 방과 자기 조 방. 줄을 나눠 각각 이름표를 단다.
     //
-    // 두 버튼이 한 줄(telegramRow) 안에 들어 있는데, 예전에는 **조 방 링크가
-    // 없으면 그 줄을 통째로 감췄다.** 그래서 시트에 부서 방만 적혀 있으면
-    // 부서 방까지 같이 사라졌고, 반대로 조 방만 적혀 있어도 부서 방 자리가
-    // 비어 보였다. 둘을 따로 판단한다.
+    //   안내방   ✈️ 온라인 안내방
+    //   조별방   ✈️ O1조 방 입장하기
+    //
+    // 한 줄에 묶어 두면 어느 버튼이 무엇인지 눌러 보기 전에는 모른다.
+    // 두 줄을 따로 켜고 끈다 — 예전에는 조 방 링크가 없으면 줄을 통째로 감춰서
+    // 부서 방까지 같이 사라졌다.
     const GROUP_PREFIX_MAP = [
         { prefix: 'Y', group: '청년부' },
         { prefix: 'O', group: '온라인' },
@@ -215,32 +187,53 @@ function displayResult(member) {
     }
     const groupLink = matchedGroup ? getTeamLink(matchedGroup) : '';
 
-    const telegramLinkEl = document.getElementById('resultTelegramLink');
-    const telegramTextEl = document.getElementById('telegramLinkText');
-    if (telegramLinkEl && telegramTextEl) {
-        if (teamLink) {
-            telegramLinkEl.href = teamLink;
-            telegramTextEl.textContent = `${teamName}조 방 입장하기`;
-            telegramLinkEl.style.display = '';
-        } else {
-            telegramLinkEl.style.display = 'none';
+    // 줄은 '조' 줄을 본떠 만든다. 정보 줄의 생김새(라벨 폭·정렬)를 따로 적어 두면
+    // 나중에 카드 디자인을 고칠 때 이 줄만 어긋난다.
+    function ensureRoomRow(id, label, linkId, textId, after) {
+        let row = document.getElementById(id);
+        if (row) return row;
+        if (!teamRow || !after) return null;
+
+        row = teamRow.cloneNode(true);
+        row.id = id;
+        const labelEl = row.children[0];
+        const valueEl = row.children[1];
+        if (labelEl) labelEl.textContent = label;
+        if (valueEl) {
+            valueEl.id = '';
+            valueEl.innerHTML = `
+                <a id="${linkId}" href="" target="_blank" class="telegram-btn">
+                    <span style="font-size: 1.1em;">✈️</span>
+                    <span id="${textId}"></span>
+                </a>`;
         }
+        after.parentNode.insertBefore(row, after.nextSibling);
+        return row;
     }
 
-    const groupTelegramLinkEl = document.getElementById('resultGroupTelegramLink');
-    const groupTelegramTextEl = document.getElementById('groupTelegramLinkText');
-    if (groupTelegramLinkEl && groupTelegramTextEl) {
-        if (groupLink) {
-            groupTelegramLinkEl.href = groupLink;
-            groupTelegramTextEl.textContent = `${matchedGroup} 방 입장하기`;
-            groupTelegramLinkEl.style.display = '';
-        } else {
-            groupTelegramLinkEl.style.display = 'none';
-        }
-    }
+    // 부서 방이 위, 조 방이 아래.
+    const groupRow = ensureRoomRow('groupRoomRow', '안내방',
+        'resultGroupTelegramLink', 'groupTelegramLinkText', teamRow);
+    const teamRoomRow = ensureRoomRow('teamRoomRow', '조별방',
+        'resultTelegramLink', 'telegramLinkText', groupRow || teamRow);
 
-    // 둘 다 없으면 '안내방' 줄 자체가 할 말이 없다.
-    if (telegramRow) telegramRow.style.display = (teamLink || groupLink) ? 'flex' : 'none';
+    const showRoom = (row, linkId, textId, href, text) => {
+        if (!row) return;
+        const link = document.getElementById(linkId);
+        const label = document.getElementById(textId);
+        if (href && link && label) {
+            link.href = href;
+            label.textContent = text;
+            row.style.display = 'flex';
+        } else {
+            row.style.display = 'none';
+        }
+    };
+
+    showRoom(groupRow, 'resultGroupTelegramLink', 'groupTelegramLinkText',
+             groupLink, `${matchedGroup} 안내방`);
+    showRoom(teamRoomRow, 'resultTelegramLink', 'telegramLinkText',
+             teamLink, `${teamName}조 방 입장하기`);
 
     const mapUrl = getLocationImage(member.location);
     if (mapUrl) {

@@ -4,7 +4,7 @@
 // 각각 손으로 적기 때문에 'o1' 과 'O1' 처럼 어긋나기 쉽다. 어긋나면 버튼이
 // 조용히 사라지는데, 오류가 안 나서 아무도 알아채지 못한다.
 
-import { serveRepo, launch, makeReporter } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
 
 const PORT = 8089;
 const server = await serveRepo(PORT);
@@ -59,15 +59,23 @@ async function lookup(name, phone) {
   await page.waitForTimeout(600);
   return page.evaluate(() => {
     const shown = (el) => !!el && el.offsetParent !== null;
-    const row = document.getElementById('telegramRow');
-    const team = document.getElementById('resultTelegramLink');
-    const group = document.getElementById('resultGroupTelegramLink');
+    const read = (rowId, linkId, textId) => {
+      const row = document.getElementById(rowId);
+      if (!shown(row)) return null;
+      return {
+        label: row.children[0].textContent.trim(),
+        text: document.getElementById(textId).textContent.trim(),
+        href: document.getElementById(linkId).getAttribute('href'),
+      };
+    };
+    // 카드에 실제로 놓인 차례 (이름 · 조 · 안내방 · 조별방 · 위치 …)
+    const order = [...document.querySelectorAll('.result-content > .info-row')]
+      .filter(r => r.offsetParent !== null)
+      .map(r => r.children[0].textContent.trim());
     return {
-      row: shown(row),
-      team: shown(team) ? { text: document.getElementById('telegramLinkText').textContent.trim(),
-                            href: team.getAttribute('href') } : null,
-      group: shown(group) ? { text: document.getElementById('groupTelegramLinkText').textContent.trim(),
-                              href: group.getAttribute('href') } : null,
+      order,
+      team: read('teamRoomRow', 'resultTelegramLink', 'telegramLinkText'),
+      group: read('groupRoomRow', 'resultGroupTelegramLink', 'groupTelegramLinkText'),
     };
   });
 }
@@ -78,8 +86,16 @@ ok('대소문자가 달라도 조 방을 찾는다', o1.team?.href === 'https://
    JSON.stringify(o1.team));
 ok('조 방 버튼에 조 이름을 적는다', o1.team?.text === 'O1조 방 입장하기', o1.team?.text);
 ok('O 로 시작하면 온라인 부서 방이 함께 붙는다',
-   o1.group?.href === 'https://t.me/online' && /온라인 방/.test(o1.group?.text || ''),
+   o1.group?.href === 'https://t.me/online' && o1.group?.text === '온라인 안내방',
    JSON.stringify(o1.group));
+
+// 줄을 나눠 각각 이름표를 단다 — 한 줄에 묶어 두면 어느 버튼이 무엇인지 모른다
+ok('부서 방 줄 이름표는 안내방', o1.group?.label === '안내방', o1.group?.label);
+ok('조 방 줄 이름표는 조별방', o1.team?.label === '조별방', o1.team?.label);
+ok('안내방이 위, 조별방이 아래',
+   o1.order.indexOf('안내방') === o1.order.indexOf('조') + 1
+   && o1.order.indexOf('조별방') === o1.order.indexOf('안내방') + 1,
+   o1.order.join(' → '));
 
 // --- YF1: 조 방 링크가 없어도 부서 방은 보여야 한다 ------------------------
 //
@@ -88,20 +104,24 @@ ok('O 로 시작하면 온라인 부서 방이 함께 붙는다',
 const yf1 = await lookup('청년원', '1002');
 ok('조 방 링크가 없으면 그 버튼만 감춘다', yf1.team === null, JSON.stringify(yf1.team));
 ok('조 방이 없어도 부서 방은 나온다',
-   yf1.group?.href === 'https://t.me/young' && /청년부 방/.test(yf1.group?.text || ''),
+   yf1.group?.href === 'https://t.me/young' && yf1.group?.text === '청년부 안내방',
    JSON.stringify(yf1));
-ok('안내방 줄은 살아 있다', yf1.row === true, JSON.stringify(yf1));
 
 // --- V1: 붙일 것이 없으면 줄 자체를 감춘다 --------------------------------
 const v1 = await lookup('브이원', '1003');
-ok('붙일 링크가 없으면 안내방 줄을 감춘다',
-   v1.row === false && !v1.team && !v1.group, JSON.stringify(v1));
+ok('붙일 링크가 없으면 두 줄 다 감춘다', !v1.team && !v1.group, JSON.stringify(v1));
+ok('그 줄들이 카드에서 사라진다',
+   !v1.order.includes('안내방') && !v1.order.includes('조별방'), v1.order.join(' → '));
 
 // --- '온라인' 조: 자기 자신을 부서로 달지 않는다 ---------------------------
 const on = await lookup('온라인장', '1004');
 ok('조 이름이 곧 부서면 부서 방을 또 달지 않는다', on.group === null, JSON.stringify(on));
 ok('그 조의 방은 그대로 나온다', on.team?.href === 'https://t.me/online',
    JSON.stringify(on.team));
+
+// 실제로 어떻게 보이는지 한 장 남긴다
+await lookup('온라인원', '1001');
+await page.locator('.result-card').screenshot({ path: `${SHOT}/dg-rooms.png` });
 
 await browser.close();
 server.close();
