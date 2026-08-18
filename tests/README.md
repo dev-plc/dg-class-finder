@@ -23,6 +23,7 @@ node tests/verify-print.mjs       # 하나만
 | `verify-attendance.mjs` | 회차 선택과 출결 저장 (바뀐 사람만 보내는가) |
 | `verify-matrix.mjs` | 전체 출석표 — 조원 × 회차, 🍙 · 📝 |
 | `verify-myatt.mjs` | 내 출석 현황 — 최근 10회차만 펴 두는가 |
+| `verify-links.mjs` | 안내방 버튼 — 조 방·부서 방, 대소문자가 어긋난 링크 키 |
 | `verify-mobile.mjs` | 폰 크기에서 버튼·표가 깨지지 않는가 |
 | `verify-sync-btn.mjs` | 시트 동기화 버튼 |
 | `verify-sw.mjs` | Service Worker 자동 갱신 (배포 → 재배포 → 탭 복귀) |

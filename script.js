@@ -17,7 +17,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=79';
+} from './scripts/members-data.js?v=80';
 
 // 1-1. 내 정보 기억
 //
@@ -190,19 +190,12 @@ function displayResult(member) {
         teamRow.parentNode.insertBefore(telegramRow, teamRow.nextSibling);
     }
 
-    const telegramLinkEl = document.getElementById('resultTelegramLink');
-    const telegramTextEl = document.getElementById('telegramLinkText');
-    if (telegramRow && telegramLinkEl && telegramTextEl) {
-        if (member.telegramLink && member.team) {
-            telegramLinkEl.href = member.telegramLink;
-            telegramTextEl.textContent = `${member.team}조 방 입장하기`;
-            telegramRow.style.display = 'flex';
-        } else {
-            telegramRow.style.display = 'none';
-        }
-    }
-
-    // 조 이름 앞 접두사에 따라 소속 그룹 안내방 버튼 추가
+    // 안내방은 둘이다 — 자기 조 방과 소속 부서 방.
+    //
+    // 두 버튼이 한 줄(telegramRow) 안에 들어 있는데, 예전에는 **조 방 링크가
+    // 없으면 그 줄을 통째로 감췄다.** 그래서 시트에 부서 방만 적혀 있으면
+    // 부서 방까지 같이 사라졌고, 반대로 조 방만 적혀 있어도 부서 방 자리가
+    // 비어 보였다. 둘을 따로 판단한다.
     const GROUP_PREFIX_MAP = [
         { prefix: 'Y', group: '청년부' },
         { prefix: 'O', group: '온라인' },
@@ -211,33 +204,43 @@ function displayResult(member) {
         { prefix: '여', group: '여장년부' }
     ];
 
+    const teamName = member.team ? member.team.trim() : '';
+    const teamLink = teamName ? member.telegramLink : '';
+
+    // 조 이름 앞 글자로 소속 부서를 고른다. 이름이 곧 부서인 줄(예: '온라인')은
+    // 자기 자신을 가리키므로 뺀다.
+    let matchedGroup = null;
+    for (const { prefix, group } of GROUP_PREFIX_MAP) {
+        if (teamName.startsWith(prefix) && teamName !== group) { matchedGroup = group; break; }
+    }
+    const groupLink = matchedGroup ? getTeamLink(matchedGroup) : '';
+
+    const telegramLinkEl = document.getElementById('resultTelegramLink');
+    const telegramTextEl = document.getElementById('telegramLinkText');
+    if (telegramLinkEl && telegramTextEl) {
+        if (teamLink) {
+            telegramLinkEl.href = teamLink;
+            telegramTextEl.textContent = `${teamName}조 방 입장하기`;
+            telegramLinkEl.style.display = '';
+        } else {
+            telegramLinkEl.style.display = 'none';
+        }
+    }
+
     const groupTelegramLinkEl = document.getElementById('resultGroupTelegramLink');
     const groupTelegramTextEl = document.getElementById('groupTelegramLinkText');
     if (groupTelegramLinkEl && groupTelegramTextEl) {
-        let matchedGroup = null;
-        const teamName = member.team ? member.team.trim() : '';
-        if (teamName) {
-            for (const { prefix, group } of GROUP_PREFIX_MAP) {
-                if (teamName.startsWith(prefix) && teamName !== group) {
-                    matchedGroup = group;
-                    break;
-                }
-            }
-        }
-
-        if (matchedGroup) {
-            const groupLink = getTeamLink(matchedGroup);
-            if (groupLink) {
-                groupTelegramLinkEl.href = groupLink;
-                groupTelegramTextEl.textContent = `${matchedGroup} 방 입장하기`;
-                groupTelegramLinkEl.style.display = '';
-            } else {
-                groupTelegramLinkEl.style.display = 'none';
-            }
+        if (groupLink) {
+            groupTelegramLinkEl.href = groupLink;
+            groupTelegramTextEl.textContent = `${matchedGroup} 방 입장하기`;
+            groupTelegramLinkEl.style.display = '';
         } else {
             groupTelegramLinkEl.style.display = 'none';
         }
     }
+
+    // 둘 다 없으면 '안내방' 줄 자체가 할 말이 없다.
+    if (telegramRow) telegramRow.style.display = (teamLink || groupLink) ? 'flex' : 'none';
 
     const mapUrl = getLocationImage(member.location);
     if (mapUrl) {

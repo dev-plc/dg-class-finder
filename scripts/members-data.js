@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=79';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=79';
+import { matches as hangulMatches } from './hangul.js?v=80';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=80';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -89,7 +89,32 @@ function writeCacheSync() {
 // 화면이 member.team · member.telegramLink 처럼 직접 읽고 있어
 // 그 모양을 유지한다 (UI 변경을 피하려는 의도).
 // ============================================================================
-function buildMemberRow(m, teamLinks, attByMember) {
+/**
+ * 안내방 링크는 조 이름으로 찾는다. 그런데 그 이름을 두 사람이 각각 손으로
+ * 적는다 — 명단은 출석부 탭에, 링크는 DG링크 탭에. 'o1' 과 'O1', 'O 1' 은
+ * 같은 조인데 글자로는 다르다.
+ *
+ * 딱 맞는 것을 먼저 찾고, 없으면 공백을 지우고 대문자로 맞춰 한 번 더 찾는다.
+ * 못 찾으면 그 조원 화면에서 안내방 버튼이 통째로 사라지는데, 오류가 나지
+ * 않아서 아무도 알아채지 못한다.
+ */
+function normTeamKey(v) {
+  return String(v ?? '').replace(/\s+/g, '').toUpperCase();
+}
+
+function makeTeamLinkLookup(teamLinks) {
+  const index = {};
+  for (const [k, v] of Object.entries(teamLinks || {})) {
+    const key = normTeamKey(k);
+    if (key && !(key in index)) index[key] = v;   // 먼저 적힌 줄이 이긴다
+  }
+  return (team) => {
+    if (!team) return '';
+    return teamLinks?.[team] || index[normTeamKey(team)] || '';
+  };
+}
+
+function buildMemberRow(m, linkOf, attByMember) {
   return {
     id: `${m.name}${m.phone || ''}`,
     _uuid: m.id,
@@ -103,7 +128,7 @@ function buildMemberRow(m, teamLinks, attByMember) {
     role: m.role || '',
     age: m.age ?? '',
     lunch: m.lunch || '',
-    telegramLink: teamLinks[m.team] || '',
+    telegramLink: linkOf(m.team),
     attendance: attByMember.get(m.id) || '',
   };
 }
@@ -140,6 +165,7 @@ async function fetchFromServer(cohortId) {
 
   const teamLinks = {};
   for (const t of teamLinkRows) if (t.team) teamLinks[t.team] = t.chat_url || '';
+  const linkOf = makeTeamLinkLookup(teamLinks);
 
   const locationMap = {};
   for (const l of locationRows) {
@@ -160,7 +186,7 @@ async function fetchFromServer(cohortId) {
   }));
 
   return {
-    members: members.map(m => buildMemberRow(m, teamLinks, attByMember)),
+    members: members.map(m => buildMemberRow(m, linkOf, attByMember)),
     locationMap,
     teamLinks,
     sessions,
@@ -268,7 +294,7 @@ export function getLocationImage(location) {
 
 export function getTeamLink(teamName) {
   if (!teamName) return null;
-  return state.teamLinks[teamName] || null;
+  return makeTeamLinkLookup(state.teamLinks)(teamName) || null;
 }
 
 // ============================================================================
