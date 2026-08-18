@@ -159,6 +159,7 @@ ok('기록 없는 사람은 결석으로 세지 않았다고 알린다', /기록
 const total = () => page.$$eval('#abTotalList .ab-row', els => els.map(r => ({
   name: r.querySelector('.ab-name').childNodes[0].textContent.trim(),
   n: r.querySelector('.ab-n')?.textContent.trim() || '',
+  streak: r.querySelector('.ab-streak')?.textContent.trim() || '',
   dates: [...r.querySelectorAll('.ab-chip')].map(c => c.textContent.trim()),
 })));
 
@@ -171,6 +172,13 @@ ok('어느 회차에 빠졌는지 보여준다',
    t2[0].dates.join(',') === '05/03,05/10,08/09', t2[0].dates.join(','));
 ok('한 번만 빠진 사람은 없다', !t2.some(x => x.name === '한번결석'),
    t2.map(x => x.name).join(','));
+// 같은 3회라도 띄엄띄엄 빠진 사람과 내리 두 주 안 나온 사람은 다른 이야기다
+ok('누적 목록에도 연속 태그가 붙는다',
+   t2.find(x => x.name === '연속결석')?.streak === '2주 연속',
+   t2.map(x => `${x.name}:${x.streak || '-'}`).join(' | '));
+ok('연속이 아닌 사람에게는 안 붙는다',
+   t2.find(x => x.name === '세번결석')?.streak === '',
+   t2.map(x => `${x.name}:${x.streak || '-'}`).join(' | '));
 ok('강의가 아닌 회차의 결석은 세지 않는다', !t2.some(x => x.name === '자유만빠짐'),
    t2.map(x => x.name).join(','));
 ok('세는 규칙을 화면에 적어 둔다',
@@ -277,6 +285,9 @@ const copied2 = await page.evaluate(() => navigator.clipboard.readText().catch((
 ok('누적 명단에는 회차까지 붙는다', /세번결석 \(3회: 05\/03 05\/10 08\/09\)/.test(copied2),
    copied2.replace(/\n/g, ' / '));
 ok('누적 명단에도 교역자가 붙는다', /\[김목사\] YF1 세번결석/.test(copied2),
+   copied2.replace(/\n/g, ' / '));
+ok('누적 복사본에도 연속 태그가 붙는다',
+   /연속결석 \(2회: 08\/02 08\/09 · 2주 연속\)/.test(copied2),
    copied2.replace(/\n/g, ' / '));
 
 await page.screenshot({ path: `${SHOT}/dg-absence.png`, fullPage: true });

@@ -31,7 +31,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=85';
+} from './scripts/members-data.js?v=86';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1227,9 +1227,15 @@ function renderAbsence() {
     }
 
     totalList.innerHTML = hit.length
-        ? hit.map(r => abRow(r.m,
-            `<b class="ab-n">${r.dates.length}회</b>`
-            + `<span class="ab-dates">${r.dates.map(d => `<span class="ab-chip">${attEsc(d)}</span>`).join('')}</span>`)).join('')
+        ? hit.map(r => {
+            // 연속 태그는 두 목록에 다 붙인다. 같은 3회라도 띄엄띄엄 빠진 사람과
+            // 내리 세 주 안 나온 사람은 다른 이야기다.
+            const st = abStreak(r.m);
+            return abRow(r.m,
+                `<b class="ab-n">${r.dates.length}회</b>`
+                + (st > 1 ? `<b class="ab-streak">${st}주 연속</b>` : '')
+                + `<span class="ab-dates">${r.dates.map(d => `<span class="ab-chip">${attEsc(d)}</span>`).join('')}</span>`);
+          }).join('')
         : `<div class="att-empty">${abMin}회 이상 결석한 사람이 없습니다.</div>`;
 }
 
@@ -1238,11 +1244,13 @@ async function abCopy(rows, title) {
     if (!rows.length) return alert('복사할 명단이 없습니다.');
     const text = `${title}\n` + rows.map(r => {
         const m = r.m || r;
-        // 누적이면 회차를, 이 주차면 몇 주 연속인지를 붙인다.
         // 화면에 보이는 것이 복사본에 없으면 옮겨 적을 때 빠진다.
-        const streak = r.dates ? 0 : abStreak(m);
-        const tail = r.dates ? ` (${r.dates.length}회: ${r.dates.join(' ')})`
-                   : streak > 1 ? ` (${streak}주 연속)` : '';
+        // 연속 태그는 두 목록에 다 붙는다 — 연락할 때 첫마디가 되는 값이다.
+        const streak = abStreak(m);
+        const parts = [];
+        if (r.dates) parts.push(`${r.dates.length}회: ${r.dates.join(' ')}`);
+        if (streak > 1) parts.push(`${streak}주 연속`);
+        const tail = parts.length ? ` (${parts.join(' · ')})` : '';
         // 교역자는 정렬과 상관없이 늘 붙인다. 그대로 나눠 보내는 명단이라,
         // 조 순서로 보고 복사했다고 해서 누가 맡은 사람인지 빠지면 안 된다.
         const head = (m.pastor || '').trim() ? `[${m.pastor.trim()}] ` : '';
