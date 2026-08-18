@@ -31,7 +31,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=84';
+} from './scripts/members-data.js?v=85';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1243,9 +1243,9 @@ async function abCopy(rows, title) {
         const streak = r.dates ? 0 : abStreak(m);
         const tail = r.dates ? ` (${r.dates.length}회: ${r.dates.join(' ')})`
                    : streak > 1 ? ` (${streak}주 연속)` : '';
-        // 교역자별로 보고 있다면 붙여 준다 — 그대로 나눠 보내는 명단이다.
-        const head = abSort === 'pastor' && (m.pastor || '').trim()
-            ? `[${m.pastor.trim()}] ` : '';
+        // 교역자는 정렬과 상관없이 늘 붙인다. 그대로 나눠 보내는 명단이라,
+        // 조 순서로 보고 복사했다고 해서 누가 맡은 사람인지 빠지면 안 된다.
+        const head = (m.pastor || '').trim() ? `[${m.pastor.trim()}] ` : '';
         return `${head}${m.team} ${m.name}${tail}`;
     }).join('\n');
     try {

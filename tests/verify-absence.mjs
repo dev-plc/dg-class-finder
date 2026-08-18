@@ -245,6 +245,11 @@ const copied = await page.evaluate(() => navigator.clipboard.readText().catch(()
 ok('이 주차 명단을 클립보드로 복사한다',
    /한번결석/.test(copied) && /세번결석/.test(copied) && !/개근이/.test(copied),
    copied.replace(/\n/g, ' / '));
+// 교역자는 정렬과 상관없이 늘 붙는다 — 조 순서로 복사했다고 누가 맡은
+// 사람인지 빠지면, 받는 쪽에서 다시 물어봐야 한다.
+ok('조 순서로 봐도 교역자가 붙는다',
+   /\[이목사\] YF1 한번결석/.test(copied) && /\[김목사\] YM1 연속결석/.test(copied),
+   copied.replace(/\n/g, ' / '));
 // 화면에 보이는 것이 복사본에 없으면 옮겨 적을 때 빠진다
 ok('연속 결석 표시도 함께 복사된다', /연속결석 \(2주 연속\)/.test(copied),
    copied.replace(/\n/g, ' / '));
@@ -258,8 +263,10 @@ await page.waitForTimeout(300);
 await page.click('#abWeekCopyBtn');
 await page.waitForTimeout(500);
 const copiedP = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''));
-ok('교역자별로 볼 때는 복사 명단에도 교역자가 붙는다',
-   /\[김목사\] YF1 세번결석/.test(copiedP), copiedP.replace(/\n/g, ' / '));
+ok('교역자별로 볼 때는 그 차례로 복사된다',
+   /\[김목사\] YF1 세번결석/.test(copiedP)
+   && copiedP.indexOf('[김목사]') < copiedP.indexOf('[이목사]'),
+   copiedP.replace(/\n/g, ' / '));
 await page.selectOption('#abSortPicker', 'team');
 await page.waitForTimeout(300);
 
@@ -268,6 +275,8 @@ await page.click('#abTotalCopyBtn');
 await page.waitForTimeout(500);
 const copied2 = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''));
 ok('누적 명단에는 회차까지 붙는다', /세번결석 \(3회: 05\/03 05\/10 08\/09\)/.test(copied2),
+   copied2.replace(/\n/g, ' / '));
+ok('누적 명단에도 교역자가 붙는다', /\[김목사\] YF1 세번결석/.test(copied2),
    copied2.replace(/\n/g, ' / '));
 
 await page.screenshot({ path: `${SHOT}/dg-absence.png`, fullPage: true });
