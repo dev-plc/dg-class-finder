@@ -263,7 +263,14 @@ ok('연속 결석 표시도 함께 복사된다', /연속결석 \(2주 연속\)/
    copied.replace(/\n/g, ' / '));
 ok('한 번만 빠진 사람에게는 붙지 않는다', /한번결석$|한번결석\n/m.test(copied + '\n'),
    copied.replace(/\n/g, ' / '));
-ok('복사했다고 알린다', dialogs.some(d => /3명/.test(d)), dialogs.join(' | '));
+// 알림창으로 알리면 확인을 한 번 더 눌러야 한다. 누른 자리에서 답한다.
+const flashed = await page.$eval('#abWeekCopyBtn', el => el.textContent.trim());
+ok('버튼이 그 자리에서 결과를 말한다', /3명 복사됨/.test(flashed), flashed);
+ok('알림창은 뜨지 않는다', dialogs.length === 0, dialogs.join(' | '));
+await page.waitForTimeout(2200);
+ok('잠시 뒤 원래 글자로 돌아온다',
+   /명단 복사/.test(await page.$eval('#abWeekCopyBtn', el => el.textContent)),
+   await page.$eval('#abWeekCopyBtn', el => el.textContent.trim()));
 
 // 교역자별로 보고 있으면 복사 명단에도 붙는다 — 그대로 나눠 보내는 글이다
 await page.selectOption('#abSortPicker', 'pastor');

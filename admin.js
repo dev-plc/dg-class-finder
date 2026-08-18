@@ -31,7 +31,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=86';
+} from './scripts/members-data.js?v=87';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1239,9 +1239,30 @@ function renderAbsence() {
         : `<div class="att-empty">${abMin}회 이상 결석한 사람이 없습니다.</div>`;
 }
 
+/**
+ * 버튼에 잠깐 결과를 적었다가 되돌린다.
+ *
+ * 알림창으로 알리면 확인을 한 번 더 눌러야 한다 — 복사는 눌렀다는 사실 자체가
+ * 이미 확인이라 물어볼 것이 없다. 누른 자리에서 바로 답한다.
+ */
+const abFlashTimers = new WeakMap();
+function abFlash(btn, message) {
+    if (!btn) return;
+    clearTimeout(abFlashTimers.get(btn));
+    // 처음 눌렀을 때의 글자를 기억해 둔다. 연달아 누르면 '✅ 3명 복사됨' 이
+    // 원래 글자로 굳어 버린다.
+    if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+    btn.textContent = message;
+    btn.classList.add('done');
+    abFlashTimers.set(btn, setTimeout(() => {
+        btn.textContent = btn.dataset.label;
+        btn.classList.remove('done');
+    }, 2000));
+}
+
 /** 카톡에 붙일 명단. 화면에서 눈으로 옮겨 적게 하지 않는다. */
-async function abCopy(rows, title) {
-    if (!rows.length) return alert('복사할 명단이 없습니다.');
+async function abCopy(btn, rows, title) {
+    if (!rows.length) return abFlash(btn, '복사할 명단이 없습니다');
     const text = `${title}\n` + rows.map(r => {
         const m = r.m || r;
         // 화면에 보이는 것이 복사본에 없으면 옮겨 적을 때 빠진다.
@@ -1258,9 +1279,11 @@ async function abCopy(rows, title) {
     }).join('\n');
     try {
         await navigator.clipboard.writeText(text);
-        alert(`${rows.length}명을 복사했습니다.`);
+        abFlash(btn, `✅ ${rows.length}명 복사됨`);
     } catch {
-        // 클립보드가 막힌 브라우저에서도 옮겨 적게 두지 않는다
+        // 클립보드가 막힌 브라우저에서는 손으로 가져갈 자리를 준다.
+        // 이때만 창이 뜬다 — 다른 방법이 없다.
+        abFlash(btn, '복사 실패');
         prompt('복사해서 쓰세요 (Ctrl+C)', text.replace(/\n/g, ' / '));
     }
 }
@@ -1288,19 +1311,18 @@ abThresholds?.addEventListener('click', (e) => {
     renderAbsence();
 });
 
-document.getElementById('abWeekCopyBtn')?.addEventListener('click', () => {
+document.getElementById('abWeekCopyBtn')?.addEventListener('click', (e) => {
     const roster = memberData.filter(m => m._uuid);
     const rows = roster
         .filter(m => isAbsent(abHistory?.get(m._uuid)?.get(abSessionDate)))
         .sort(abCompare);
     const cur = abClassSessions().find(s => s.date === abSessionDate);
-    abCopy(rows, `${cur ? cur.key + ' ' : ''}결석자 ${rows.length}명`);
+    abCopy(e.currentTarget, rows, `${cur ? cur.key + ' ' : ''}결석자 ${rows.length}명`);
 });
 
-document.getElementById('abTotalCopyBtn')?.addEventListener('click', () => {
-    if (!abHistory) return alert('복사할 명단이 없습니다.');
-    const hit = abCounts().filter(r => r.dates.length >= abMin);
-    abCopy(hit, `${abMin}회 이상 결석 ${hit.length}명`);
+document.getElementById('abTotalCopyBtn')?.addEventListener('click', (e) => {
+    const hit = abHistory ? abCounts().filter(r => r.dates.length >= abMin) : [];
+    abCopy(e.currentTarget, hit, `${abMin}회 이상 결석 ${hit.length}명`);
 });
 
 // ==================== 출석부 출력 ====================

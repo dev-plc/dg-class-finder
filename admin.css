@@ -884,6 +884,14 @@ body.dark-mode .att-bulk-btn.danger { color: #fca5a5; }
     border-radius: 999px;
 }
 .ab-thresholds { display: flex; gap: 6px; margin-left: auto; }
+/* 누른 자리에서 바로 답한다 — 알림창을 띄우면 확인을 한 번 더 눌러야 한다 */
+.att-mini-btn.done {
+    color: #047857;
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(16, 185, 129, 0.4);
+}
+body.dark-mode .att-mini-btn.done { color: #6ee7b7; }
+
 /* 복사 버튼은 오른쪽 끝에. 두 블록의 버튼 자리가 서로 어긋나면 눈이 헤맨다
    (누적 쪽은 위 문턱 버튼들이 밀어 준다) */
 #abWeekCopyBtn { margin-left: auto; }
