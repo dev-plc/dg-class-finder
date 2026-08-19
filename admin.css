@@ -608,6 +608,150 @@ body.dark-mode .badge-lunch-no {
     border-radius: 8px;
 }
 
+/* ==================== 멤버 상세 모달 (출석/김밥/과제) ==================== */
+.member-detail-body {
+    padding: 24px 28px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.member-detail-loading, .md-empty {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-light);
+    font-size: 15px;
+}
+
+.md-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.md-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 2px solid var(--warm-beige);
+    padding-bottom: 8px;
+}
+
+body.dark-mode .md-section-head {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.md-section-head h3 {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--midnight-blue);
+    margin: 0;
+}
+
+body.dark-mode .md-section-head h3 {
+    color: var(--white);
+}
+
+.md-summary {
+    font-size: 13px;
+    color: var(--text-light);
+    font-weight: 600;
+}
+
+/* 출석 그리드 */
+.md-att-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 10px;
+}
+
+/* 김밥 리스트 */
+.md-lunch-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.md-lunch-chip {
+    background: var(--milk-beige);
+    border: 1px solid var(--warm-beige);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--text-dark);
+}
+
+body.dark-mode .md-lunch-chip {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-light);
+}
+
+/* 과제 리스트 */
+.md-hw-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.md-hw-row {
+    background: var(--white);
+    border: 1px solid var(--warm-beige);
+    padding: 12px 16px;
+    border-radius: 12px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    font-size: 14px;
+}
+
+body.dark-mode .md-hw-row {
+    background: var(--navy);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.md-hw-lecture {
+    font-weight: 700;
+    color: var(--midnight-blue);
+    flex: 1;
+}
+
+body.dark-mode .md-hw-lecture {
+    color: var(--white);
+}
+
+.md-hw-kind {
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 13px;
+}
+
+body.dark-mode .md-hw-kind {
+    color: #A3E635;
+}
+
+.md-hw-when {
+    color: var(--text-light);
+    font-size: 12px;
+}
+
+.md-hw-link {
+    text-decoration: none;
+    font-size: 16px;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.md-hw-link:hover {
+    background: var(--milk-beige);
+}
+
+body.dark-mode .md-hw-link:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
 /* 애니메이션 */
 @keyframes fadeIn {
     from { opacity: 0; }

@@ -1,6 +1,6 @@
 // 조별 출석부 출력 검증 — 사양서 검증 1~8번.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=90';
 
 const PORT = 8096;
 const server = await serveRepo(PORT);

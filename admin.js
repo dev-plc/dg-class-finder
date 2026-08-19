@@ -20,6 +20,8 @@ import {
     ensureLoaded,
     getAttendanceHistory,
     getMembers,
+    getMyAttendance,
+    getMyHomework,
     getSessions,
     getSessionExtras,
     getToday,
@@ -31,7 +33,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=89';
+} from './scripts/members-data.js?v=90';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -484,6 +486,7 @@ function renderMembersView(filterText = '') {
     filteredMembers.forEach(member => {
         const card = document.createElement('div');
         card.className = 'member-card';
+        card.style.cursor = 'pointer';
         const phoneDisplay = member.phone ? ` (${member.phone})` : '';
         card.innerHTML = `
             <div class="member-card-id">${member.name}${phoneDisplay}</div>
@@ -503,9 +506,128 @@ function renderMembersView(filterText = '') {
                 </div>
             </div>
         `;
+        card.addEventListener('click', () => showMemberDetail(member));
         membersGrid.appendChild(card);
     });
 }
+
+// ==================== 멤버 상세 모달 (출석/과제/김밥) ====================
+
+const memberDetailModal = document.getElementById('memberDetailModal');
+const memberDetailTitle = document.getElementById('memberDetailTitle');
+const memberDetailBody = document.getElementById('memberDetailBody');
+const memberDetailClose = document.getElementById('memberDetailClose');
+
+function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function classifyStatus(raw) {
+    const v = String(raw || '').trim();
+    if (v === '') return { label: '·', cls: 'empty', title: '기록 없음' };
+    const up = v.toUpperCase();
+    if (up === 'O') return { label: 'O', cls: 'present', title: '출석' };
+    if (up === 'X') return { label: 'X', cls: 'absent', title: '결석' };
+    return { label: v, cls: 'special', title: `시트 표기: ${v}` };
+}
+
+async function showMemberDetail(member) {
+    const phoneDisplay = member.phone ? ` (${member.phone})` : '';
+    memberDetailTitle.textContent = `${member.name}${phoneDisplay} · ${member.team} · ${member.location}`;
+    memberDetailBody.innerHTML = '<div class="member-detail-loading">불러오는 중...</div>';
+    memberDetailModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    try {
+        const [attRows, hwRows] = await Promise.all([
+            getMyAttendance(member),
+            getMyHomework(member),
+        ]);
+
+        let html = '';
+
+        // ── 출석 현황 ──
+        const present = attRows.filter(r => r.status.toUpperCase() === 'O').length;
+        const absent = attRows.filter(r => r.status.toUpperCase() === 'X').length;
+        const other = attRows.length - present - absent;
+        const lunchCount = attRows.filter(r => r.lunch).length;
+        const hwInAtt = attRows.filter(r => r.homework).length;
+
+        const attSummary = [
+            `총 ${attRows.length}회차`,
+            `출석 ${present}`,
+            `결석 ${absent}`,
+            other ? `그 외 ${other}` : '',
+        ].filter(Boolean).join(' · ');
+
+        html += `<div class="md-section">`;
+        html += `<div class="md-section-head"><h3>📋 출석</h3><span class="md-summary">${attSummary}</span></div>`;
+        if (attRows.length) {
+            html += `<div class="md-att-grid">`;
+            html += attRows.map(r => {
+                const st = classifyStatus(r.status);
+                const badges = (r.lunch ? '🍙' : '') + (r.homework ? '📝' : '');
+                return `<div class="att-chip ${st.cls}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${st.title}">
+                    <span class="att-date">${escapeHtml(r.key)}</span>
+                    ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}
+                    <span class="att-mark">${escapeHtml(st.label)}</span>
+                    <span class="att-badges">${badges}</span>
+                </div>`;
+            }).join('');
+            html += `</div>`;
+        } else {
+            html += `<div class="md-empty">출석 기록이 없습니다.</div>`;
+        }
+        html += `</div>`;
+
+        // ── 김밥 현황 ──
+        const lunchApplied = attRows.filter(r => r.lunch);
+        html += `<div class="md-section">`;
+        html += `<div class="md-section-head"><h3>🍱 김밥</h3><span class="md-summary">${lunchApplied.length ? `총 ${lunchApplied.length}회 신청` : '신청 내역 없음'}</span></div>`;
+        if (lunchApplied.length) {
+            html += `<div class="md-lunch-list">`;
+            html += [...lunchApplied].reverse().map(r =>
+                `<span class="md-lunch-chip">${r.name ? `<b>${escapeHtml(r.name)}</b> ` : ''}${escapeHtml(r.key)}</span>`
+            ).join('');
+            html += `</div>`;
+        }
+        html += `</div>`;
+
+        // ── 과제 현황 ──
+        html += `<div class="md-section">`;
+        html += `<div class="md-section-head"><h3>📝 과제</h3><span class="md-summary">${hwRows.length ? `총 ${hwRows.length}건 제출` : '제출 내역 없음'}</span></div>`;
+        if (hwRows.length) {
+            html += `<div class="md-hw-list">`;
+            html += hwRows.map(r => {
+                const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
+                const isLink = /^https?:\/\//i.test(r.content);
+                return `<div class="md-hw-row">
+                    <span class="md-hw-lecture">${escapeHtml(r.lecture || '(미기재)')}</span>
+                    <span class="md-hw-kind">${escapeHtml(r.kind || '')}</span>
+                    <span class="md-hw-when">${escapeHtml(when)}</span>
+                    ${isLink ? `<a href="${escapeHtml(r.content)}" target="_blank" rel="noopener" class="md-hw-link">🔗</a>` : ''}
+                </div>`;
+            }).join('');
+            html += `</div>`;
+        }
+        html += `</div>`;
+
+        memberDetailBody.innerHTML = html;
+    } catch (err) {
+        console.error('멤버 상세 조회 실패:', err);
+        memberDetailBody.innerHTML = '<div class="md-empty">데이터를 불러오지 못했습니다.</div>';
+    }
+}
+
+function closeMemberDetail() {
+    memberDetailModal.classList.remove('active');
+    document.body.style.overflow = 'auto';
+}
+
+memberDetailClose.addEventListener('click', closeMemberDetail);
+memberDetailModal.addEventListener('click', (e) => {
+    if (e.target === memberDetailModal) closeMemberDetail();
+});
 
 // 개인별 보기 필터
 memberFilter.addEventListener('input', (e) => {
@@ -1989,8 +2111,9 @@ async function openPrintTab() {
 
 // ESC 키로 모달 닫기
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && teamModal.classList.contains('active')) {
-        closeTeamModal();
+    if (e.key === 'Escape') {
+        if (memberDetailModal.classList.contains('active')) closeMemberDetail();
+        else if (teamModal.classList.contains('active')) closeTeamModal();
     }
 });
 
