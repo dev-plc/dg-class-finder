@@ -6,7 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT, makeReporter } from './lib/harness.mjs?v=90';
+import { ROOT, makeReporter } from './lib/harness.mjs?v=91';
 
 const SRC = join(ROOT, 'scripts', 'gas', 'doGet.js');
 const src = readFileSync(SRC, 'utf8');

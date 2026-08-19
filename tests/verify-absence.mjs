@@ -4,7 +4,7 @@
 // 한 번 그런 일이 있으면 아무도 이 화면을 믿지 않는다. 그래서 규칙마다
 // 그 규칙 때문에만 걸리는 사람을 하나씩 심어 두고 확인한다.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=90';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=91';
 
 const PORT = 8099;
 const server = await serveRepo(PORT);

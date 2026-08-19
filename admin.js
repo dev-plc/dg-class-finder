@@ -33,7 +33,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=90';
+} from './scripts/members-data.js?v=91';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -564,10 +564,11 @@ async function showMemberDetail(member) {
         html += `<div class="md-section-head"><h3>📋 출석</h3><span class="md-summary">${attSummary}</span></div>`;
         if (attRows.length) {
             html += `<div class="md-att-grid">`;
-            html += attRows.map(r => {
+            html += [...attRows].reverse().map((r, idx) => {
                 const st = classifyStatus(r.status);
                 const badges = (r.lunch ? '🍙' : '') + (r.homework ? '📝' : '');
-                return `<div class="att-chip ${st.cls}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${st.title}">
+                const hiddenClass = idx >= 5 ? ' md-hidden md-att-hidden' : '';
+                return `<div class="att-chip ${st.cls}${hiddenClass}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${st.title}">
                     <span class="att-date">${escapeHtml(r.key)}</span>
                     ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}
                     <span class="att-mark">${escapeHtml(st.label)}</span>
@@ -575,6 +576,9 @@ async function showMemberDetail(member) {
                 </div>`;
             }).join('');
             html += `</div>`;
+            if (attRows.length > 5) {
+                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-att-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${attRows.length - 5}개)</button>`;
+            }
         } else {
             html += `<div class="md-empty">출석 기록이 없습니다.</div>`;
         }
@@ -586,10 +590,14 @@ async function showMemberDetail(member) {
         html += `<div class="md-section-head"><h3>🍱 김밥</h3><span class="md-summary">${lunchApplied.length ? `총 ${lunchApplied.length}회 신청` : '신청 내역 없음'}</span></div>`;
         if (lunchApplied.length) {
             html += `<div class="md-lunch-list">`;
-            html += [...lunchApplied].reverse().map(r =>
-                `<span class="md-lunch-chip">${r.name ? `<b>${escapeHtml(r.name)}</b> ` : ''}${escapeHtml(r.key)}</span>`
-            ).join('');
+            html += [...lunchApplied].reverse().map((r, idx) => {
+                const hiddenClass = idx >= 5 ? ' md-hidden md-lunch-hidden' : '';
+                return `<span class="md-lunch-chip${hiddenClass}">${r.name ? `<b>${escapeHtml(r.name)}</b> ` : ''}${escapeHtml(r.key)}</span>`;
+            }).join('');
             html += `</div>`;
+            if (lunchApplied.length > 5) {
+                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-lunch-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${lunchApplied.length - 5}개)</button>`;
+            }
         }
         html += `</div>`;
 
@@ -598,10 +606,11 @@ async function showMemberDetail(member) {
         html += `<div class="md-section-head"><h3>📝 과제</h3><span class="md-summary">${hwRows.length ? `총 ${hwRows.length}건 제출` : '제출 내역 없음'}</span></div>`;
         if (hwRows.length) {
             html += `<div class="md-hw-list">`;
-            html += hwRows.map(r => {
+            html += hwRows.map((r, idx) => {
                 const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
                 const isLink = /^https?:\/\//i.test(r.content);
-                return `<div class="md-hw-row">
+                const hiddenClass = idx >= 5 ? ' md-hidden md-hw-hidden' : '';
+                return `<div class="md-hw-row${hiddenClass}">
                     <span class="md-hw-lecture">${escapeHtml(r.lecture || '(미기재)')}</span>
                     <span class="md-hw-kind">${escapeHtml(r.kind || '')}</span>
                     <span class="md-hw-when">${escapeHtml(when)}</span>
@@ -609,6 +618,9 @@ async function showMemberDetail(member) {
                 </div>`;
             }).join('');
             html += `</div>`;
+            if (hwRows.length > 5) {
+                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-hw-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${hwRows.length - 5}개)</button>`;
+            }
         }
         html += `</div>`;
 

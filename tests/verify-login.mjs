@@ -1,6 +1,6 @@
 // 관리자 로그인 검증 — 맞으면 바로 들어가고, 틀렸을 때만 말한다.
 
-import { serveRepo, launch, makeReporter } from './lib/harness.mjs?v=90';
+import { serveRepo, launch, makeReporter } from './lib/harness.mjs?v=91';
 
 const PORT = 8088;
 const server = await serveRepo(PORT);

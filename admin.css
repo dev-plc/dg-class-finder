@@ -707,8 +707,8 @@ body.dark-mode .md-lunch-chip {
 }
 
 body.dark-mode .md-hw-row {
-    background: var(--navy);
-    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
 }
 
 .md-hw-lecture {
@@ -718,7 +718,8 @@ body.dark-mode .md-hw-row {
 }
 
 body.dark-mode .md-hw-lecture {
-    color: var(--white);
+    color: #FDE047; /* 밝은 옐로우/골드로 가독성 대폭 향상 */
+    font-weight: 800;
 }
 
 .md-hw-kind {
@@ -728,12 +729,16 @@ body.dark-mode .md-hw-lecture {
 }
 
 body.dark-mode .md-hw-kind {
-    color: #A3E635;
+    color: #A3E635; /* 밝은 라임색 */
 }
 
 .md-hw-when {
     color: var(--text-light);
     font-size: 12px;
+}
+
+body.dark-mode .md-hw-when {
+    color: #CBD5E1; /* 슬레이트 라이트 텍스트 */
 }
 
 .md-hw-link {
@@ -750,6 +755,40 @@ body.dark-mode .md-hw-kind {
 
 body.dark-mode .md-hw-link:hover {
     background: rgba(255, 255, 255, 0.1);
+}
+
+/* 5개 이상 더보기 기능 스타일 */
+.md-hidden {
+    display: none !important;
+}
+
+.md-more-btn {
+    width: 100%;
+    padding: 10px;
+    margin-top: 4px;
+    background: transparent;
+    border: 1px solid var(--warm-beige);
+    border-radius: 12px;
+    color: var(--text-light);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.md-more-btn:hover {
+    background: var(--milk-beige);
+    color: var(--midnight-blue);
+}
+
+body.dark-mode .md-more-btn {
+    border-color: rgba(255, 255, 255, 0.15);
+    color: #CBD5E1;
+}
+
+body.dark-mode .md-more-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--white);
 }
 
 /* 애니메이션 */

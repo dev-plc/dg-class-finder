@@ -1,6 +1,6 @@
 // 관리자 페이지의 '시트에서 지금 가져오기' · '화면 새로 고침' 검증.
 
-import { serveRepo, launch, makeReporter } from './lib/harness.mjs?v=90';
+import { serveRepo, launch, makeReporter } from './lib/harness.mjs?v=91';
 
 const PORT = 8095;
 const server = await serveRepo(PORT);
