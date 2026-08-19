@@ -33,7 +33,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=91';
+} from './scripts/members-data.js?v=92';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -606,7 +606,14 @@ async function showMemberDetail(member) {
         html += `<div class="md-section-head"><h3>📝 과제</h3><span class="md-summary">${hwRows.length ? `총 ${hwRows.length}건 제출` : '제출 내역 없음'}</span></div>`;
         if (hwRows.length) {
             html += `<div class="md-hw-list">`;
-            html += hwRows.map((r, idx) => {
+            // 제출일시(최근 순서) 내림차순으로 정렬
+            const sortedHwRows = [...hwRows].sort((a, b) => {
+                const dateA = a.submittedAt || '';
+                const dateB = b.submittedAt || '';
+                return dateB.localeCompare(dateA);
+            });
+            
+            html += sortedHwRows.map((r, idx) => {
                 const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
                 const isLink = /^https?:\/\//i.test(r.content);
                 const hiddenClass = idx >= 5 ? ' md-hidden md-hw-hidden' : '';

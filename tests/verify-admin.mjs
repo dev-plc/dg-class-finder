@@ -1,7 +1,7 @@
 // 관리자 화면 검증 — 검색(동명이인 포함) · 조별 보기 · 개인별 보기 · 필터.
 // Supabase 는 가짜 응답으로 대신한다.
 
-import { serveRepo, launch, makeReporter } from './lib/harness.mjs?v=91';
+import { serveRepo, launch, makeReporter } from './lib/harness.mjs?v=92';
 
 const PORT = 8092;
 const server = await serveRepo(PORT);
