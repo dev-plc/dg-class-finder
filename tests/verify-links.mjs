@@ -88,7 +88,7 @@ ok('조 방 버튼에 조 이름을 적는다', o1.team?.text === 'O1조 방', o
 // 버튼 글자는 '온라인DG' 지만 시트에는 '온라인' 으로 적혀 있다.
 // 둘을 하나로 두면 글자를 바꾸는 순간 링크를 못 찾는다.
 ok('O 로 시작하면 온라인 부서 방이 함께 붙는다',
-   o1.group?.href === 'https://t.me/online' && o1.group?.text === '온라인DG 안내방',
+   o1.group?.href === 'https://t.me/online' && o1.group?.text === '온라인DG 안내방 입장하기',
    JSON.stringify(o1.group));
 
 // 줄을 나눠 각각 이름표를 단다 — 한 줄에 묶어 두면 어느 버튼이 무엇인지 모른다
@@ -106,7 +106,7 @@ ok('안내방이 위, 조별방이 아래',
 const yf1 = await lookup('청년원', '1002');
 ok('조 방 링크가 없으면 그 버튼만 감춘다', yf1.team === null, JSON.stringify(yf1.team));
 ok('조 방이 없어도 부서 방은 나온다',
-   yf1.group?.href === 'https://t.me/young' && yf1.group?.text === '청년부 안내방',
+   yf1.group?.href === 'https://t.me/young' && yf1.group?.text === '청년부 안내방 입장하기',
    JSON.stringify(yf1));
 
 // --- V1: 붙일 것이 없으면 줄 자체를 감춘다 --------------------------------
@@ -120,8 +120,8 @@ const on = await lookup('온라인장', '1004');
 ok('조 이름이 곧 부서면 부서 방을 또 달지 않는다', on.group === null, JSON.stringify(on));
 ok('그 조의 방은 그대로 나온다', on.team?.href === 'https://t.me/online',
    JSON.stringify(on.team));
-ok('버튼에 입장하기 를 붙이지 않는다',
-   !/입장하기/.test(o1.team?.text + o1.group?.text), `${o1.team?.text} · ${o1.group?.text}`);
+// 조 방 버튼에는 '입장하기' 를 붙이지 않는다 (안내방 쪽에만 붙인다)
+ok('조 방 버튼은 조 이름만', o1.team?.text === 'O1조 방', o1.team?.text);
 
 // 실제로 어떻게 보이는지 한 장 남긴다
 await lookup('온라인원', '1001');

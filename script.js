@@ -17,7 +17,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=88';
+} from './scripts/members-data.js?v=89';
 
 // 1-1. 내 정보 기억
 //
@@ -162,7 +162,7 @@ function displayResult(member) {
 
     // 안내방은 둘이다 — 소속 부서 방과 자기 조 방. 줄을 나눠 각각 이름표를 단다.
     //
-    //   안내방   ✈️ 온라인DG 안내방
+    //   안내방   ✈️ 온라인DG 안내방 입장하기
     //   조별방   ✈️ O1조 방
     //
     // 한 줄에 묶어 두면 어느 버튼이 무엇인지 눌러 보기 전에는 모른다.
@@ -240,7 +240,7 @@ function displayResult(member) {
     };
 
     showRoom(groupRow, 'resultGroupTelegramLink', 'groupTelegramLinkText',
-             groupLink, `${matchedGroup?.label ?? ''} 안내방`);
+             groupLink, `${matchedGroup?.label ?? ''} 안내방 입장하기`);
     showRoom(teamRoomRow, 'resultTelegramLink', 'telegramLinkText',
              teamLink, `${teamName}조 방`);
 
