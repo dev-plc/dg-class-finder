@@ -52,17 +52,48 @@ console.log(`🔧 mode: ${DRY_RUN ? 'DRY RUN (쓰기 없음)' : 'LIVE'}`);
 console.log(`🔗 GAS:  ${maskGas(GAS_API_URL)}\n`);
 
 // ---------------------------------------------------------------- 시트 읽기
-console.log('▶ 시트 읽기');
-const res = await fetch(`${GAS_API_URL}?t=${Date.now()}`, { redirect: 'follow' });
-if (!res.ok) {
-  console.log(`❌ GAS 응답 ${res.status}.`);
-  if (res.status === 404) {
-    console.log('   URL 이 /exec 로 끝나는지 확인하세요. /dev 는 본인만 접근할 수 있어 Actions 에서 404 입니다.');
-    console.log('   배포를 새로 만들면 URL 이 바뀝니다. "배포 관리 → ✏️ → 새 버전" 으로 올리면 URL 이 유지됩니다.');
+//
+// 한 번 실패하면 그날 동기화가 통째로 날아간다. 매일 도는 일이라 그 하루가
+// 그대로 옛 데이터로 남는다.
+//
+// GAS 의 /exec 는 googleusercontent 로 한 번 넘긴 뒤 응답한다. 그 사이에
+// 배포를 새 버전으로 올리는 중이거나 구글 쪽이 잠깐 밀리면 404 가 온다 —
+// 같은 URL 로 1분 뒤 부르면 멀쩡하다. 그래서 몇 번 다시 해 본다.
+//
+// URL 이 정말 틀린 경우(‌/dev 로 끝난다든지)는 몇 번을 해도 404 다. 그때만
+// 고칠 곳을 안내한다.
+const RETRY_WAITS_MS = [3000, 10000, 30000];
+
+async function readSheet() {
+  for (let attempt = 0; ; attempt++) {
+    const label = attempt ? ` (${attempt + 1}번째 시도)` : '';
+    try {
+      const res = await fetch(`${GAS_API_URL}?t=${Date.now()}`, { redirect: 'follow' });
+      if (res.ok) {
+        if (attempt) console.log(`   다시 시도해서 받았습니다${label}.`);
+        return await res.json();
+      }
+      console.log(`   ⚠️ GAS 응답 ${res.status}${label}`);
+    } catch (err) {
+      console.log(`   ⚠️ GAS 요청 실패${label}: ${err.message}`);
+    }
+
+    const wait = RETRY_WAITS_MS[attempt];
+    if (wait === undefined) return null;
+    console.log(`   ${wait / 1000}초 뒤 다시 시도합니다.`);
+    await new Promise(r => setTimeout(r, wait));
   }
+}
+
+console.log('▶ 시트 읽기');
+const gas = await readSheet();
+if (!gas) {
+  console.log(`❌ GAS 를 ${RETRY_WAITS_MS.length + 1}번 불렀지만 모두 실패했습니다.`);
+  console.log('   URL 이 /exec 로 끝나는지 확인하세요. /dev 는 본인만 접근할 수 있어 Actions 에서 404 입니다.');
+  console.log('   배포를 새로 만들면 URL 이 바뀝니다. "배포 관리 → ✏️ → 새 버전" 으로 올리면 URL 이 유지됩니다.');
+  console.log('   방금 재배포했다면 잠시 뒤 워크플로를 다시 돌려 보세요 (배포 중에는 404 가 납니다).');
   process.exit(1);
 }
-const gas = await res.json();
 if (!gas.success) {
   console.log(`❌ GAS 오류: ${gas.message}`);
   process.exit(1);

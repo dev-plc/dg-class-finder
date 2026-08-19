@@ -163,7 +163,7 @@ function displayResult(member) {
     // 안내방은 둘이다 — 소속 부서 방과 자기 조 방. 줄을 나눠 각각 이름표를 단다.
     //
     //   안내방   ✈️ 온라인DG 안내방 입장하기
-    //   조별방   ✈️ O1조 방
+    //   조별방   ✈️ O1조 방 입장하기
     //
     // 한 줄에 묶어 두면 어느 버튼이 무엇인지 눌러 보기 전에는 모른다.
     // 두 줄을 따로 켜고 끈다 — 예전에는 조 방 링크가 없으면 줄을 통째로 감춰서
@@ -242,7 +242,7 @@ function displayResult(member) {
     showRoom(groupRow, 'resultGroupTelegramLink', 'groupTelegramLinkText',
              groupLink, `${matchedGroup?.label ?? ''} 안내방 입장하기`);
     showRoom(teamRoomRow, 'resultTelegramLink', 'telegramLinkText',
-             teamLink, `${teamName}조 방`);
+             teamLink, `${teamName}조 방 입장하기`);
 
     const mapUrl = getLocationImage(member.location);
     if (mapUrl) {
