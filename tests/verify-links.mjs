@@ -4,7 +4,7 @@
 // 각각 손으로 적기 때문에 'o1' 과 'O1' 처럼 어긋나기 쉽다. 어긋나면 버튼이
 // 조용히 사라지는데, 오류가 안 나서 아무도 알아채지 못한다.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=92';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
 
 const PORT = 8089;
 const server = await serveRepo(PORT);

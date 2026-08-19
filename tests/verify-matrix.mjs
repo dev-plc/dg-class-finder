@@ -1,7 +1,7 @@
 // 전체 출석표에 김밥(🍙) · 과제(📝) 가 붙는지 검증.
 // Supabase / GAS 는 가짜 응답으로 대신한다 (컨테이너 밖으로 못 나간다).
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=92';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
 
 const PORT = 8093;
 const server = await serveRepo(PORT);
