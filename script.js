@@ -17,7 +17,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=87';
+} from './scripts/members-data.js?v=88';
 
 // 1-1. 내 정보 기억
 //
@@ -311,6 +311,8 @@ function renderSessionPicker() {
 
 // 최근 몇 회차를 펴 두는가. 나머지는 '이전 N회차 더 보기' 뒤로 접는다.
 const MY_ATT_OPEN = 10;
+// 과제는 다섯 건. 한 줄이 회차 칩보다 굵어서 같은 수만큼 펴 두면 더 길어 보인다.
+const MY_HW_OPEN = 5;
 
 // 5-1. 본인 출석 현황
 //
@@ -452,14 +454,17 @@ async function renderMyHomework(member) {
 
     if (summary) summary.textContent = `총 ${rows.length}건 제출`;
 
+    // 최근 것부터 다섯 건만 펴 둔다. 차례는 데이터 계층이 정한다 (강 번호 내림차순).
+    const folded = Math.max(0, rows.length - MY_HW_OPEN);
+
     // 한 줄에 하나씩. 18건이 카드로 쌓이면 화면이 통째로 밀린다.
     // 링크는 글씨 대신 🔗 로 — 다크모드에서 파란 글씨가 배경에 묻힌다.
-    list.innerHTML = rows.map(r => {
+    list.innerHTML = rows.map((r, i) => {
         const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
         const isLink = /^https?:\/\//i.test(r.content);
 
         return `
-            <div class="hw-row">
+            <div class="hw-row${i >= MY_HW_OPEN ? ' old' : ''}">
                 <span class="hw-lecture">${escapeHtml(r.lecture || '(미기재)')}</span>
                 <span class="hw-kind">${escapeHtml(r.kind || '')}</span>
                 <span class="hw-when">${escapeHtml(when)}</span>
@@ -473,7 +478,29 @@ async function renderMyHomework(member) {
         `;
     }).join('');
 
+    setMyHwFold(folded, false);
     section.style.display = 'block';
+}
+
+/**
+ * 오래된 과제 접기·펼치기.
+ *
+ * 접히는 것이 목록의 **뒤쪽**(오래된 쪽)이라 버튼을 목록 아래에 둔다.
+ * 출석 그리드는 앞쪽이 접혀서 버튼이 위에 있다 — 어느 쪽이든 방금 누른 버튼이
+ * 제자리에 남아야 한다.
+ *
+ * 사람을 새로 조회할 때마다 접힌 채로 시작한다.
+ */
+function setMyHwFold(hidden, open) {
+    const list = document.getElementById('myHomeworkList');
+    const btn = document.getElementById('myHomeworkMoreBtn');
+    if (!list || !btn) return;
+
+    list.classList.toggle('folded', hidden > 0 && !open);
+    btn.hidden = hidden === 0;
+    btn.dataset.hidden = String(hidden);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.textContent = open ? `↑ 최근 ${MY_HW_OPEN}건만 보기` : `↓ 이전 ${hidden}건 더 보기`;
 }
 
 // 6-2. 조 요약 — 총원 · 출석 · 결석 · 김밥
@@ -924,6 +951,15 @@ function initEventListeners() {
     // 출결 일괄 저장
     const saveBtn = document.getElementById('saveAttendanceBtn');
     if (saveBtn) saveBtn.addEventListener('click', saveAttendanceChanges);
+
+    // 지난 과제 펼치기·접기
+    const hwMore = document.getElementById('myHomeworkMoreBtn');
+    if (hwMore) {
+        hwMore.addEventListener('click', () => {
+            setMyHwFold(Number(hwMore.dataset.hidden || 0),
+                        hwMore.getAttribute('aria-expanded') !== 'true');
+        });
+    }
 
     // 지난 회차 펼치기·접기
     const attMore = document.getElementById('myAttendanceMoreBtn');

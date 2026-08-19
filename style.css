@@ -1265,6 +1265,10 @@ body.large-text .map-image {
     padding-top: 14px;
     border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
+/* 오래된 과제는 접어 둔다 — 목록이 길어지면 아래의 조원 명단이 밀린다 */
+.my-homework-list.folded .hw-row.old { display: none; }
+.hw-more { margin-top: 8px; margin-bottom: 0; }
+
 .my-homework-list {
     border-left: 3px solid var(--midnight-blue);
     padding: 4px 10px;

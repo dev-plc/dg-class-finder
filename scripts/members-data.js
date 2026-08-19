@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=87';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=87';
+import { matches as hangulMatches } from './hangul.js?v=88';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=88';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -578,12 +578,26 @@ export async function getMyHomework(member) {
     // 시각이 비어 있는 건이 섞여도 순서가 흔들리지 않게 lecture 를 보조로 둔다.
     `&member_id=eq.${member._uuid}&order=submitted_at.desc.nullslast,lecture.desc`);
 
-  return rows.map(r => ({
-    lecture: r.lecture || '',
-    kind: r.kind || '',
-    content: r.content || '',
-    submittedAt: r.submitted_at || '',
-  }));
+  // 강 번호가 큰 것부터. DB 정렬만으로는 어긋난다 — 문자열로 견주면 '9강' 이
+  // '19강' 보다 뒤로 가고, 제출 시각이 비어 있는 건이 섞이면 그 사이에서
+  // 차례가 흔들린다. 사람이 보는 기준은 '몇 강' 이므로 여기서 다시 세운다.
+  const lectureNo = (v) => {
+    const m = normalizeLecture(v).match(/^(\d+)강$/);
+    return m ? Number(m[1]) : -1;      // '자유교제' 처럼 번호가 없는 것은 뒤로
+  };
+
+  return rows
+    .map(r => ({
+      lecture: r.lecture || '',
+      kind: r.kind || '',
+      content: r.content || '',
+      submittedAt: r.submitted_at || '',
+    }))
+    .sort((a, b) =>
+      lectureNo(b.lecture) - lectureNo(a.lecture)
+      // 같은 강이면 늦게 낸 것부터 (재제출이 위로)
+      || String(b.submittedAt).localeCompare(String(a.submittedAt))
+      || String(a.kind).localeCompare(String(b.kind), 'ko'));
 }
 
 /**

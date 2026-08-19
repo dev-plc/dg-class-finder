@@ -37,7 +37,17 @@ const ATT = PAST.map((s, i) => ({
   status: i === 2 ? 'X' : i === 5 ? '돌봄' : 'O',
 }));
 const LUNCH = [{ member_id: 'u1', session_date: PAST[1].session_date, applied: true }];
-const HOMEWORK = [{ member_id: 'u1', lecture: '2강' }];
+// 강 번호가 뒤죽박죽이고 제출 시각이 빈 것도 섞여 있다.
+// 문자열로 견주면 '9강' 이 '19강' 보다 앞서고, 시각이 빈 건에서 차례가 흔들린다.
+const HOMEWORK = [
+  { member_id: 'u1', lecture: '2강',   kind: '독후감', content: '', submitted_at: '2026-04-20T10:00:00' },
+  { member_id: 'u1', lecture: '9강',   kind: '독후감', content: '', submitted_at: null },
+  { member_id: 'u1', lecture: '18강',  kind: '독후감', content: 'https://ex.com/a', submitted_at: '2026-08-10T10:00:00' },
+  { member_id: 'u1', lecture: '제17강', kind: '독후감', content: '', submitted_at: null },
+  { member_id: 'u1', lecture: '16강',  kind: '독후감', content: '', submitted_at: '2026-07-20T10:00:00' },
+  { member_id: 'u1', lecture: '15강',  kind: '독후감', content: '', submitted_at: null },
+  { member_id: 'u1', lecture: '3강',   kind: '독후감', content: '', submitted_at: '2026-04-27T10:00:00' },
+];
 
 const { ok, done } = makeReporter('내 출석 현황');
 
@@ -141,10 +151,45 @@ ok('버튼은 격자 위에 둔다', shut.btnTop > 0 && shut.btnTop < 5000, `top
 ok('요약은 접어도 전체 회차 기준', /총 18회차/.test(shut.summary), shut.summary);
 ok('접힌 쪽의 결석·특이표기도 요약에 들어간다',
    /결석 1/.test(shut.summary) && /그 외 1/.test(shut.summary), shut.summary);
+// 과제 7건은 전부 지나간 강의(2·3·9·15·16·17·18강)라 요약에 다 들어간다
 ok('접힌 쪽의 김밥·과제도 요약에 들어간다',
-   /🍙 1회/.test(shut.summary) && /📝 1건/.test(shut.summary), shut.summary);
+   /🍙 1회/.test(shut.summary) && /📝 7건/.test(shut.summary), shut.summary);
 
 await page.screenshot({ path: `${SHOT}/dg-myatt-shut.png` });
+
+// --- 과제 목록 -------------------------------------------------------------
+//
+// 최근 것(강 번호가 큰 것)부터, 다섯 건만 펴 두고 나머지는 접는다.
+const hw = () => page.evaluate(() => {
+  const rows = [...document.querySelectorAll('#myHomeworkList .hw-row')];
+  const btn = document.getElementById('myHomeworkMoreBtn');
+  return {
+    all: rows.map(r => r.querySelector('.hw-lecture').textContent.trim()),
+    shown: rows.filter(r => r.offsetParent !== null)
+               .map(r => r.querySelector('.hw-lecture').textContent.trim()),
+    btnShown: !btn.hidden,
+    btnText: btn.textContent.trim(),
+    summary: document.getElementById('myHomeworkSummary').textContent.trim(),
+  };
+});
+
+const h = await hw();
+ok('과제가 강 번호 내림차순으로 나온다',
+   h.all.join(',') === '18강,제17강,16강,15강,9강,3강,2강', h.all.join(' → '));
+ok('처음에는 다섯 건만 보인다', h.shown.length === 5, h.shown.join(' → '));
+ok('보이는 것은 최근 다섯 건', h.shown.join(',') === '18강,제17강,16강,15강,9강',
+   h.shown.join(' → '));
+ok('나머지는 버튼 뒤에', h.btnShown && /이전 2건 더 보기/.test(h.btnText), h.btnText);
+ok('요약은 접어도 전체 건수', /총 7건/.test(h.summary), h.summary);
+
+await page.click('#myHomeworkMoreBtn');
+await page.waitForTimeout(250);
+const h2 = await hw();
+ok('누르면 전부 보인다', h2.shown.length === 7, `${h2.shown.length}건`);
+ok('펼치면 버튼이 접기로 바뀐다', /최근 5건만 보기/.test(h2.btnText), h2.btnText);
+await page.click('#myHomeworkMoreBtn');
+await page.waitForTimeout(250);
+ok('다시 누르면 접힌다', (await hw()).shown.length === 5);
 
 // --- 펼치기 ---------------------------------------------------------------
 await page.click('#myAttendanceMoreBtn');
