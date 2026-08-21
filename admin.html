@@ -12,8 +12,8 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=92">
-    <link rel="stylesheet" href="admin.css?v=92">
+    <link rel="stylesheet" href="style.css?v=93">
+    <link rel="stylesheet" href="admin.css?v=93">
 </head>
 <body class="dark-mode">
     <div class="admin-container">
@@ -64,72 +64,15 @@
 
         <!-- 탭 네비게이션 -->
         <nav class="tab-nav">
-            <button class="tab-btn active" data-tab="search">검색 모드</button>
-            <button class="tab-btn" data-tab="teams">조별 보기</button>
+            <button class="tab-btn active" data-tab="teams">조별 보기</button>
             <button class="tab-btn" data-tab="members">개인별 보기</button>
             <button class="tab-btn" data-tab="attendance">출석 관리</button>
             <button class="tab-btn" data-tab="absence">결석 현황</button>
             <button class="tab-btn" data-tab="print">출석부 출력</button>
         </nav>
 
-        <!-- 검색 모드 -->
-        <div class="tab-content active" id="searchTab">
-            <div class="search-section">
-                <div class="search-box">
-                    <div class="input-group">
-                        <label for="searchName">이름</label>
-                        <input 
-                            type="text" 
-                            id="searchName" 
-                            placeholder="이름을 입력하세요"
-                            autocomplete="off"
-                        >
-                    </div>
-                    <button class="search-btn" id="adminSearchBtn">
-                        <span class="btn-text">검색하기</span>
-                    </button>
-                </div>
-
-                <!-- 동명이인 선택 -->
-                <div class="duplicate-container" id="duplicateContainer" style="display: none;">
-                    <h3 class="duplicate-title">동일한 이름이 여러 명 있습니다. 선택해주세요:</h3>
-                    <div class="duplicate-list" id="duplicateList"></div>
-                </div>
-
-                <!-- 검색 결과 -->
-                <div class="result-container" id="searchResultContainer" style="display: none;">
-                    <div class="result-card">
-                        <div class="result-header">
-                            <h2 class="result-title">조원 정보</h2>
-                            <button class="close-btn" id="searchCloseBtn">✕</button>
-                        </div>
-                        <div class="result-content">
-                            <div class="info-row">
-                                <span class="info-label">이름</span>
-                                <span class="info-value" id="searchResultName">-</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">조</span>
-                                <span class="info-value highlight" id="searchResultTeam">-</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">위치</span>
-                                <span class="info-value" id="searchResultLocation">-</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 에러 메시지 -->
-                <div class="error-message" id="searchErrorMessage" style="display: none;">
-                    <span class="error-icon">⚠</span>
-                    <span class="error-text" id="searchErrorText"></span>
-                </div>
-            </div>
-        </div>
-
         <!-- 조별 보기 -->
-        <div class="tab-content" id="teamsTab">
+        <div class="tab-content active" id="teamsTab">
             <div class="filter-section">
                 <input 
                     type="text" 
@@ -272,7 +215,7 @@
                         <select id="prSessionPicker" class="att-select"></select>
                     </label>
                     <label class="att-picker">
-                        <span class="att-picker-label">조·장소</span>
+                        <span class="att-picker-label">이동</span>
                         <select id="prScopePicker" class="att-select"></select>
                     </label>
                 </div>
@@ -335,7 +278,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=92"></script>
+    <script type="module" src="admin.js?v=93"></script>
 </body>
 </html>
 

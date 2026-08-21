@@ -32,8 +32,23 @@ const M = [
 
 // 출석 관리 탭은 회차가 있어야 조 선택칸을 그린다.
 const SESSIONS = [
+  // 08/02 는 일부러 출결 기록을 안 둔다 — '기록 없음' 칸이 어두운 바탕에서
+  // 사라지지 않는지 보려는 것.
+  { session_date: '2026-08-02', label: '08/02', name: '자유교제' },
   { session_date: '2026-08-09', label: '08/09', name: '18강' },
   { session_date: '2026-08-16', label: '08/16', name: '19강' },
+];
+
+// 개인별 카드를 눌렀을 때 뜨는 상세 모달용
+const ATT = [
+  { member_id: 'u1', session_date: '2026-08-09', status: 'O' },
+  { member_id: 'u1', session_date: '2026-08-16', status: '-' },   // 수업 없음 — 흐린 칸
+];
+// 강 번호가 뒤죽박죽이고 제출 시각이 빈 것도 섞여 있다
+const HW = [
+  { member_id: 'u1', lecture: '9강',  kind: '과제', content: '', submitted_at: '2026-08-01T09:00:00' },
+  { member_id: 'u1', lecture: '18강', kind: '과제', content: '', submitted_at: null },
+  { member_id: 'u1', lecture: '15강', kind: '과제', content: '', submitted_at: '2026-07-01T09:00:00' },
 ];
 
 const { ok, done } = makeReporter('관리자 화면');
@@ -64,6 +79,10 @@ await page.route('**/rest/v1/**', route => {
     body = u.searchParams.get('select') === 'cohort_id' ? [{ cohort_id: COHORT }] : M;
   } else if (t === 'dg_sessions') {
     body = SESSIONS;
+  } else if (t === 'dg_attendance') {
+    body = (u.searchParams.get('select') || '').includes('dg_members!inner') ? [] : ATT;
+  } else if (t === 'dg_homework') {
+    body = HW;
   }
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 });
@@ -127,25 +146,60 @@ ok('개인별 필터', filtered === 1, `${filtered}명`);
 await page.fill('#memberFilter', '');
 await page.waitForTimeout(300);
 
-// --- 검색 (동명이인) --------------------------------------------------------
-await page.click('.tab-btn[data-tab="search"]');
-await page.waitForTimeout(300);
-await page.fill('#searchName', '김철수');
-await page.click('#adminSearchBtn');
-await page.waitForTimeout(600);
-
-const dupShown = await page.evaluate(() =>
-  getComputedStyle(document.getElementById('duplicateContainer')).display !== 'none');
-ok('동명이인 → 선택 목록', dupShown);
-
-const dupItems = await page.$$eval('#duplicateList > *', els => els.length);
-ok('선택 목록에 2명', dupItems === 2, `${dupItems}명`);
-
-await page.click('#duplicateList > *:first-child');
+// --- 개인 상세 모달 — 다크 모드에서 글씨가 보이는가 --------------------------
+//
+// 다크 모드에서 --white 는 '카드 바탕색'(진한 남색)이다. 그걸 글자색으로 쓰면
+// 제목이 배경과 같은 색이 되어 통째로 사라진다.
+await page.click('.tab-btn[data-tab="members"]');
+await page.waitForTimeout(400);
+await page.click('#membersGrid > *');
+await page.waitForSelector('.md-section', { timeout: 10000 });
 await page.waitForTimeout(500);
-const resultShown = await page.evaluate(() =>
-  getComputedStyle(document.getElementById('searchResultContainer')).display !== 'none');
-ok('선택하면 결과 표시', resultShown);
+
+const md = await page.evaluate(() => {
+  const rgb = (v) => (v.match(/\d+/g) || []).slice(0, 3).map(Number);
+  const dist = (a, b) => Math.abs(a[0]-b[0]) + Math.abs(a[1]-b[1]) + Math.abs(a[2]-b[2]);
+  const h3 = document.querySelector('.md-section-head h3');
+  const body = document.querySelector('.member-detail-body');
+  const chips = [...document.querySelectorAll('.member-detail-body .att-chip')];
+  const dim = chips.find(c => c.classList.contains('none') || c.classList.contains('empty'));
+  return {
+    titleGap: dist(rgb(getComputedStyle(h3).color), rgb(getComputedStyle(body).backgroundColor)),
+    titleText: h3.textContent.trim(),
+    dimOpacity: dim ? Number(getComputedStyle(dim).opacity) : null,
+    // 회차 이름이 배경에 묻히지 않는가 (가장 안 보이는 칸 기준)
+    nameGap: Math.min(...chips.map(c => {
+      const n = c.querySelector('.att-name');
+      return n ? dist(rgb(getComputedStyle(n).color), rgb(getComputedStyle(c).backgroundColor)) : 999;
+    })),
+    hw: [...document.querySelectorAll('.md-hw-lecture')].map(e => e.textContent.trim()),
+  };
+});
+ok('구역 제목이 배경에 묻히지 않는다', md.titleGap > 150, `색 차이 ${md.titleGap} (${md.titleText})`);
+ok('기록 없는 칸도 읽힌다 (흐리게 지우지 않는다)', md.dimOpacity === 1, `opacity ${md.dimOpacity}`);
+ok('칸 안의 회차 이름이 배경에 묻히지 않는다', md.nameGap > 100, `색 차이 ${md.nameGap}`);
+ok('과제는 강 번호 내림차순 — 조원 화면과 같은 차례',
+   md.hw.join(',') === '18강,15강,9강', md.hw.join(','));
+
+await page.click('#memberDetailClose');
+await page.waitForTimeout(300);
+
+// --- 검색 모드는 없앴다 -----------------------------------------------------
+//
+// 개인별 보기의 필터 + 카드 클릭 상세가 그 일을 대신한다. 탭이 남아 있으면
+// 같은 일을 두 곳에서 하게 되고, 둘이 조금씩 달라진다.
+const tabs = await page.$$eval('.tab-btn', els => els.map(e => e.dataset.tab));
+ok('검색 모드 탭이 없다', !tabs.includes('search'), tabs.join(','));
+ok('첫 탭은 조별 보기', tabs[0] === 'teams', tabs.join(','));
+ok('남은 탭이 그대로 (조별·개인별·출석·결석·출력)',
+   tabs.join(',') === 'teams,members,attendance,absence,print', tabs.join(','));
+ok('검색 모드 자리도 사라졌다',
+   await page.evaluate(() => !document.getElementById('searchTab')));
+// 여기까지 오며 탭을 옮겨 다녔으므로 새로 열어서 본다
+await page.reload({ waitUntil: 'load' });
+await page.waitForTimeout(1500);
+ok('첫 화면이 조별 보기로 열린다',
+   await page.evaluate(() => !!document.querySelector('#teamsTab.active')));
 
 await browser.close();
 server.close();

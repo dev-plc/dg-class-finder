@@ -527,15 +527,40 @@ await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: `${SHOT}/dg-print-summary.png` });
 await page.emulateMedia({ media: 'screen' });
 
-// 장소 하나만 고르면 집계표도 한 장
+// 조·장소를 고르면 거르지 않고 그 장으로 옮겨 간다.
+//
+// 예전에는 그 조만 남겨서, 한 조짜리 집계표(볼 이유가 없다)만 남고 앞뒤 장을
+// 견줄 수가 없었다.
+const sheetsBefore = await page.$$eval('.pr-sheet', els => els.length);
 await page.selectOption('#prScopePicker', 'loc:온라인');
-await page.waitForTimeout(400);
-const oneLoc = await page.$$eval('.pr-sheet[data-team^="__summary__"]', els => els.map(e =>
-  e.querySelector('.pr-title').textContent.trim()));
-ok('장소가 한 곳이면 집계표도 한 장 (전체와 중복 안 냄)',
-   oneLoc.length === 1 && /온라인/.test(oneLoc[0]), oneLoc.join(' | '));
+await page.waitForTimeout(900);
+const afterLoc = await page.evaluate(() => ({
+  sheets: document.querySelectorAll('.pr-sheet').length,
+  jumped: document.querySelector('.pr-sheet.pr-jumped')?.dataset.team || '',
+  scrolled: window.scrollY,
+}));
+ok('장소를 골라도 장이 줄지 않는다', afterLoc.sheets === sheetsBefore,
+   `${sheetsBefore} → ${afterLoc.sheets}장`);
+ok('그 장소의 집계표로 옮겨 간다', afterLoc.jumped === '__summary__:온라인', afterLoc.jumped);
+ok('실제로 스크롤이 내려간다', afterLoc.scrolled > 0, `${afterLoc.scrolled}px`);
+
+await page.selectOption('#prScopePicker', 'team:O1');
+await page.waitForTimeout(900);
+const afterTeam = await page.evaluate(() => ({
+  sheets: document.querySelectorAll('.pr-sheet').length,
+  jumped: document.querySelector('.pr-sheet.pr-jumped')?.dataset.team || '',
+  top: Math.round(document.querySelector('.pr-sheet[data-team="O1"]').getBoundingClientRect().top),
+}));
+ok('조를 골라도 장이 줄지 않는다', afterTeam.sheets === sheetsBefore, `${afterTeam.sheets}장`);
+ok('그 조의 장으로 옮겨 간다', afterTeam.jumped === 'O1', afterTeam.jumped);
+// 조작부가 화면 위에 붙어 있다. 그 아래로 내려와야 머리말이 보인다.
+ok('조작부에 가리지 않는 자리에 선다', afterTeam.top > 0 && afterTeam.top < 400,
+   `${afterTeam.top}px`);
+
 await page.selectOption('#prScopePicker', 'all');
-await page.waitForTimeout(400);
+await page.waitForTimeout(900);
+ok('전체를 고르면 맨 위로', await page.evaluate(() => window.scrollY) === 0,
+   `${await page.evaluate(() => window.scrollY)}px`);
 
 const pad = await page.$eval('.pr-page', el => getComputedStyle(el).padding);
 ok('종이에 안쪽 여백이 있다', /^(?!0px)/.test(pad) && parseFloat(pad) > 5, pad);
@@ -623,13 +648,13 @@ await page.waitForTimeout(600);
 const keptOnSession = await page.$eval('.pr-sheet[data-team="Y1"] .pr-pick input', el => el.checked);
 ok('주차를 바꿔도 뺀 조가 그대로', keptOnSession === false, `checked=${keptOnSession}`);
 
-// 범위를 바꿔도 마찬가지 (Y1 은 웨슬리홀)
+// 옮겨 다녀도 마찬가지 (Y1 은 웨슬리홀)
 await page.selectOption('#prScopePicker', 'loc:웨슬리홀');
-await page.waitForTimeout(500);
+await page.waitForTimeout(700);
 const keptOnScope = await page.$eval('.pr-sheet[data-team="Y1"] .pr-pick input', el => el.checked);
-ok('범위를 바꿔도 뺀 조가 그대로', keptOnScope === false, `checked=${keptOnScope}`);
+ok('옮겨 다녀도 뺀 조가 그대로', keptOnScope === false, `checked=${keptOnScope}`);
 await page.selectOption('#prScopePicker', 'all');
-await page.waitForTimeout(500);
+await page.waitForTimeout(700);
 
 // 화면을 새로 열어도 기억한다
 await page.reload({ waitUntil: 'load' });

@@ -649,8 +649,10 @@ body.dark-mode .md-section-head {
     margin: 0;
 }
 
+/* 다크 모드에서 --white 는 '카드 바탕색'(진한 남색)이다. 글자에 쓰면 배경과
+   같은 색이 되어 제목이 통째로 사라진다 — 본문 글자색을 쓴다. */
 body.dark-mode .md-section-head h3 {
-    color: var(--white);
+    color: var(--text-dark);
 }
 
 .md-summary {
@@ -665,6 +667,26 @@ body.dark-mode .md-section-head h3 {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     gap: 10px;
 }
+
+/* 출석 칩은 조원 화면(style.css)의 것을 그대로 쓴다. 다만 거기서는 밝은 카드
+   위에 놓이는 것을 전제로 흐리게(opacity 0.4) 칠하는 칸이 있는데, 관리자 화면의
+   어두운 바탕에서는 그게 아예 안 보인다. 여기서만 다시 잡는다. */
+.member-detail-body .att-chip {
+    border-color: var(--warm-beige);
+    color: var(--text-dark);
+}
+.member-detail-body .att-chip.empty,
+.member-detail-body .att-chip.none {
+    opacity: 1;
+    color: var(--text-light);
+    background: transparent;
+    border-style: dashed;
+}
+.member-detail-body .att-date { opacity: 1; color: var(--text-light); }
+.member-detail-body .att-name { color: var(--text-light); }
+.member-detail-body .att-mark { color: var(--text-dark); }
+.member-detail-body .att-chip.empty .att-mark,
+.member-detail-body .att-chip.none .att-mark { color: var(--text-light); }
 
 /* 김밥 리스트 */
 .md-lunch-list {
@@ -711,34 +733,33 @@ body.dark-mode .md-hw-row {
     border-color: rgba(255, 255, 255, 0.15);
 }
 
+/* 한 줄에 색을 셋 쓰면 어느 것이 중요한지 안 읽힌다.
+   강의명만 진하게, 나머지는 눈에 띄지 않게 둔다. */
 .md-hw-lecture {
-    font-weight: 700;
-    color: var(--midnight-blue);
+    font-weight: 800;
+    color: var(--text-dark);
     flex: 1;
 }
 
-body.dark-mode .md-hw-lecture {
-    color: #FDE047; /* 밝은 옐로우/골드로 가독성 대폭 향상 */
-    font-weight: 800;
-}
-
 .md-hw-kind {
-    color: var(--primary);
-    font-weight: 600;
-    font-size: 13px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--midnight-blue);
+    background: var(--milk-beige);
+    border-radius: 999px;
+    white-space: nowrap;
 }
 
 body.dark-mode .md-hw-kind {
-    color: #A3E635; /* 밝은 라임색 */
+    color: var(--text-dark);
+    background: rgba(255, 255, 255, 0.10);
 }
 
 .md-hw-when {
     color: var(--text-light);
     font-size: 12px;
-}
-
-body.dark-mode .md-hw-when {
-    color: #CBD5E1; /* 슬레이트 라이트 텍스트 */
+    white-space: nowrap;
 }
 
 .md-hw-link {
@@ -788,7 +809,7 @@ body.dark-mode .md-more-btn {
 
 body.dark-mode .md-more-btn:hover {
     background: rgba(255, 255, 255, 0.1);
-    color: var(--white);
+    color: var(--text-dark);
 }
 
 /* 애니메이션 */
@@ -1231,6 +1252,8 @@ body.dark-mode .pr-data-warn { color: #fbbf24; }
 .pr-preview { display: flex; flex-direction: column; align-items: center; gap: 24px; }
 .pr-sheet { position: relative; width: 100%; max-width: 186mm; }
 .pr-sheet.pr-skip { opacity: 0.35; }
+/* 골라서 옮겨 온 장을 잠깐 표시한다. 비슷한 장이 이어져 있어 놓치기 쉽다 */
+.pr-sheet.pr-jumped .pr-page { box-shadow: 0 0 0 3px var(--midnight-blue); }
 
 /* 체크박스를 종이 위에 얹으면 미리보기가 잘라낸다. 종이 밖 상자에 올린다 */
 .pr-pick {

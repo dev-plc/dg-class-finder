@@ -33,7 +33,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=92';
+} from './scripts/members-data.js?v=93';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -50,14 +50,6 @@ const tabBtns = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');
 
 // 검색 모드 요소
-const searchNameInput = document.getElementById('searchName');
-const adminSearchBtn = document.getElementById('adminSearchBtn');
-const duplicateContainer = document.getElementById('duplicateContainer');
-const duplicateList = document.getElementById('duplicateList');
-const searchResultContainer = document.getElementById('searchResultContainer');
-const searchCloseBtn = document.getElementById('searchCloseBtn');
-const searchErrorMessage = document.getElementById('searchErrorMessage');
-const searchErrorText = document.getElementById('searchErrorText');
 
 // 조별/개인별 보기 요소
 const teamsGrid = document.getElementById('teamsGrid');
@@ -95,13 +87,6 @@ subscribe((event) => {
     memberData = getMembers();
     renderTeamsView(teamFilter ? teamFilter.value : '');
     renderMembersView(memberFilter ? memberFilter.value : '');
-    if (searchNameInput && searchNameInput.value.trim()) {
-        try {
-            searchMember();
-        } catch (e) {
-            console.log('자동 재검색 무시:', e);
-        }
-    }
 
     // 결석 현황도 받아 둔 값이다. 새로 가져왔으면 다시 센다.
     if (abHistory) { abHistory = null; loadAbsence(); }
@@ -213,111 +198,6 @@ syncReloadBtn?.addEventListener('click', async () => {
         syncReloadBtn.disabled = false;
     }
 });
-
-// ==================== 검색 모드 ====================
-
-// 검색 함수
-function searchMember() {
-    const name = searchNameInput.value.trim();
-    
-    if (!name) {
-        showSearchError('이름을 입력해주세요.');
-        searchNameInput.focus();
-        return;
-    }
-    
-    // 이름으로 검색
-    const results = memberData.filter(m => m.name === name);
-    
-    if (results.length === 0) {
-        showSearchError('일치하는 정보를 찾을 수 없습니다.');
-    } else if (results.length === 1) {
-        // 한 명만 있으면 바로 표시
-        showSearchResult(results[0]);
-    } else {
-        // 동명이인이 있으면 선택 화면 표시
-        showDuplicateSelection(results);
-    }
-}
-
-// 동명이인 선택 화면
-function showDuplicateSelection(members) {
-    hideSearchError();
-    searchResultContainer.style.display = 'none';
-    
-    duplicateList.innerHTML = '';
-    members.forEach(member => {
-        const item = document.createElement('div');
-        item.className = 'duplicate-item';
-        const phoneDisplay = member.phone ? ` (${member.phone})` : '';
-        const ageDisplay = member.age ? ` · ${member.age}세` : '';
-        item.innerHTML = `
-            <div class="duplicate-item-id">${member.name}${phoneDisplay}</div>
-            <div class="duplicate-item-info">${member.team} · ${member.location}${ageDisplay}</div>
-        `;
-        item.addEventListener('click', () => {
-            showSearchResult(member);
-            duplicateContainer.style.display = 'none';
-        });
-        duplicateList.appendChild(item);
-    });
-    
-    duplicateContainer.style.display = 'block';
-    setTimeout(() => {
-        duplicateContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 100);
-}
-
-// 검색 결과 표시
-function showSearchResult(member) {
-    hideSearchError();
-    duplicateContainer.style.display = 'none';
-    
-    const phoneDisplay = member.phone ? ` (${member.phone})` : '';
-    document.getElementById('searchResultName').textContent = `${member.name}${phoneDisplay}`;
-    document.getElementById('searchResultTeam').textContent = member.team;
-    document.getElementById('searchResultLocation').textContent = member.location;
-    
-    searchResultContainer.style.display = 'block';
-    setTimeout(() => {
-        searchResultContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 100);
-}
-
-// 검색 에러 표시
-function showSearchError(message) {
-    searchErrorText.textContent = message;
-    searchErrorMessage.style.display = 'flex';
-    searchResultContainer.style.display = 'none';
-    duplicateContainer.style.display = 'none';
-    
-    setTimeout(() => {
-        searchErrorMessage.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 100);
-}
-
-// 검색 에러 숨기기
-function hideSearchError() {
-    searchErrorMessage.style.display = 'none';
-}
-
-// 검색 결과 닫기
-function closeSearchResult() {
-    searchResultContainer.style.display = 'none';
-    duplicateContainer.style.display = 'none';
-    searchNameInput.value = '';
-    searchNameInput.focus();
-}
-
-// 검색 이벤트 리스너
-adminSearchBtn.addEventListener('click', searchMember);
-searchCloseBtn.addEventListener('click', closeSearchResult);
-searchNameInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        searchMember();
-    }
-});
-searchNameInput.addEventListener('input', hideSearchError);
 
 // ==================== 조별 보기 ====================
 
@@ -606,14 +486,10 @@ async function showMemberDetail(member) {
         html += `<div class="md-section-head"><h3>📝 과제</h3><span class="md-summary">${hwRows.length ? `총 ${hwRows.length}건 제출` : '제출 내역 없음'}</span></div>`;
         if (hwRows.length) {
             html += `<div class="md-hw-list">`;
-            // 제출일시(최근 순서) 내림차순으로 정렬
-            const sortedHwRows = [...hwRows].sort((a, b) => {
-                const dateA = a.submittedAt || '';
-                const dateB = b.submittedAt || '';
-                return dateB.localeCompare(dateA);
-            });
-            
-            html += sortedHwRows.map((r, idx) => {
+            // 차례는 데이터 계층이 정한다 (강 번호 내림차순). 여기서 제출일로 다시
+            // 정렬하면 조원 화면과 순서가 달라지고, 제출 시각이 비어 있는 건이
+            // 섞이면 그 사이에서 차례가 흔들린다.
+            html += hwRows.map((r, idx) => {
                 const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
                 const isLink = /^https?:\/\//i.test(r.content);
                 const hiddenClass = idx >= 5 ? ' md-hidden md-hw-hidden' : '';
@@ -1633,11 +1509,16 @@ function prTeams() {
     return [...groups.values()].sort((a, b) => compareTeamName(a.name, b.name));
 }
 
+/**
+ * 미리보기는 늘 전체다.
+ *
+ * 예전에는 '조·장소' 를 고르면 그 조만 남기고 걸러 냈다. 그러면 한 조짜리
+ * 집계표가 같이 나오는데(조 하나를 세어 봐야 그 조 인원이다) 볼 이유가 없고,
+ * 무엇보다 앞뒤 장을 견주지 못한다. 지금은 고르면 그 장으로 **옮겨 갈 뿐**이고,
+ * 출력에서 빼고 넣는 것은 '부분 선택' 목록이 한다.
+ */
 function prScopedTeams() {
-    const all = prTeams();
-    if (prScope.startsWith('team:')) return all.filter(t => t.name === prScope.slice(5));
-    if (prScope.startsWith('loc:')) return all.filter(t => t.location === prScope.slice(4));
-    return all;
+    return prTeams();
 }
 
 function renderPrPickers() {
@@ -1696,7 +1577,7 @@ function renderPrDataInfo() {
     const people = prScopedTeams().flatMap(t => t.members);
     const lunchN = people.filter(m => prLunchSet.has(m._uuid)).length;
     const hwN = people.filter(m => prHwSet.has(m._uuid)).length;
-    const offList = prScope === 'all' ? prLunchSet.size - lunchN : 0;
+    const offList = prLunchSet.size - lunchN;
 
     const info = `🍙 김밥 ${lunchN}명 · 📝 과제 ${hwN}명`
                + (name ? ` (‘${attEsc(name)}’ 기준)` : '')
@@ -2047,8 +1928,52 @@ prSessionPicker?.addEventListener('change', (e) => {
 
 prScopePicker?.addEventListener('change', (e) => {
     prScope = e.target.value;
-    renderPrPreview();
+    prJumpTo(prScope);
+    // 고른 자리를 기억만 하고 목록은 다시 그리지 않는다 (다시 그리면 스크롤이 튄다)
 });
+
+/**
+ * 고른 조·장소의 장으로 옮겨 간다.
+ *
+ * 조작부가 화면 위에 붙어 있으므로(sticky) 그 높이만큼 띄워 세운다.
+ * 안 그러면 장의 머리말이 조작부에 가려 어느 장에 왔는지 안 보인다.
+ */
+function prJumpTo(scope) {
+    if (!prPreview) return;
+
+    // '전체' 는 특정 장이 아니라 처음부터 보겠다는 뜻이다. 맨 위로 올린다.
+    if (scope === 'all') {
+        prPreview.querySelectorAll('.pr-jumped').forEach(el => el.classList.remove('pr-jumped'));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+
+    const pick = (sel) => prPreview.querySelector(sel);
+    let target = null;
+    if (scope.startsWith('team:')) {
+        target = pick(`.pr-sheet[data-team="${CSS.escape(scope.slice(5))}"]`);
+    } else if (scope.startsWith('loc:')) {
+        const loc = scope.slice(4);
+        // 장소는 집계표가 먼저다. 없으면 그 장소의 첫 조로 간다.
+        target = pick(`.pr-sheet[data-team="${CSS.escape('__summary__:' + loc)}"]`)
+              || prTeams().filter(t => t.location === loc)
+                   .map(t => pick(`.pr-sheet[data-team="${CSS.escape(t.name)}"]`))
+                   .find(Boolean);
+    }
+    if (!target) return;
+
+    const controls = document.querySelector('.pr-controls');
+    const offset = (controls?.getBoundingClientRect().height || 0) + 12;
+    const top = target.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+
+    // 어디에 섰는지 잠깐 표시한다 — 비슷한 장이 이어져서 놓치기 쉽다.
+    prPreview.querySelectorAll('.pr-jumped').forEach(el => el.classList.remove('pr-jumped'));
+    target.classList.add('pr-jumped');
+    clearTimeout(prJumpTimer);
+    prJumpTimer = setTimeout(() => target.classList.remove('pr-jumped'), 1600);
+}
+let prJumpTimer = null;
 
 function prApplyAutoLunchReq() {
     if (prLunchReqTouched) return;
@@ -2139,9 +2064,6 @@ document.addEventListener('keydown', (e) => {
 // 안전한 초기화 함수
 function initAdmin() {
     loadData();
-    if (searchNameInput) {
-        searchNameInput.focus();
-    }
 }
 
 if (document.readyState === 'loading') {

@@ -6,19 +6,19 @@
 // ⚠️ CACHE_VERSION 과 아래 ?v= 는 scripts/bump-version.mjs 가 함께 올린다.
 //    손으로 고치지 말 것 — 한 곳만 빠뜨려도 그 파일만 옛것이 나온다.
 
-const CACHE_VERSION = 'dgf-v92';
+const CACHE_VERSION = 'dgf-v93';
 
 const PRECACHE_URLS = [
   './',
   './index.html',
   './admin.html',
-  './style.css?v=92',
-  './admin.css?v=92',
-  './script.js?v=92',
-  './admin.js?v=92',
-  './scripts/members-data.js?v=92',
-  './scripts/hangul.js?v=92',
-  './scripts/supabase-config.js?v=92',
+  './style.css?v=93',
+  './admin.css?v=93',
+  './script.js?v=93',
+  './admin.js?v=93',
+  './scripts/members-data.js?v=93',
+  './scripts/hangul.js?v=93',
+  './scripts/supabase-config.js?v=93',
 ];
 
 self.addEventListener('message', (event) => {
