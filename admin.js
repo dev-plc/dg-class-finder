@@ -33,7 +33,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=93';
+} from './scripts/members-data.js?v=94';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1801,6 +1801,7 @@ function updatePrCount() {
     const live = prPreview.querySelectorAll('.pr-sheet:not(.pr-skip)').length;
     if (prCount) prCount.textContent = all ? `${all}장 중 ${live}장 출력` : '';
     updatePrPickToggle(all, all - live);
+    updatePrAllToggle();
 }
 
 /**
@@ -1880,8 +1881,28 @@ function prSetAll(on) {
     updatePrCount();
 }
 
-document.getElementById('prAllBtn')?.addEventListener('click', () => prSetAll(true));
-document.getElementById('prNoneBtn')?.addEventListener('click', () => prSetAll(false));
+/**
+ * 전체 선택·해제를 한 버튼으로.
+ *
+ * 버튼 둘을 나란히 두면 늘 하나는 할 일이 없다. 지금 상태를 보고 반대쪽 일을
+ * 하게 두되, **버튼에는 지금 누르면 벌어질 일**을 적는다.
+ *   하나라도 빠져 있으면 → '전체 선택'
+ *   전부 들어 있으면     → '전체 해제'
+ */
+const prAllToggleBtn = document.getElementById('prAllToggleBtn');
+
+function updatePrAllToggle() {
+    if (!prAllToggleBtn || !prPreview) return;
+    const all = prPreview.querySelectorAll('.pr-sheet').length;
+    const live = prPreview.querySelectorAll('.pr-sheet:not(.pr-skip)').length;
+    prAllToggleBtn.disabled = !all;
+    prAllToggleBtn.dataset.action = live === all && all ? 'none' : 'all';
+    prAllToggleBtn.textContent = live === all && all ? '전체 해제' : '전체 선택';
+}
+
+prAllToggleBtn?.addEventListener('click', () => {
+    prSetAll(prAllToggleBtn.dataset.action !== 'none');
+});
 
 // 열고 닫기만 한다. 연 상태를 기억하지는 않는다 — 늘 떠 있는 게 거슬려서
 // 접은 것이므로, 화면을 새로 열면 다시 접힌 채로 시작하는 게 맞다.

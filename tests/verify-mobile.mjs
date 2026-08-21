@@ -169,6 +169,14 @@ const ctrl = await page.$$eval('.pr-controls button, .pr-chk', els => els.map(e 
 ok('조작부 버튼도 세로로 안 쪼개진다', ctrl.every(c => c.h < c.w),
    ctrl.filter(c => c.h >= c.w).map(c => `${c.text} ${c.w}×${c.h}`).join(' · ') || '모두 정상');
 
+// 폭이 좁으면 '출력' 과 '항목' 이 각각 제 줄을 쓴다 (한 줄에 욱여넣지 않는다)
+const barLines = await page.evaluate(() => {
+  const g = [...document.querySelectorAll('.pr-row-2 .pr-group')];
+  return { groups: g.length, lines: new Set(g.map(e => Math.round(e.getBoundingClientRect().top))).size };
+});
+ok('좁은 화면에서는 출력·항목이 줄을 나눠 쓴다',
+   barLines.groups === 2 && barLines.lines === 2, JSON.stringify(barLines));
+
 await page.screenshot({ path: `${SHOT}/dg-mobile-print.png` });
 
 // --- 출석 관리 탭 -----------------------------------------------------------

@@ -325,9 +325,47 @@ ok('5. 실제로 인쇄되는 마지막 장에 표시 (빈 종이 방지)',
    JSON.stringify(lastCheck));
 ok('5. 인쇄가 호출된다', await page.evaluate(() => window.__printed) === 1);
 
+// --- 조작부 — 한 줄에 담고, 버튼은 지금 할 일을 말한다 --------------------
+//
+// 조작부가 화면 위에 붙어 있어서 줄이 하나 늘 때마다 아래 출석부가 그만큼 가려진다.
+const bar = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('.pr-controls .pr-row')];
+  const tops = rows.map(r => Math.round(r.getBoundingClientRect().top));
+  return {
+    rows: rows.length,
+    lines: new Set(tops).size,
+    height: Math.round(document.querySelector('.pr-controls').getBoundingClientRect().height),
+    labels: [...document.querySelectorAll('.pr-group-label')].map(e => e.textContent.trim()),
+    cols: [...document.querySelectorAll('.pr-chk')].map(e => e.textContent.trim()),
+  };
+});
+ok('조작부는 두 줄', bar.rows === 2, `${bar.rows}줄`);
+ok('넓은 화면에서 출력·항목이 한 줄에', bar.lines === 2, `${bar.lines}단`);
+ok('조작부가 화면을 덜 먹는다 (200px 이내)', bar.height <= 200, `${bar.height}px`);
+ok('묶음 이름은 출력 · 항목', bar.labels.join(',') === '출력,항목', bar.labels.join(','));
+ok('집계표 이름이 짧아졌다', bar.cols.includes('집계표') && !bar.cols.some(c => c.includes('조별 집계표')),
+   bar.cols.join(' | '));
+
+// 전체 선택·해제가 한 버튼이다 — 지금 상태의 반대쪽 일을 한다
+const toggleText = () => page.$eval('#prAllToggleBtn', el => el.textContent.trim());
+// 앞 검증에서 한 장을 빼 둔 상태다. 먼저 전부 켜고 시작한다.
+if (await toggleText() === '전체 선택') {
+  await page.click('#prAllToggleBtn');
+  await page.waitForTimeout(200);
+}
+ok('전부 켜져 있으면 전체 해제', await toggleText() === '전체 해제', await toggleText());
+await page.uncheck('.pr-sheet[data-team="Y2"] .pr-pick input');
+await page.waitForTimeout(200);
+ok('하나라도 빠지면 전체 선택', await toggleText() === '전체 선택', await toggleText());
+await page.click('#prAllToggleBtn');
+await page.waitForTimeout(200);
+ok('누르면 전부 켜진다',
+   await page.$$eval('.pr-sheet', els => els.every(e => !e.classList.contains('pr-skip'))));
+ok('그러면 다시 전체 해제로', await toggleText() === '전체 해제', await toggleText());
+
 // --- 검증 6: 전부 끄고 인쇄 -> 막히는가 ------------------------------------
 dialogs.length = 0;
-await page.click('#prNoneBtn');
+await page.click('#prAllToggleBtn');   // 전부 켜져 있으니 → 전체 해제
 await page.waitForTimeout(200);
 await page.click('#prPrintBtn');
 await page.waitForTimeout(300);
@@ -335,7 +373,7 @@ ok('6. 전부 끄면 인쇄가 막힌다', dialogs.some(d => /출력할 장이 �
    dialogs.join(' | '));
 ok('6. 막힐 때는 인쇄를 부르지 않는다', await page.evaluate(() => window.__printed) === 1);
 
-await page.click('#prAllBtn');
+await page.click('#prAllToggleBtn');   // 전부 꺼져 있으니 → 전체 선택
 await page.waitForTimeout(200);
 
 // --- 검증 4: 인쇄 미리보기(음영 유지) --------------------------------------
@@ -801,11 +839,11 @@ ok('장 위에서 켜면 목록도 켜진다',
    await page.$eval('.pr-pick-chip input[data-team="Y2"]', el => el.checked));
 
 // 전체 해제·선택이 목록에도 반영된다
-await page.click('#prNoneBtn');
+await page.click('#prAllToggleBtn');   // 전부 켜져 있으니 → 전체 해제
 await page.waitForTimeout(200);
 ok('전체 해제가 목록에도 반영된다',
    (await page.$$eval('.pr-pick-chip input', els => els.every(e => !e.checked))));
-await page.click('#prAllBtn');
+await page.click('#prAllToggleBtn');   // 전부 꺼져 있으니 → 전체 선택
 await page.waitForTimeout(200);
 ok('전체 선택이 목록에도 반영된다',
    (await page.$$eval('.pr-pick-chip input', els => els.every(e => e.checked))));

@@ -190,16 +190,16 @@ await page.waitForTimeout(300);
 // 같은 일을 두 곳에서 하게 되고, 둘이 조금씩 달라진다.
 const tabs = await page.$$eval('.tab-btn', els => els.map(e => e.dataset.tab));
 ok('검색 모드 탭이 없다', !tabs.includes('search'), tabs.join(','));
-ok('첫 탭은 조별 보기', tabs[0] === 'teams', tabs.join(','));
-ok('남은 탭이 그대로 (조별·개인별·출석·결석·출력)',
-   tabs.join(',') === 'teams,members,attendance,absence,print', tabs.join(','));
+ok('첫 탭은 개인별 보기', tabs[0] === 'members', tabs.join(','));
+ok('탭 차례 — 개인별·조별·출석·결석·출력',
+   tabs.join(',') === 'members,teams,attendance,absence,print', tabs.join(','));
 ok('검색 모드 자리도 사라졌다',
    await page.evaluate(() => !document.getElementById('searchTab')));
 // 여기까지 오며 탭을 옮겨 다녔으므로 새로 열어서 본다
 await page.reload({ waitUntil: 'load' });
 await page.waitForTimeout(1500);
-ok('첫 화면이 조별 보기로 열린다',
-   await page.evaluate(() => !!document.querySelector('#teamsTab.active')));
+ok('첫 화면이 개인별 보기로 열린다',
+   await page.evaluate(() => !!document.querySelector('#membersTab.active')));
 
 await browser.close();
 server.close();

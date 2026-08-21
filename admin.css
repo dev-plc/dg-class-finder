@@ -3,7 +3,7 @@
     width: 100%;
     max-width: 1200px;
     margin: 0 auto;
-    padding: 24px 20px;
+    padding: 16px 20px 24px;
     min-height: 100vh;
 }
 
@@ -11,8 +11,8 @@
 .admin-header {
     background: var(--white);
     border-radius: 24px;
-    padding: 20px 28px;
-    margin-bottom: 28px;
+    padding: 16px 24px;
+    margin-bottom: 16px;
     box-shadow: var(--shadow-md);
     border: 1px solid rgba(27, 59, 111, 0.06);
     transition: all 0.3s ease;
@@ -114,8 +114,8 @@ body.dark-mode .logout-btn:hover {
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
-    margin-bottom: 18px;
-    padding: 12px 14px;
+    margin-bottom: 14px;
+    padding: 10px 14px;
     background: var(--white);
     border-radius: 14px;
     box-shadow: var(--shadow-sm);
@@ -146,8 +146,9 @@ body.dark-mode .sync-info.fail { color: #fca5a5; }
 /* ==================== 탭 네비게이션 ==================== */
 .tab-nav {
     display: flex;
-    gap: 10px;
-    margin-bottom: 28px;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
     justify-content: center;
 }
 
@@ -1171,20 +1172,40 @@ body.dark-mode .ab-note.warn { color: #fbbf24; }
     z-index: 20;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 14px;
-    margin-bottom: 18px;
+    gap: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
     background: var(--white);
     border-radius: 14px;
     box-shadow: var(--shadow-md);
 }
 .pr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+/* 조작부가 화면 위에 붙어 있어서, 줄이 하나 늘 때마다 아래 출석부가 그만큼
+   가려진다. '출력' 과 '항목' 을 한 줄에 두되 좁으면 알아서 접히게 한다. */
+.pr-row-2 { align-items: flex-start; gap: 10px 18px; }
+.pr-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pr-group-label {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--text-light);
+    letter-spacing: -0.2px;
+}
+.pr-row-2 .pr-group:first-child { flex: 0 1 auto; }
+.pr-row-2 .pr-cols { flex: 1 1 auto; }
+
+/* 주차·이동은 라벨을 옆에 붙여 한 줄로 (위아래로 쌓으면 그만큼 길어진다) */
+.pr-row .pr-picker { display: flex; align-items: center; gap: 8px; flex: 1 1 200px; }
+.pr-row .pr-picker .att-picker-label { margin-bottom: 0; white-space: nowrap; }
+.pr-row .pr-picker .att-select { min-height: 40px; }
+.pr-row #prPrintBtn { margin-left: auto; }
+
 .pr-cols-label { font-size: 13px; font-weight: 700; color: var(--text-light); }
 .pr-chk {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     font-size: 13px;
     font-weight: 600;
     color: var(--text-dark);
@@ -1486,6 +1507,10 @@ body.dark-mode .pr-page { background: #fff; color: #111; }
 
     /* 출석부 출력 조작부 */
     .pr-controls { padding: 12px; }
+    /* 폭이 좁으면 '출력' 과 '항목' 이 각각 제 줄을 쓴다 */
+    .pr-row-2 .pr-group { flex: 1 1 100%; }
+    .pr-row .pr-picker { flex: 1 1 100%; }
+    .pr-row #prPrintBtn { margin-left: 0; flex: 1 1 100%; }
     .pr-count { margin-left: 0; flex: 1 1 100%; text-align: right; }
     .pr-chk { padding: 8px 10px; font-size: 13px; }
 }

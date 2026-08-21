@@ -12,8 +12,8 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=93">
-    <link rel="stylesheet" href="admin.css?v=93">
+    <link rel="stylesheet" href="style.css?v=94">
+    <link rel="stylesheet" href="admin.css?v=94">
 </head>
 <body class="dark-mode">
     <div class="admin-container">
@@ -64,15 +64,15 @@
 
         <!-- 탭 네비게이션 -->
         <nav class="tab-nav">
-            <button class="tab-btn active" data-tab="teams">조별 보기</button>
-            <button class="tab-btn" data-tab="members">개인별 보기</button>
+            <button class="tab-btn active" data-tab="members">개인별 보기</button>
+            <button class="tab-btn" data-tab="teams">조별 보기</button>
             <button class="tab-btn" data-tab="attendance">출석 관리</button>
             <button class="tab-btn" data-tab="absence">결석 현황</button>
             <button class="tab-btn" data-tab="print">출석부 출력</button>
         </nav>
 
         <!-- 조별 보기 -->
-        <div class="tab-content active" id="teamsTab">
+        <div class="tab-content" id="teamsTab">
             <div class="filter-section">
                 <input 
                     type="text" 
@@ -88,7 +88,7 @@
         </div>
 
         <!-- 개인별 보기 -->
-        <div class="tab-content" id="membersTab">
+        <div class="tab-content active" id="membersTab">
             <div class="filter-section">
                 <input 
                     type="text" 
@@ -210,32 +210,38 @@
                  칸 하나 바꾸려고 매번 맨 위로 올라가야 한다. -->
             <div class="pr-controls">
                 <div class="pr-row">
-                    <label class="att-picker">
+                    <label class="att-picker pr-picker">
                         <span class="att-picker-label">주차</span>
                         <select id="prSessionPicker" class="att-select"></select>
                     </label>
-                    <label class="att-picker">
+                    <label class="att-picker pr-picker">
                         <span class="att-picker-label">이동</span>
                         <select id="prScopePicker" class="att-select"></select>
                     </label>
-                </div>
-
-                <div class="pr-row pr-cols">
-                    <span class="pr-cols-label">표시할 칸</span>
-                    <label class="pr-chk"><input type="checkbox" id="prColLunch" checked> 김밥 현황</label>
-                    <label class="pr-chk"><input type="checkbox" id="prColLunchReq"> 김밥신청</label>
-                    <label class="pr-chk"><input type="checkbox" id="prColHw" checked> 과제</label>
-                    <label class="pr-chk"><input type="checkbox" id="prColMemo" checked> 메모</label>
-                    <label class="pr-chk"><input type="checkbox" id="prColSummary"> 조별 집계표</label>
-                </div>
-
-                <div class="pr-row">
                     <button type="button" id="prPrintBtn" class="sync-btn">🖨️ 인쇄</button>
-                    <button type="button" id="prAllBtn" class="att-bulk-btn">전체 선택</button>
-                    <button type="button" id="prNoneBtn" class="att-bulk-btn">전체 해제</button>
-                    <button type="button" id="prPickToggleBtn" class="att-bulk-btn pr-pick-toggle"
-                            aria-expanded="false" aria-controls="prPickList">▾ 부분 선택</button>
-                    <span class="pr-count" id="prCount"></span>
+                </div>
+
+                <!-- '출력' 과 '항목' 을 한 줄에. 화면이 좁으면 두 줄로 접힌다.
+                     조작부가 화면 위에 붙어 있어서, 한 줄이 늘 때마다 아래 출석부가
+                     그만큼 가려진다. -->
+                <div class="pr-row pr-row-2">
+                    <div class="pr-group">
+                        <span class="pr-group-label">출력</span>
+                        <!-- 전체 선택·해제를 한 버튼에. 지금 상태를 보고 반대쪽 일을 한다 -->
+                        <button type="button" id="prAllToggleBtn" class="att-bulk-btn">전체 해제</button>
+                        <button type="button" id="prPickToggleBtn" class="att-bulk-btn pr-pick-toggle"
+                                aria-expanded="false" aria-controls="prPickList">▾ 부분 선택</button>
+                        <span class="pr-count" id="prCount"></span>
+                    </div>
+
+                    <div class="pr-group pr-cols">
+                        <span class="pr-group-label">항목</span>
+                        <label class="pr-chk"><input type="checkbox" id="prColLunch" checked> 김밥 현황</label>
+                        <label class="pr-chk"><input type="checkbox" id="prColLunchReq"> 김밥신청</label>
+                        <label class="pr-chk"><input type="checkbox" id="prColHw" checked> 과제</label>
+                        <label class="pr-chk"><input type="checkbox" id="prColMemo" checked> 메모</label>
+                        <label class="pr-chk"><input type="checkbox" id="prColSummary"> 집계표</label>
+                    </div>
                 </div>
 
                 <!-- 김밥·과제가 몇 명에게 붙었는지, 안 붙었으면 왜인지.
@@ -278,7 +284,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=93"></script>
+    <script type="module" src="admin.js?v=94"></script>
 </body>
 </html>
 
