@@ -28,6 +28,7 @@ node tests/verify-print.mjs       # 하나만
 | `verify-mobile.mjs` | 폰 크기에서 버튼·표가 깨지지 않는가 |
 | `verify-sync-btn.mjs` | 시트 동기화 버튼 |
 | `verify-sync-retry.mjs` | 동기화 — GAS 가 한 번 삐끗해도 그날 일이 날아가지 않는가 |
+| `verify-sync-report.mjs` | 동기화 기록 — 공개 로그에 실명이 새지 않는가 · 안 맞는 아이디 갈래 |
 | `verify-sw.mjs` | Service Worker 자동 갱신 (배포 → 재배포 → 탭 복귀) |
 | `verify-gas-lunch.mjs` | GAS 김밥 읽기 — X 를 신청으로 세지 않는가 |
 

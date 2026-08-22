@@ -21,6 +21,8 @@
 //   - 외부 URL (https://www.gstatic.com/... 등) — ?v= 를 붙이면 깨진다
 //   - scripts/gas/ — Apps Script 소스이지 웹 자산이 아니다
 //   - tests/ — 검증 스크립트. 여기 import 에 ?v= 가 붙으면 매번 흔들린다
+//   - scripts/*.mjs — node 가 파일로 직접 읽는 것들(동기화 등). 브라우저 캐시가
+//     없으니 ?v= 가 쓸모없고, 버전을 올릴 때마다 바뀐 파일로 잡힌다
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -31,6 +33,8 @@ const SW_PATH = join(ROOT, 'sw.js');
 
 const EXCLUDE_DIRS = new Set(['node_modules', '.git', 'images', 'icons', 'assets']);
 const EXCLUDE_PATHS = ['scripts/gas/', '교리교육 조배치 검색기/', 'tests/'];
+// node 전용 스크립트 (브라우저가 받지 않는다)
+const EXCLUDE_FILES = /^scripts\/[^/]+\.mjs$/;
 const EXTS = /\.(html|js|mjs|css)$/i;
 
 const args = process.argv.slice(2);
@@ -65,7 +69,7 @@ function walk(dir, out = []) {
 
 const files = walk(ROOT).filter(f => {
   const rel = relative(ROOT, f);
-  return !EXCLUDE_PATHS.some(p => rel.startsWith(p));
+  return !EXCLUDE_PATHS.some(p => rel.startsWith(p)) && !EXCLUDE_FILES.test(rel);
 });
 
 // ------------------------------------------------------------------ 치환 규칙

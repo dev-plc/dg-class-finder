@@ -15,6 +15,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 
+import { normId, peopleList, classifyUnknownIds } from './sync-report.mjs';
+
 const args = process.argv.slice(2);
 const getArg = (name) => {
   const hit = args.find(a => a.startsWith(`--${name}=`));
@@ -44,22 +46,6 @@ const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
 
 const trim = (v) => (v == null ? '' : String(v).trim());
 
-/**
- * 아이디를 한 규칙으로 다듬는다 (GAS 의 DG_normalizeId_ 와 같은 규칙).
- *
- * 아이디는 '이름+전화뒷4' 인데 손입력과 폼 응답이 섞여 들어온다.
- *   '김도현 5326' · '김도현-5326' · '김도현(5326)' · '김도현５３２６'
- * 기호만 지우면 전각 숫자는 통째로 사라져 이름만 남고, 명단과 짝이 안 맞아
- * 그 사람의 과제·출석이 조용히 버려진다.
- *
- * **만드는 쪽과 맞추는 쪽 모두** 같은 규칙을 써야 한다. 한쪽만 다듬으면
- * 오히려 더 어긋난다. GAS 를 아직 새 버전으로 안 올렸어도 여기서 한 번 더
- * 다듬으므로 짝은 맞는다.
- */
-const normId = (v) => String(v == null ? '' : v)
-  .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
-  .normalize('NFC')
-  .replace(/[^a-zA-Z0-9가-힣]/g, '');
 const toInt = (v) => {
   const n = parseInt(String(v ?? '').replace(/[^0-9-]/g, ''), 10);
   return Number.isFinite(n) ? n : null;
@@ -190,8 +176,7 @@ for (const r of rows) {
 
 console.log(`▶ 인원 ${members.length}명 정리`);
 if (skipped.length) {
-  // 이름 없이 건수만 찍으면 누구인지 몰라 원인을 못 찾는다.
-  console.log(`   ⚠️ 건너뜀 ${skipped.length}명: ${skipped.join(', ')}`);
+  console.log(`   ⚠️ 건너뜀 ${skipped.length}명 ${peopleList(skipped)}`);
 }
 
 // ID 열은 '이름 + 전화 뒷4자리' 여야 한다. 여기에 역할이나 메모가 섞이면
@@ -199,14 +184,15 @@ if (skipped.length) {
 // 그대로 넣으면 아무도 조회되지 않으므로 반영 전에 잡는다.
 const badPhone = members.filter(m => !/^\d{4}$/.test(m.phone));
 if (badPhone.length) {
-  console.log(`   ⚠️ 전화 4자리가 아닌 ${badPhone.length}명: ` +
-              badPhone.map(m => `${m.name}[${m.phone}]`).join(', '));
+  console.log(`   ⚠️ 전화 4자리가 아닌 ${badPhone.length}명 ` +
+              peopleList(badPhone.map(m => `${m.name}[${m.phone}]`)));
   console.log('      ID 열에 역할·메모가 섞이면 이름/전화가 어긋납니다. 시트를 고친 뒤 다시 돌리세요.');
 }
 
 const noTeam = members.filter(m => !m.team);
 if (noTeam.length) {
-  console.log(`   ⚠️ 조 없음 ${noTeam.length}명: ${noTeam.map(m => `${m.name}${m.phone}`).join(', ')}`);
+  console.log(`   ⚠️ 조 없음 ${noTeam.length}명 ` +
+              peopleList(noTeam.map(m => `${m.name}${m.phone}`)));
 }
 
 // ------------------------------------------------------------------ 위치·링크
@@ -414,8 +400,8 @@ if (toDeactivate.length) {
     .update({ status: 'inactive' })
     .in('id', toDeactivate.map(m => m.id));
   if (error) throw new Error(`inactive 처리 실패: ${error.message}`);
-  console.log(`   ⚠️ 시트에 없어 inactive 처리 ${toDeactivate.length}명: ` +
-              toDeactivate.map(m => `${m.name}${m.phone || ''}`).join(', '));
+  console.log(`   ⚠️ 시트에 없어 inactive 처리 ${toDeactivate.length}명 ` +
+              peopleList(toDeactivate.map(m => `${m.name}${m.phone || ''}`)));
 }
 
 console.log('▶ dg_locations');
@@ -527,8 +513,14 @@ if (Array.isArray(gas.homework) && gas.homework.length) {
 
   if (unknown.length) {
     const uniq = [...new Set(unknown)];
-    console.log(`   ⚠️ 명단에 없어 무시 ${uniq.length}명: ${uniq.join(', ')}`);
+    console.log(`   ⚠️ 명단에 없어 무시 ${uniq.length}명 ` +
+                peopleList(uniq, '아래 갈래를 보고 시트·폼을 고치세요'));
     console.log('      폼에 적은 이름·연락처가 명단과 다르면 여기 나옵니다.');
+    // 이름만 늘어놓으면 무엇을 고쳐야 할지 모른다. 손볼 곳이 갈래마다 다르다 —
+    // 번호가 다르면 폼 응답을, 이름이 한 글자 다르면 오타를, 아예 없으면 명단을.
+    for (const [label, list] of classifyUnknownIds(uniq, saved)) {
+      if (list.length) console.log(`      · ${label} ${list.length}명 ${peopleList(list)}`);
+    }
   }
 
   await upsert('dg_homework', rows, 'cohort_id,member_id,lecture,kind');
@@ -547,7 +539,7 @@ if (attendanceBySheetId.length) {
   }
   if (orphans.length) {
     const uniq = [...new Set(orphans)];
-    console.log(`   ⚠️ 명단에 없어 무시 ${uniq.length}명: ${uniq.join(', ')}`);
+    console.log(`   ⚠️ 명단에 없어 무시 ${uniq.length}명 ${peopleList(uniq)}`);
   }
   await upsert('dg_attendance', attRows, 'member_id,session_date');
   console.log(`   ${attRows.length}건 반영`);

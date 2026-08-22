@@ -59,10 +59,14 @@ ok('빈 값은 빈 값', norm(null) === '' && norm('') === '' && norm('   ') ===
 ok('다른 사람은 그대로 다르다', norm('김도현5326') !== norm('김도연5326'),
    `${norm('김도현5326')} vs ${norm('김도연5326')}`);
 
-// 동기화 스크립트도 같은 규칙을 써야 짝이 맞는다 (한쪽만 다듬으면 더 어긋난다)
+// 동기화 쪽도 같은 규칙을 써야 짝이 맞는다 (한쪽만 다듬으면 더 어긋난다).
+// 규칙은 scripts/sync-report.mjs 한 곳에만 있고, 동기화는 그것을 가져다 쓴다.
+const reportSrc = readFileSync(join(ROOT, 'scripts', 'sync-report.mjs'), 'utf8');
 const syncSrc = readFileSync(join(ROOT, 'scripts', 'sync-sheet-to-db.mjs'), 'utf8');
-ok('동기화 스크립트에도 같은 규칙이 있다',
-   /Ａ-Ｚａ-ｚ０-９/.test(syncSrc) && /normalize\('NFC'\)/.test(syncSrc));
+ok('동기화 쪽에도 같은 규칙이 있다',
+   /Ａ-Ｚａ-ｚ０-９/.test(reportSrc) && /normalize\('NFC'\)/.test(reportSrc));
+ok('규칙을 두 번 적어 두지 않는다', !/Ａ-Ｚａ-ｚ０-９/.test(syncSrc)
+   && /from '\.\/sync-report\.mjs'/.test(syncSrc));
 ok('아이디를 맞추는 자리에서 그 규칙을 쓴다',
    (syncSrc.match(/uuidById\.get\(normId\(/g) || []).length >= 2,
    `${(syncSrc.match(/uuidById\.get\(normId\(/g) || []).length}곳`);
