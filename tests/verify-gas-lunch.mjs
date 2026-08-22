@@ -24,12 +24,44 @@ const Utilities = {
 const PropertiesService = {
   getScriptProperties: () => ({ getProperty: () => null }),
 };
-const stubs = { Utilities, PropertiesService, SpreadsheetApp: {}, LockService: {},
-                ScriptApp: {}, UrlFetchApp: {}, ContentService: {}, Session: {} };
+// 시트 대역. '과제 아이디 점검' 은 시트를 읽고 시트에 쓰므로 여기까지 필요하다.
+const SHEETS = {};
+function fakeSheet(name, values) {
+  const written = [];
+  return {
+    name,
+    values,
+    written,
+    getDataRange: () => ({ getValues: () => values }),
+    clear() { written.length = 0; },
+    getRange(r, c, nr = 1, nc = 1) {
+      return {
+        setValues(v) { v.forEach((row, i) => { written[r - 1 + i] = row; }); return this; },
+        setFontWeight() { return this; },
+      };
+    },
+    setFrozenRows() {},
+    autoResizeColumns() {},
+  };
+}
+const SpreadsheetAppStub = {
+  openById: () => ({
+    getSheetByName: (n) => SHEETS[n] || null,
+    insertSheet: (n) => (SHEETS[n] = fakeSheet(n, [])),
+  }),
+  // 메뉴가 아니라 편집기에서 돌리면 UI 가 없다 — 그 길도 지나가 본다
+  getUi: () => { throw new Error('no ui'); },
+};
+const Logger = { log: () => {} };
+
+const stubs = { Utilities, PropertiesService, SpreadsheetApp: SpreadsheetAppStub,
+                LockService: {}, ScriptApp: {}, UrlFetchApp: {}, ContentService: {},
+                Session: { getScriptTimeZone: () => 'Asia/Seoul' }, Logger };
 
 const sandbox = new Function(...Object.keys(stubs), `
   ${src}
-  return { DG_isLunchApplied, DG_readLunchByDate, DG_normalizeId_, DG_TAB_LUNCH };
+  return { DG_isLunchApplied, DG_readLunchByDate, DG_normalizeId_, DG_TAB_LUNCH,
+           DG_checkHomeworkIds, DG_TAB_ROSTER, DG_TAB_HOMEWORK };
 `)(...Object.values(stubs));
 
 // --- 신청인가 아닌가 -------------------------------------------------------
@@ -129,5 +161,77 @@ ok('머리말 버전과 DG_VERSION 이 같다', ver === headVer,
 
 // 명단 차례를 시트와 맞추는 데 쓰는 값 (v26)
 ok('인원에 sheetRow(시트 줄 번호)를 담는다', /obj\['sheetRow'\] = i;/.test(src));
+
+// --- 과제 아이디 점검 (v29) --------------------------------------------------
+//
+// 아이디가 안 맞으면 그 사람의 과제가 조용히 버려진다. 공개 저장소의 Actions
+// 로그에는 이름을 적을 수 없으니, 이름을 봐도 되는 자리(시트)에 적는다.
+SHEETS[sandbox.DG_TAB_ROSTER] = fakeSheet(sandbox.DG_TAB_ROSTER, [
+  ['DG-2026', '', '', ''],
+  ['id', '이름', '조', '09/06'],
+  ['조혜진5698', '조혜진', 'YF1', 'O'],
+  ['김도현5326', '김도현', 'YM1', 'O'],
+  ['이영희3333', '이영희', 'C1', ''],
+]);
+SHEETS[sandbox.DG_TAB_HOMEWORK] = fakeSheet(sandbox.DG_TAB_HOMEWORK, [
+  ['타임스탬프', '아이디', '연락처', '몇 강인가요?', '어떤 과제인가요?'],
+  ['2026. 8. 20. 오후 3:04:00', '김도현5326', '', '18강', '독후감'],   // 맞음
+  ['2026. 8. 20. 오후 3:05:00', '김도현５３２６', '', '17강', '독후감'], // 전각도 맞음
+  ['2026. 8. 20. 오후 3:06:00', '김도현9999', '', '16강', '독후감'],   // 번호가 다름
+  ['2026. 8. 20. 오후 3:07:00', '조헤진5698', '', '15강', '독후감'],   // 이름 오타
+  ['2026. 8. 20. 오후 3:08:00', '없는사람7777', '', '14강', '독후감'], // 명단에 없음
+  ['2026. 8. 20. 오후 3:09:00', '차병옥DG일요일', '', '13강', '독후감'], // 아이디 꼴이 아님
+  ['', '', '', '', ''],                                                // 빈 줄은 건너뛴다
+]);
+
+sandbox.DG_checkHomeworkIds();
+
+const report = SHEETS['과제ID점검'];
+ok('점검 결과를 시트에 적는다', !!report && report.written.length > 0,
+   report ? `${report.written.length}줄` : '(탭이 안 생김)');
+
+const head = String(report.written[0][0]);
+ok('맞은 건수와 안 맞은 건수를 함께 적는다', /맞은 제출 2건/.test(head) && /안 맞은 제출 4건/.test(head),
+   head);
+ok('전각으로 낸 것도 맞은 것으로 센다 (v28 규칙)', /맞은 제출 2건/.test(head), head);
+
+const body = report.written.slice(5).filter(r => r && r[2]);
+const rowOf = (id) => body.find(r => String(r[2]).indexOf(id) !== -1) || [];
+
+ok('이름이 명단에 있으면 번호 문제로 본다', rowOf('김도현9999')[0] === '번호가 다름',
+   rowOf('김도현9999').join(' | '));
+ok('명단의 번호를 후보로 알려준다', /5326/.test(String(rowOf('김도현9999')[3])),
+   String(rowOf('김도현9999')[3]));
+ok('번호가 맞고 이름이 한 글자 다르면 오타로 본다',
+   rowOf('조헤진5698')[0] === '이름 한 글자 차이', rowOf('조헤진5698').join(' | '));
+ok('명단의 이름을 후보로 알려준다', /조혜진5698/.test(String(rowOf('조헤진5698')[3])),
+   String(rowOf('조헤진5698')[3]));
+ok('둘 다 안 맞으면 명단 문제로 본다', rowOf('없는사람7777')[0] === '명단에 없음',
+   rowOf('없는사람7777').join(' | '));
+ok('아이디 꼴이 아닌 것도 버리지 않는다', rowOf('차병옥')[0] === '명단에 없음',
+   rowOf('차병옥').join(' | '));
+ok('꼴이 왜 아닌지 알려준다', /이름\+전화 뒷 4자리/.test(String(rowOf('차병옥')[3])),
+   String(rowOf('차병옥')[3]));
+
+// 줄 번호가 없으면 고치러 갈 수가 없다 (헤더 1행 + 데이터 4번째 = 4줄)
+ok('시트 몇 줄인지 적는다 — 고치러 가야 한다', rowOf('김도현9999')[1] === 4,
+   `${rowOf('김도현9999')[1]}줄`);
+ok('몇 강인지도 같이 적는다', rowOf('김도현9999')[4] === '16강', rowOf('김도현9999')[4]);
+
+// 갈래가 섞여 있으면 무엇부터 볼지 알 수 없다
+const kinds = body.map(r => r[0]);
+ok('갈래로 묶어서 보여준다',
+   kinds.join(',') === '번호가 다름,이름 한 글자 차이,명단에 없음,명단에 없음',
+   kinds.join(' → '));
+
+// 지난 결과가 남으면 이미 고친 건까지 다시 고치려 든다
+const beforeLen = report.written.length;
+sandbox.DG_checkHomeworkIds();
+ok('다시 돌리면 지난 결과를 지우고 쓴다',
+   SHEETS['과제ID점검'].written.length === beforeLen,
+   `${beforeLen} → ${SHEETS['과제ID점검'].written.length}줄`);
+
+// 메뉴에 없으면 아무도 못 쓴다
+ok('메뉴에서 부를 수 있다', /addItem\('과제 아이디 점검', 'DG_checkHomeworkIds'\)/.test(src));
 
 done();

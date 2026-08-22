@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v28)
+// DGfinder — Google Apps Script 전체 코드 (v29)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,15 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v29
+//   - 메뉴에 '과제 아이디 점검'. 폼에 적은 아이디가 명단과 안 맞으면 그 사람의
+//     과제가 조용히 버려지는데, 지금까지는 GitHub 워크플로 로그에만 남았다.
+//     저장소가 public 이라 그 로그에 실명을 적을 수 없어 건수만 남기게 됐고,
+//     그러면 누구를 고쳐야 할지 알 수 없다. 시트 안에 적으면 둘 다 풀린다 —
+//     이름을 봐도 되는 자리이고, 고칠 대상(폼·명단)도 여기 있다.
+//     '과제ID점검' 탭에 갈래별로 적는다: 번호가 다름 · 이름 한 글자 차이 ·
+//     명단에 없음. 갈래마다 손볼 곳이 다르다.
 //
 // v28
 //   - 아이디를 한 규칙으로 다듬는다 (DG_normalizeId_). 과제·김밥 탭 아이디는
@@ -95,7 +104,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 28;
+var DG_VERSION = 29;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -968,6 +977,198 @@ function DG_installTrigger() {
 }
 
 /**
+ * 과제 아이디 점검 — 폼에 적은 아이디가 명단과 안 맞는 건을 시트에 적는다.
+ *
+ * 아이디가 안 맞으면 그 사람의 과제가 **조용히** 버려진다. 오류가 안 나서
+ * 아무도 모르고, 본인은 냈다고 알고 있다.
+ *
+ * 이 목록이 왜 시트에 있어야 하는가: 지금까지는 GitHub 워크플로 로그에만
+ * 남았는데, 저장소가 public 이라 그 로그에 실명을 적을 수 없다. 건수만 남기면
+ * 누구를 고쳐야 할지 알 수 없다. 시트는 이름을 봐도 되는 자리이고, 고칠
+ * 대상(폼 응답·명단)도 바로 여기 있다.
+ *
+ * 갈래를 나누는 이유는 손볼 곳이 다르기 때문이다.
+ *   번호가 다름       이름은 명단에 있는데 뒤 4자리가 다르다 → 폼 응답을 고친다
+ *   이름 한 글자 차이  뒤 4자리는 맞는다 ('조헤진' vs '조혜진') → 오타다
+ *   명단에 없음       둘 다 안 맞는다 → 다른 기수이거나 아직 명단에 없다
+ */
+function DG_checkHomeworkIds() {
+  var ss = SpreadsheetApp.openById(DG_SHEET_ID);
+  var tz = Session.getScriptTimeZone();
+
+  // --- 명단 ---------------------------------------------------------------
+  var roster = ss.getSheetByName(DG_TAB_ROSTER);
+  if (!roster) throw new Error("'" + DG_TAB_ROSTER + "' 탭이 없습니다.");
+  var rv = roster.getDataRange().getValues();
+  var rHead = DG_findHeaderRow(rv);
+  if (rHead === -1) throw new Error("명단에 'id' 열이 없습니다.");
+  var rIdIdx = rv[rHead].map(function (h) {
+    return String(h).trim().toLowerCase();
+  }).indexOf('id');
+
+  var known = {};       // 정규화한 아이디 → true
+  var byName = {};      // 이름 → [뒤 4자리]
+  var byPhone = {};     // 뒤 4자리 → [이름]
+  for (var r = rHead + 1; r < rv.length; r++) {
+    var rid = DG_normalizeId_(rv[r][rIdIdx]);
+    if (!rid) continue;
+    known[rid] = true;
+    var m = rid.match(/^(.*?)(\d{4})$/);
+    if (!m) continue;
+    if (!byName[m[1]]) byName[m[1]] = [];
+    byName[m[1]].push(m[2]);
+    if (!byPhone[m[2]]) byPhone[m[2]] = [];
+    byPhone[m[2]].push(m[1]);
+  }
+
+  // --- 과제 탭 ------------------------------------------------------------
+  //
+  // DG_readHomework 를 쓰지 않는 이유: 그쪽은 앱에 넘길 값만 만든다.
+  // 여기서는 **시트 몇 줄인지**를 알려줘야 사람이 찾아가서 고칠 수 있다.
+  var hw = ss.getSheetByName(DG_TAB_HOMEWORK);
+  if (!hw) throw new Error("'" + DG_TAB_HOMEWORK + "' 탭이 없습니다.");
+  var hv = hw.getDataRange().getValues();
+  var hHead = DG_findHeaderRowBy(hv, ['아이디', '타임스탬프', 'timestamp']);
+  if (hHead === -1) throw new Error('과제 탭에서 헤더를 찾지 못했습니다.');
+
+  var header = hv[hHead].map(function (h) { return String(h).trim().toLowerCase(); });
+  var find = function (needles) {
+    for (var i = 0; i < header.length; i++) {
+      for (var n = 0; n < needles.length; n++) {
+        if (header[i].indexOf(needles[n]) !== -1) return i;
+      }
+    }
+    return -1;
+  };
+  var iId = find(['아이디']);
+  var iPhone = find(['연락처']);
+  var iLecture = find(['몇 강', '몇강']);
+  var iTime = find(['타임스탬프', 'timestamp']);
+  if (iId === -1) throw new Error('과제 탭에 아이디 열이 없습니다.');
+
+  // 한 글자만 다른가 (바뀜·빠짐·더해짐 한 번까지)
+  var oneApart = function (a, b) {
+    if (Math.abs(a.length - b.length) > 1) return false;
+    var i = 0, j = 0, diff = 0;
+    while (i < a.length && j < b.length) {
+      if (a.charAt(i) === b.charAt(j)) { i++; j++; continue; }
+      if (++diff > 1) return false;
+      if (a.length > b.length) i++;
+      else if (a.length < b.length) j++;
+      else { i++; j++; }
+    }
+    return diff + (a.length - i) + (b.length - j) <= 1;
+  };
+
+  var rows = [];
+  var okCount = 0;
+  for (var h = hHead + 1; h < hv.length; h++) {
+    var raw = String(hv[h][iId] == null ? '' : hv[h][iId]).trim();
+    var id = DG_normalizeId_(raw);
+    if (!id) continue;
+
+    // 앱과 같은 보완: 아이디에 번호가 없으면 연락처 뒷 4자리를 붙인다.
+    // 여기서 안 맞추면 화면과 이 목록이 다른 말을 한다.
+    if (iPhone !== -1 && !/\d{4}$/.test(id)) {
+      var tail = String(hv[h][iPhone] == null ? '' : hv[h][iPhone]).replace(/[^0-9]/g, '').slice(-4);
+      if (tail) id = id + tail;
+    }
+
+    if (known[id]) { okCount++; continue; }
+
+    var mm = id.match(/^(.*?)(\d{4})$/);
+    var name = mm ? mm[1] : id;
+    var phone = mm ? mm[2] : '';
+    var kind, hint;
+
+    if (mm && byName[name]) {
+      kind = '번호가 다름';
+      hint = '명단은 ' + name + byName[name].join(' / ' + name);
+    } else {
+      var near = [];
+      var cand = (mm && byPhone[phone]) || [];
+      for (var c = 0; c < cand.length; c++) {
+        if (oneApart(cand[c], name)) near.push(cand[c] + phone);
+      }
+      if (near.length) {
+        kind = '이름 한 글자 차이';
+        hint = '명단은 ' + near.join(' / ');
+      } else {
+        kind = '명단에 없음';
+        hint = mm ? '' : '아이디 꼴이 아닙니다 (이름+전화 뒷 4자리)';
+      }
+    }
+
+    rows.push([
+      kind,
+      h + 1,                       // 사람이 보는 줄 번호는 1부터
+      raw,
+      hint,
+      iLecture !== -1 ? String(hv[h][iLecture] == null ? '' : hv[h][iLecture]).trim() : '',
+      iTime !== -1 ? DG_parseWhen(hv[h][iTime], tz) : ''
+    ]);
+  }
+
+  // 갈래로 묶어서 보여준다. 섞여 있으면 무엇부터 볼지 알 수 없다.
+  var order = { '번호가 다름': 0, '이름 한 글자 차이': 1, '명단에 없음': 2 };
+  rows.sort(function (a, b) {
+    return (order[a[0]] - order[b[0]]) || (a[1] - b[1]);
+  });
+
+  DG_writeIdReport_(ss, tz, rows, okCount);
+}
+
+/**
+ * 점검 결과를 '과제ID점검' 탭에 적는다. 있으면 지우고 다시 쓴다 —
+ * 지난 결과가 남아 있으면 이미 고친 건까지 다시 고치려 들게 된다.
+ */
+function DG_writeIdReport_(ss, tz, rows, okCount) {
+  var NAME = '과제ID점검';
+  var sheet = ss.getSheetByName(NAME);
+  if (!sheet) sheet = ss.insertSheet(NAME);
+  sheet.clear();
+
+  var when = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  var summary = {};
+  for (var i = 0; i < rows.length; i++) {
+    summary[rows[i][0]] = (summary[rows[i][0]] || 0) + 1;
+  }
+  var parts = [];
+  for (var k in summary) {
+    if (summary.hasOwnProperty(k)) parts.push(k + ' ' + summary[k] + '건');
+  }
+
+  var out = [
+    [when + ' 점검 · 명단과 맞은 제출 ' + okCount + '건 · 안 맞은 제출 ' + rows.length + '건', '', '', '', '', ''],
+    [parts.length ? parts.join(' · ') : '안 맞는 것이 없습니다.', '', '', '', '', ''],
+    ['아이디가 안 맞으면 그 사람의 과제가 조용히 버려집니다 (오류가 안 나서 안 보입니다).',
+      '', '', '', '', ''],
+    ['', '', '', '', '', ''],
+    ['갈래', '과제 탭 줄', '적힌 아이디', '명단 후보', '몇 강', '제출 시각']
+  ];
+  var body = rows.length ? rows : [['', '', '(없음)', '', '', '']];
+  sheet.getRange(1, 1, out.length, 6).setValues(out);
+  sheet.getRange(out.length + 1, 1, body.length, 6).setValues(body);
+
+  sheet.getRange(1, 1).setFontWeight('bold');
+  sheet.getRange(out.length, 1, 1, 6).setFontWeight('bold');
+  sheet.setFrozenRows(out.length);
+  sheet.autoResizeColumns(1, 6);
+
+  Logger.log('과제 아이디 점검: 맞음 ' + okCount + '건 · 안 맞음 ' + rows.length +
+             '건 → ' + NAME + ' 탭');
+  try {
+    SpreadsheetApp.getUi().alert(
+      '과제 아이디 점검\n\n' +
+      '맞음 ' + okCount + '건 · 안 맞음 ' + rows.length + '건\n' +
+      (parts.length ? parts.join('\n') : '') +
+      '\n\n자세한 내용은 \'' + NAME + '\' 탭에 적었습니다.');
+  } catch (e) {
+    // 메뉴가 아니라 편집기에서 실행하면 UI 가 없다. 로그로 충분하다.
+  }
+}
+
+/**
  * 시트 메뉴. onOpen 은 여기서 정의하지 않는다 —
  * 한 프로젝트에 onOpen 은 하나만 살기 때문이다.
  * 기존 onOpen 안에서 DG_addMenu(SpreadsheetApp.getUi()) 를 부르면 된다.
@@ -975,6 +1176,7 @@ function DG_installTrigger() {
 function DG_addMenu(ui) {
   ui.createMenu('DGfinder')
     .addItem('지금 DB 에 맞추기', 'DG_pushToDb')
+    .addItem('과제 아이디 점검', 'DG_checkHomeworkIds')
     .addItem('10분 트리거 등록', 'DG_installTrigger')
     .addItem('권한·설정 점검', 'DG_authorizeAndCheck')
     .addToUi();
