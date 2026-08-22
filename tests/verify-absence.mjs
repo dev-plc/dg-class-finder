@@ -326,6 +326,9 @@ const drop = () => page.$$eval('#abDropList .ab-row', els => els.map(r => ({
   credit: r.querySelector('.ab-credit')?.textContent.trim() || '',
   chips: [...r.querySelectorAll('.ab-chip')].map(c => c.textContent.trim()),
   credited: [...r.querySelectorAll('.ab-chip.credited')].map(c => c.textContent.trim()),
+  hwChips: [...r.querySelectorAll('.ab-chip.hw')].map(c => c.textContent.trim()),
+  hw: r.querySelector('.ab-hw')?.textContent.trim() || '',
+  hwNone: !!r.querySelector('.ab-hw.none'),
 })));
 const setMonth = async (mo) => {
   await page.selectOption('#abMonthPicker', mo);
@@ -364,6 +367,28 @@ ok('인정받은 회차를 따로 표시한다', hwMan.credited.length === 1, hw
 ok('인정 회차에 📝 를 붙인다', /📝/.test(hwMan.credited[0]), hwMan.credited[0]);
 ok('몇 회 인정됐는지 적는다', /과제 인정 1회/.test(hwMan.credit), hwMan.credit);
 
+// 규칙 1번 — "결석자 심방시 … 반드시 과제 제출 확인할 것".
+// 연락하기 전에 봐야 하는 값이라 이름을 눌러 들어가지 않고 그 줄에서 본다.
+ok('그 줄에서 과제 제출 현황을 보여준다', /📝 2건/.test(hwMan.hw), hwMan.hw);
+ok('최근에 어디까지 냈는지도 적는다', /최근 15강/.test(hwMan.hw), hwMan.hw);
+ok("'9강' 이 '15강' 보다 최근이 되지 않는다", !/최근 9강/.test(hwMan.hw), hwMan.hw);
+
+// 인정 한도(월 1회)에 걸렸을 뿐 공부는 이어간 사람과, 아무것도 안 낸 사람은
+// 다른 이야기다. 인정 못 받은 제출도 회차에 표시한다.
+ok('인정 못 받은 제출도 회차에 표시한다', hwMan.hwChips.length === 1,
+   hwMan.hwChips.join(','));
+ok('그 회차에도 📝 가 붙는다', /📝/.test(hwMan.hwChips[0]), hwMan.hwChips[0]);
+ok('인정받은 것과는 다르게 칠한다',
+   hwMan.credited[0] !== hwMan.hwChips[0],
+   `${hwMan.credited[0]} vs ${hwMan.hwChips[0]}`);
+
+// 아무것도 안 낸 사람 — 심방 때 제일 먼저 물어야 하는 사람이다
+await setMonth('2026-08');
+const noHw = (await drop()).find(x => x.name === '연속결석');
+ok('한 건도 안 낸 사람은 그렇다고 적는다', noHw.hwNone && /제출 없음/.test(noHw.hw),
+   noHw.hw);
+await setMonth('2026-05');
+
 // 규칙을 모르면 숫자를 믿을 수 없다
 const rule = await page.$eval('.ab-rule', el => el.textContent.replace(/\s+/g, ' ').trim());
 ok('규칙을 화면에 적어 둔다', /월 2회 이상/.test(rule) && /한 달에 1회까지/.test(rule), rule);
@@ -381,6 +406,8 @@ ok('무슨 목록인지 첫 줄에 적는다', /5월 하차 검토/.test(dropCop
    dropCopied.split('\n')[0]);
 ok('복사본에도 교역자가 붙는다', /\[이목사\] YF1 과제낸이/.test(dropCopied),
    dropCopied.replace(/\n/g, ' / '));
+ok('복사본에도 과제 현황이 붙는다 — 심방 전에 확인할 값이다',
+   /과제 2건 최근 15강/.test(dropCopied), dropCopied.replace(/\n/g, ' / '));
 
 await page.screenshot({ path: `${SHOT}/dg-absence.png`, fullPage: true });
 

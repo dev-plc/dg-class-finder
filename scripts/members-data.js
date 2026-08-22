@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=99';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=99';
+import { matches as hangulMatches } from './hangul.js?v=100';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=100';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -573,11 +573,37 @@ export async function getHomeworkChecker() {
     byMember.get(r.member_id).add(key);
   }
 
+  const count = new Map();
+  for (const r of homeworkAllCache || []) {
+    count.set(r.member_id, (count.get(r.member_id) || 0) + 1);
+  }
+
   return {
     loaded,
     has(uuid, lectureName) {
       const key = normalizeLecture(lectureName);
       return !!key && !!byMember.get(uuid)?.has(key);
+    },
+    /**
+     * 그 사람이 지금까지 낸 과제 현황.
+     *
+     * 심방 전에 확인할 값이다 — 규칙 1번이 '결석자 심방시 반드시 과제 제출을
+     * 확인할 것' 이라고 말한다. 결석했어도 과제로 공부가 이어졌는지가
+     * 다음 참석의 조건이기 때문이다.
+     *
+     * total 은 제출 건수(같은 강의 예습과제·소감문은 따로 센다),
+     * latest 는 강 번호가 가장 큰 것 — '9강' 과 '19강' 을 문자열로 견주면
+     * 9강이 뒤로 간다.
+     */
+    stats(uuid) {
+      const lectures = byMember.get(uuid);
+      if (!lectures) return { total: 0, latest: '' };
+      let latest = '', latestNo = -1;
+      for (const key of lectures) {
+        const no = Number(key.match(/^(\d+)강$/)?.[1] ?? -1);
+        if (no > latestNo) { latestNo = no; latest = key; }
+      }
+      return { total: count.get(uuid) || 0, latest };
     },
   };
 }

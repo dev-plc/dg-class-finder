@@ -1226,6 +1226,33 @@ body.dark-mode .ab-chip.credited { color: #6ee7b7; }
     color: var(--text-light);
 }
 
+/* 인정은 못 받았지만 과제는 낸 회차. 인정 한도(월 1회)에 걸렸을 뿐 공부는
+   이어간 사람과, 아무것도 안 낸 사람은 다른 이야기다. */
+.ab-chip.hw {
+    color: var(--midnight-blue);
+    border-color: var(--midnight-blue);
+}
+body.dark-mode .ab-chip.hw { color: var(--text-dark); }
+
+/* 과제 제출 현황 — 심방 전에 보는 값이라 그 줄에 둔다 (규칙 1번) */
+.ab-hw {
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--midnight-blue);
+    background: var(--white);
+    border: 1px solid var(--warm-beige);
+    border-radius: 999px;
+    white-space: nowrap;
+}
+body.dark-mode .ab-hw { color: var(--text-dark); }
+.ab-hw.none {
+    color: #b91c1c;
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+body.dark-mode .ab-hw.none { color: #fca5a5; }
+
 /* 달 고르는 칸은 제 폭만. 늘려 두면 제목과 건수를 왼쪽 끝으로 밀어낸다 */
 .ab-head .att-picker { flex: 0 0 auto; }
 .ab-head .att-select { min-width: 130px; width: auto; }

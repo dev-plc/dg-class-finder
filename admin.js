@@ -35,7 +35,7 @@ import {
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
-} from './scripts/members-data.js?v=99';
+} from './scripts/members-data.js?v=100';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1287,6 +1287,11 @@ function abDropoutRows(month) {
             dates: absent.map(s => s.key),
             absent,
             creditedDates,
+            // 인정은 못 받았지만 과제는 낸 회차. 규칙 1번(심방 때 과제 제출을
+            // 반드시 확인)이 보려는 것이 이것이다 — 인정 한도에 걸렸을 뿐
+            // 공부는 이어간 사람과, 아무것도 안 낸 사람은 다른 이야기다.
+            hwDates: new Set(withHw.map(s => s.date)),
+            hw: abHw?.loaded ? abHw.stats(m._uuid) : null,
         });
     }
 
@@ -1392,6 +1397,24 @@ function renderAbsence() {
 }
 
 /**
+ * 과제 제출 현황 배지.
+ *
+ * 규칙 1번 — "결석자 심방시 … 반드시 과제 제출 확인할 것". 결석해도 과제로
+ * 공부가 이어지면 다음 주에 흐름을 안 깨고 참여할 수 있다는 이유에서다.
+ * 그 확인을 하려고 이름을 눌러 개인별 상세로 넘어가면, 명단을 훑다가 자리를
+ * 잃는다. 연락하기 전에 봐야 하는 값이므로 그 줄에 붙인다.
+ *
+ * 못 받아 왔으면 아무 말도 하지 않는다 — '제출 없음' 은 **안 냈다는 뜻**이라
+ * 모르는 것을 그렇게 적으면 없는 사실을 만든다.
+ */
+function abHwBadge(hw) {
+    if (!hw) return '';
+    if (!hw.total) return `<span class="ab-hw none">📝 제출 없음</span>`;
+    const tail = hw.latest ? ` · 최근 ${attEsc(hw.latest)}` : '';
+    return `<span class="ab-hw">📝 ${hw.total}건${tail}</span>`;
+}
+
+/**
  * 하차 검토 목록.
  *
  * 결석 칩에 과제로 인정된 회차를 따로 표시한다 — 몇 회 결석인지만 적으면
@@ -1423,14 +1446,19 @@ function renderAbDropouts() {
         ? rows.map(r => {
             const chips = r.absent.map(sn => {
                 const credited = r.creditedDates.has(sn.date);
-                return `<span class="ab-chip${credited ? ' credited' : ''}"` +
-                       `${credited ? ' title="과제·소감문 제출 — 출석으로 인정 (월 1회)"' : ''}>` +
-                       `${attEsc(sn.key)}${credited ? ' 📝' : ''}</span>`;
+                const hasHw = r.hwDates.has(sn.date);
+                const cls = credited ? ' credited' : hasHw ? ' hw' : '';
+                const tip = credited ? '과제·소감문 제출 — 출석으로 인정 (월 1회)'
+                    : hasHw ? '과제는 냈지만 인정은 한 달에 1회뿐이라 이번엔 못 받았습니다'
+                    : '';
+                return `<span class="ab-chip${cls}"${tip ? ` title="${attEsc(tip)}"` : ''}>` +
+                       `${attEsc(sn.key)}${credited || hasHw ? ' 📝' : ''}</span>`;
             }).join('');
             const credited = r.creditedDates.size;
             return abRow(r.m,
                 `<b class="ab-n">결석 ${r.counted}회</b>`
                 + (credited ? `<span class="ab-credit">과제 인정 ${credited}회</span>` : '')
+                + abHwBadge(r.hw)
                 + `<span class="ab-dates">${chips}</span>`);
           }).join('')
         : `<div class="att-empty">${inMonth.length
@@ -1539,7 +1567,9 @@ document.getElementById('abDropCopyBtn')?.addEventListener('click', (e) => {
     const withNote = rows.map(r => ({
         ...r,
         note: `결석 ${r.counted}회: ` + r.absent
-            .map(sn => sn.key + (r.creditedDates.has(sn.date) ? '📝' : '')).join(' '),
+            .map(sn => sn.key + (r.hwDates.has(sn.date) ? '📝' : '')).join(' ')
+            // 심방 전에 확인할 값이라 명단에도 같이 보낸다 (규칙 1번)
+            + (r.hw ? ` · 과제 ${r.hw.total}건${r.hw.latest ? ` 최근 ${r.hw.latest}` : ''}` : ''),
     }));
     const mo = Number((abMonth || '').slice(5));
     abCopy(e.currentTarget, withNote, `${mo}월 하차 검토 ${rows.length}명 (📝 = 과제 인정)`);
