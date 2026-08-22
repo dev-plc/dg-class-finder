@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=95';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=95';
+import { matches as hangulMatches } from './hangul.js?v=96';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=96';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -602,6 +602,40 @@ export async function getMyHomework(member) {
       // 같은 강이면 늦게 낸 것부터 (재제출이 위로)
       || String(b.submittedAt).localeCompare(String(a.submittedAt))
       || String(a.kind).localeCompare(String(b.kind), 'ko'));
+}
+
+/**
+ * 제출 칸 하나에 든 링크를 낱개로 가른다.
+ *
+ * 파일을 두 개 이상 올리면 폼이 한 칸에 쉼표로 이어 붙인다.
+ *
+ *   https://drive.google.com/open?id=AAA, https://drive.google.com/open?id=BBB
+ *
+ * 통째로 href 에 넣으면 두 번째 주소까지 한 주소로 읽혀 열리지 않는다.
+ * 쉼표로 자르지 않고 `http(s)://` 로 시작하는 덩어리를 찾는 이유는, 구분자가
+ * 쉼표일 때도 줄바꿈일 때도 있고 사이에 '1번,' 같은 말이 끼기도 해서다.
+ *
+ * 주소가 하나도 없으면 링크는 빈 배열이고 적은 글이 text 로 남는다 —
+ * 손으로 소감문을 적어 낸 사람이 있다.
+ *
+ * @returns { links: string[], text: string }
+ */
+export function splitSubmissionLinks(content) {
+  const raw = String(content == null ? '' : content).trim();
+  if (!raw) return { links: [], text: '' };
+
+  const links = [];
+  // 공백·쉼표는 주소에 들어가지 않는다. 뒤에 붙은 문장부호는 따로 떼어낸다.
+  for (const m of raw.matchAll(/https?:\/\/[^\s,]+/gi)) {
+    const url = m[0].replace(/[.,;)\]}]+$/, '');
+    if (url && !links.includes(url)) links.push(url);   // 같은 파일을 두 번 낸 칸도 있다
+  }
+
+  const text = raw.replace(/https?:\/\/[^\s,]+/gi, ' ')
+                  .replace(/[\s,]+/g, ' ')
+                  .trim();
+
+  return { links, text };
 }
 
 /**

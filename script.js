@@ -16,8 +16,9 @@ import {
     isClassSession,
     refreshAttendance,
     saveAttendance,
+    splitSubmissionLinks,
     subscribe,
-} from './scripts/members-data.js?v=95';
+} from './scripts/members-data.js?v=96';
 
 // 1-1. 내 정보 기억
 //
@@ -466,25 +467,46 @@ async function renderMyHomework(member) {
     // 링크는 글씨 대신 🔗 로 — 다크모드에서 파란 글씨가 배경에 묻힌다.
     list.innerHTML = rows.map((r, i) => {
         const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
-        const isLink = /^https?:\/\//i.test(r.content);
 
         return `
             <div class="hw-row${i >= MY_HW_OPEN ? ' old' : ''}">
                 <span class="hw-lecture">${escapeHtml(r.lecture || '(미기재)')}</span>
                 <span class="hw-kind">${escapeHtml(r.kind || '')}</span>
                 <span class="hw-when">${escapeHtml(when)}</span>
-                <span class="hw-links">${
-                    isLink
-                        ? `<a href="${escapeAttr(r.content)}" target="_blank" rel="noopener"
-                              title="제출물 열기" aria-label="제출물 열기">🔗</a>`
-                        : (r.content ? `<span title="${escapeAttr(r.content)}">📄</span>` : '')
-                }</span>
+                <span class="hw-links${hwLinkCount(r.content) > 1 ? ' many' : ''}">${hwLinksHtml(r.content)}</span>
             </div>
         `;
     }).join('');
 
     setMyHwFold(folded, false);
     section.style.display = 'block';
+}
+
+/**
+ * 제출 칸의 링크를 버튼으로.
+ *
+ * 파일을 두 개 이상 올리면 한 칸에 쉼표로 이어 붙어 온다. 통째로 href 에
+ * 넣으면 첫 주소부터 열리지 않으니, 낱개로 갈라 하나씩 버튼을 준다.
+ * 두 개 이상일 때만 번호를 붙인다 — 대부분은 한 개고, 그때 '🔗1' 은 군더더기다.
+ */
+function hwLinkCount(content) {
+    return splitSubmissionLinks(content).links.length;
+}
+
+function hwLinksHtml(content) {
+    const { links, text } = splitSubmissionLinks(content);
+
+    if (!links.length) {
+        return text ? `<span title="${escapeAttr(text)}">📄</span>` : '';
+    }
+
+    const many = links.length > 1;
+    return links.map((url, n) => {
+        const label = many ? `제출물 ${n + 1} 열기` : '제출물 열기';
+        return `<a class="hw-link${many ? ' multi' : ''}" href="${escapeAttr(url)}"
+                   target="_blank" rel="noopener"
+                   title="${label}" aria-label="${label}">🔗${many ? `<b>${n + 1}</b>` : ''}</a>`;
+    }).join('');
 }
 
 /**

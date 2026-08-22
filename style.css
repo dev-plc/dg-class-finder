@@ -1304,11 +1304,46 @@ body.large-text .map-image {
     white-space: nowrap;
 }
 /* 링크는 글씨 대신 아이콘 — 다크모드에서 파란 글씨가 배경에 묻힌다 */
+.hw-links {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+}
+/* 버튼이 여럿이면 아랫줄로 내린다. 한 줄에 다 밀어 넣으면 강의명이 밀려
+   '18강' 이 '1…' 로 잘린다 — 어느 과제인지가 먼저다. */
+.hw-links.many {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    padding-top: 4px;
+}
 .hw-links a, .hw-links span {
     text-decoration: none;
     font-size: 15px;
     line-height: 1;
 }
+/* 파일을 여러 개 낸 칸. 🔗 만 늘어놓으면 어느 것을 눌렀는지 알 수 없어
+   번호를 붙이고, 낱개로 눌리는 것이 보이도록 테를 두른다. */
+.hw-links a.multi {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    padding: 2px 5px;
+    font-size: 13px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 999px;
+    background: var(--milk-beige);
+}
+.hw-links a.multi b {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--midnight-blue);
+}
+body.dark-mode .hw-links a.multi {
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+}
+body.dark-mode .hw-links a.multi b { color: var(--text-dark); }
 
 /* ============================================================
    출석 그리드 범례

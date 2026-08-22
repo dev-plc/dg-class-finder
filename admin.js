@@ -32,8 +32,9 @@ import {
     refresh,
     requestSheetSync,
     saveAttendance,
+    splitSubmissionLinks,
     subscribe,
-} from './scripts/members-data.js?v=95';
+} from './scripts/members-data.js?v=96';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -491,13 +492,22 @@ async function showMemberDetail(member) {
             // 섞이면 그 사이에서 차례가 흔들린다.
             html += hwRows.map((r, idx) => {
                 const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
-                const isLink = /^https?:\/\//i.test(r.content);
                 const hiddenClass = idx >= 5 ? ' md-hidden md-hw-hidden' : '';
+                // 파일을 두 개 이상 올리면 한 칸에 쉼표로 이어 붙어 온다.
+                // 통째로 href 에 넣으면 아무것도 안 열린다 — 낱개로 갈라 준다.
+                const { links, text } = splitSubmissionLinks(r.content);
+                const many = links.length > 1;
+                const linkHtml = links.length
+                    ? links.map((url, n) => {
+                        const label = many ? `제출물 ${n + 1} 열기` : '제출물 열기';
+                        return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="md-hw-link${many ? ' multi' : ''}" title="${label}" aria-label="${label}">🔗${many ? `<b>${n + 1}</b>` : ''}</a>`;
+                      }).join('')
+                    : (text ? `<span class="md-hw-link" title="${escapeHtml(text)}">📄</span>` : '');
                 return `<div class="md-hw-row${hiddenClass}">
                     <span class="md-hw-lecture">${escapeHtml(r.lecture || '(미기재)')}</span>
                     <span class="md-hw-kind">${escapeHtml(r.kind || '')}</span>
                     <span class="md-hw-when">${escapeHtml(when)}</span>
-                    ${isLink ? `<a href="${escapeHtml(r.content)}" target="_blank" rel="noopener" class="md-hw-link">🔗</a>` : ''}
+                    <span class="md-hw-links${many ? ' many' : ''}">${linkHtml}</span>
                 </div>`;
             }).join('');
             html += `</div>`;

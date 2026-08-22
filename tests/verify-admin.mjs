@@ -1,7 +1,7 @@
 // 관리자 화면 검증 — 검색(동명이인 포함) · 조별 보기 · 개인별 보기 · 필터.
 // Supabase 는 가짜 응답으로 대신한다.
 
-import { serveRepo, launch, makeReporter } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
 
 const PORT = 8092;
 const server = await serveRepo(PORT);
@@ -45,9 +45,15 @@ const ATT = [
   { member_id: 'u1', session_date: '2026-08-16', status: '-' },   // 수업 없음 — 흐린 칸
 ];
 // 강 번호가 뒤죽박죽이고 제출 시각이 빈 것도 섞여 있다
+// 18강 칸은 파일을 셋 올린 사람 — 폼이 한 칸에 쉼표로 이어 붙였다
+const THREE = [
+  'https://drive.google.com/open?id=16sCcGz5h61oiKgMwekQNk146oRt7NxzW',
+  'https://drive.google.com/open?id=1DXa8JkuyKFa0Y7IvO-QswyCKlFKmWhBR',
+  'https://drive.google.com/open?id=1tx75D3reEq0OkAKNvyf83ai7w9rV3YTb',
+];
 const HW = [
-  { member_id: 'u1', lecture: '9강',  kind: '과제', content: '', submitted_at: '2026-08-01T09:00:00' },
-  { member_id: 'u1', lecture: '18강', kind: '과제', content: '', submitted_at: null },
+  { member_id: 'u1', lecture: '9강',  kind: '과제', content: 'https://ex.com/a', submitted_at: '2026-08-01T09:00:00' },
+  { member_id: 'u1', lecture: '18강', kind: '과제', content: THREE.join(', '), submitted_at: null },
   { member_id: 'u1', lecture: '15강', kind: '과제', content: '', submitted_at: '2026-07-01T09:00:00' },
 ];
 
@@ -173,6 +179,12 @@ const md = await page.evaluate(() => {
       return n ? dist(rgb(getComputedStyle(n).color), rgb(getComputedStyle(c).backgroundColor)) : 999;
     })),
     hw: [...document.querySelectorAll('.md-hw-lecture')].map(e => e.textContent.trim()),
+    // 파일을 여러 개 낸 칸이 낱개 버튼으로 갈라졌는가
+    hwLinks: [...document.querySelectorAll('.md-hw-row')].map(r => ({
+      lecture: r.querySelector('.md-hw-lecture').textContent.trim(),
+      hrefs: [...r.querySelectorAll('.md-hw-link')].map(a => a.getAttribute('href')),
+      labels: [...r.querySelectorAll('.md-hw-link')].map(a => a.textContent.trim()),
+    })),
   };
 });
 ok('구역 제목이 배경에 묻히지 않는다', md.titleGap > 150, `색 차이 ${md.titleGap} (${md.titleText})`);
@@ -181,6 +193,20 @@ ok('칸 안의 회차 이름이 배경에 묻히지 않는다', md.nameGap > 100
 ok('과제는 강 번호 내림차순 — 조원 화면과 같은 차례',
    md.hw.join(',') === '18강,15강,9강', md.hw.join(','));
 
+// 한 칸에 쉼표로 이어 붙은 주소를 통째로 href 에 넣으면 아무것도 열리지 않는다
+const mdFour = md.hwLinks.find(r => r.lecture === '18강');
+const mdOne = md.hwLinks.find(r => r.lecture === '9강');
+ok('파일 셋을 낸 칸은 버튼도 셋', mdFour.hrefs.length === 3, `${mdFour.hrefs.length}개`);
+ok('주소가 낱개로 갈라진다 (모달)', mdFour.hrefs.join('|') === THREE.join('|'),
+   mdFour.hrefs.map(h => h.slice(-6)).join(' · '));
+ok('여러 개일 때는 번호를 붙인다 (모달)', mdFour.labels.join(',') === '🔗1,🔗2,🔗3',
+   mdFour.labels.join(','));
+ok('한 개짜리는 번호 없이 그대로 (모달)',
+   mdOne.hrefs.length === 1 && mdOne.labels[0] === '🔗', mdOne.labels.join(','));
+ok('빈 칸에는 버튼이 없다 (모달)',
+   md.hwLinks.find(r => r.lecture === '15강').hrefs.length === 0);
+
+await page.screenshot({ path: `${SHOT}/dg-member-detail.png` });
 await page.click('#memberDetailClose');
 await page.waitForTimeout(300);
 

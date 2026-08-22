@@ -39,12 +39,21 @@ const ATT = PAST.map((s, i) => ({
 const LUNCH = [{ member_id: 'u1', session_date: PAST[1].session_date, applied: true }];
 // 강 번호가 뒤죽박죽이고 제출 시각이 빈 것도 섞여 있다.
 // 문자열로 견주면 '9강' 이 '19강' 보다 앞서고, 시각이 빈 건에서 차례가 흔들린다.
+// 18강 칸은 파일을 넷 올린 사람 — 폼이 한 칸에 쉼표로 이어 붙였다.
+// 통째로 href 에 넣으면 아무것도 열리지 않는다.
+const FOUR = [
+  'https://drive.google.com/open?id=16sCcGz5h61oiKgMwekQNk146oRt7NxzW',
+  'https://drive.google.com/open?id=1DXa8JkuyKFa0Y7IvO-QswyCKlFKmWhBR',
+  'https://drive.google.com/open?id=1tx75D3reEq0OkAKNvyf83ai7w9rV3YTb',
+  'https://drive.google.com/open?id=1kg1mb5qMI78SKz1iB8wkLzA7H2dTPKpA',
+];
+
 const HOMEWORK = [
   { member_id: 'u1', lecture: '2강',   kind: '독후감', content: '', submitted_at: '2026-04-20T10:00:00' },
   { member_id: 'u1', lecture: '9강',   kind: '독후감', content: '', submitted_at: null },
-  { member_id: 'u1', lecture: '18강',  kind: '독후감', content: 'https://ex.com/a', submitted_at: '2026-08-10T10:00:00' },
-  { member_id: 'u1', lecture: '제17강', kind: '독후감', content: '', submitted_at: null },
-  { member_id: 'u1', lecture: '16강',  kind: '독후감', content: '', submitted_at: '2026-07-20T10:00:00' },
+  { member_id: 'u1', lecture: '18강',  kind: '독후감', content: FOUR.join(', '), submitted_at: '2026-08-10T10:00:00' },
+  { member_id: 'u1', lecture: '제17강', kind: '독후감', content: 'https://ex.com/a', submitted_at: null },
+  { member_id: 'u1', lecture: '16강',  kind: '독후감', content: '손으로 적어 냈습니다', submitted_at: '2026-07-20T10:00:00' },
   { member_id: 'u1', lecture: '15강',  kind: '독후감', content: '', submitted_at: null },
   { member_id: 'u1', lecture: '3강',   kind: '독후감', content: '', submitted_at: '2026-04-27T10:00:00' },
 ];
@@ -190,6 +199,78 @@ ok('펼치면 버튼이 접기로 바뀐다', /최근 5건만 보기/.test(h2.bt
 await page.click('#myHomeworkMoreBtn');
 await page.waitForTimeout(250);
 ok('다시 누르면 접힌다', (await hw()).shown.length === 5);
+
+// --- 제출 링크 가르기 -------------------------------------------------------
+//
+// 파일을 두 개 이상 올리면 폼이 한 칸에 쉼표로 이어 붙인다. 통째로 href 에
+// 넣으면 두 번째 주소까지 한 주소로 읽혀 **첫 개도 열리지 않는다.**
+const linkRow = (lecture) => page.evaluate((lec) => {
+  const row = [...document.querySelectorAll('#myHomeworkList .hw-row')]
+    .find(r => r.querySelector('.hw-lecture').textContent.trim() === lec);
+  if (!row) return null;
+  const a = [...row.querySelectorAll('.hw-links a')];
+  return {
+    hrefs: a.map(x => x.getAttribute('href')),
+    labels: a.map(x => x.textContent.trim()),
+    titles: a.map(x => x.getAttribute('title')),
+    multi: a.every(x => x.classList.contains('multi')),
+    // 낱개로 눌리는가 — 버튼끼리 겹쳐 있으면 두 번째를 못 누른다
+    boxes: a.map(x => { const b = x.getBoundingClientRect();
+                        return { l: Math.round(b.left), r: Math.round(b.right), w: Math.round(b.width) }; }),
+    icons: [...row.querySelectorAll('.hw-links span')].map(x => x.textContent.trim()),
+    text: [...row.querySelectorAll('.hw-links span')].map(x => x.getAttribute('title') || ''),
+  };
+}, lecture);
+
+const four = await linkRow('18강');
+ok('파일 넷을 낸 칸은 버튼도 넷', four.hrefs.length === 4, `${four.hrefs.length}개`);
+ok('주소가 낱개로 갈라진다', four.hrefs.join('|') === FOUR.join('|'),
+   four.hrefs.map(h => h.slice(-6)).join(' · '));
+ok('주소에 쉼표가 남지 않는다', four.hrefs.every(h => !h.includes(',')),
+   four.hrefs[0]);
+ok('여러 개일 때는 번호를 붙인다', four.labels.join(',') === '🔗1,🔗2,🔗3,🔗4',
+   four.labels.join(','));
+ok('무엇을 여는 버튼인지 읽어 준다', four.titles[1] === '제출물 2 열기', four.titles.join(' / '));
+ok('버튼이 겹치지 않는다 — 넷 다 따로 눌린다',
+   four.boxes.every(b => b.w > 0) &&
+   four.boxes.slice(1).every((b, i) => b.l >= four.boxes[i].r),
+   four.boxes.map(b => `${b.l}~${b.r}`).join(' '));
+
+const one = await linkRow('제17강');
+ok('한 개짜리는 번호 없이 그대로', one.hrefs.length === 1 && one.labels[0] === '🔗',
+   `${one.hrefs[0]} ${one.labels[0]}`);
+ok('한 개짜리는 테를 두르지 않는다', !one.multi);
+
+const plain = await linkRow('16강');
+ok('주소가 없는 칸은 📄 로 남는다', plain.hrefs.length === 0 && plain.icons[0] === '📄',
+   plain.icons.join(','));
+ok('적어 낸 글은 툴팁으로 볼 수 있다', plain.text[0] === '손으로 적어 냈습니다', plain.text[0]);
+
+const none = await linkRow('15강');
+ok('빈 칸에는 아무것도 안 그린다', none.hrefs.length === 0 && none.icons.length === 0);
+
+// 규칙 자체도 본다 — 화면은 이 함수 하나만 믿는다
+const split = await page.evaluate(async () => {
+  const m = await import('/scripts/members-data.js');
+  const f = m.splitSubmissionLinks;
+  return {
+    space:   f('https://a.com/1 https://a.com/2').links.length,
+    newline: f('https://a.com/1\nhttps://a.com/2').links.length,
+    words:   f('1번 https://a.com/1, 2번 https://a.com/2').links,
+    dot:     f('https://a.com/1.')?.links[0],
+    dup:     f('https://a.com/1, https://a.com/1').links.length,
+    empty:   f('').links.length + f(null).links.length,
+    textOnly: f('링크 없이 적었습니다').text,
+  };
+});
+ok('구분자가 공백이어도 갈라진다', split.space === 2, `${split.space}개`);
+ok('구분자가 줄바꿈이어도 갈라진다', split.newline === 2, `${split.newline}개`);
+ok('사이에 낀 말은 주소에 안 섞인다',
+   split.words.join('|') === 'https://a.com/1|https://a.com/2', split.words.join(' · '));
+ok('끝에 붙은 마침표는 뗀다', split.dot === 'https://a.com/1', split.dot);
+ok('같은 주소를 두 번 낸 칸은 한 번만', split.dup === 1, `${split.dup}개`);
+ok('빈 칸은 링크 없음', split.empty === 0);
+ok('주소가 없으면 적은 글이 남는다', split.textOnly === '링크 없이 적었습니다', split.textOnly);
 
 // --- 펼치기 ---------------------------------------------------------------
 await page.click('#myAttendanceMoreBtn');
