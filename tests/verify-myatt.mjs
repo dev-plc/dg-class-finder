@@ -63,7 +63,7 @@ const { ok, done } = makeReporter('내 출석 현황');
 const browser = await launch();
 
 // 폰 크기로 본다 — 이 격자가 화면을 먹는 게 문제였던 곳이다.
-async function openApp(sessions) {
+async function openApp(sessions, homework = HOMEWORK) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   await page.clock.setFixedTime(new Date(`${TODAY}T09:00:00Z`));
@@ -87,7 +87,7 @@ async function openApp(sessions) {
     } else if (table === 'dg_lunch') {
       body = LUNCH;
     } else if (table === 'dg_homework') {
-      body = HOMEWORK;
+      body = homework;
     }
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -199,6 +199,35 @@ ok('펼치면 버튼이 접기로 바뀐다', /최근 5건만 보기/.test(h2.bt
 await page.click('#myHomeworkMoreBtn');
 await page.waitForTimeout(250);
 ok('다시 누르면 접힌다', (await hw()).shown.length === 5);
+
+// --- 안 낸 과제와 소감문 안내 ----------------------------------------------
+//
+// 낸 것만 보여 주면 빠뜨린 사람은 빠뜨린 줄을 모른다.
+// 지나간 18회차 중 과제가 붙은 것은 7건 → 11건이 비어 있다.
+const todo = () => page.evaluate(() => {
+  const box = document.getElementById('myHomeworkTodo');
+  const btn = box.querySelector('.hw-todo-btn');
+  return {
+    cls: box.className,
+    title: box.querySelector('.hw-todo-title')?.textContent.trim() || '',
+    chips: [...box.querySelectorAll('.hw-todo-chip')].map(c => c.textContent.trim()),
+    rest: box.querySelector('.hw-todo-rest')?.textContent.trim() || '',
+    href: btn?.getAttribute('href') || '',
+    label: btn?.textContent.trim() || '',
+    target: btn?.getAttribute('target') || '',
+  };
+});
+
+const td = await todo();
+ok('안 낸 건수를 센다 (18회차 - 7건 제출)', /11건/.test(td.title), td.title);
+ok("문구는 '과제와 소감문'", /과제와 소감문/.test(td.title) && !/[^와] 과제 /.test(td.title), td.title);
+ok('안 낸 강의를 여덟 개까지만 늘어놓는다', td.chips.length === 8, td.chips.join(' · '));
+ok('나머지는 건수로', td.rest === '외 3건', td.rest);
+ok('낸 강의는 목록에 없다', !td.chips.includes('18강') && !td.chips.includes('16강'),
+   td.chips.join(' · '));
+ok('제출 폼으로 이어진다', td.href === 'https://forms.gle/cnhxuonpz2tmMu2y9', td.href);
+ok('새 창으로 연다 (조회 화면을 잃지 않게)', td.target === '_blank', td.target);
+ok('버튼 문구', td.label === '제출하기 →', td.label);
 
 // --- 제출 링크 가르기 -------------------------------------------------------
 //
@@ -316,6 +345,52 @@ ok('회차가 10 이하면 접지 않는다', few.all === 7 && few.shown === 7,
    `${few.shown}/${few.all}칸`);
 ok('접을 게 없으면 버튼도 없다', few.btnShown === false, few.btnText || '(없음)');
 await small.context.close();
+
+// ==========================================================================
+// 3. 다 낸 사람 — 안내는 남기되 조용하게
+//
+// 다 냈다고 링크까지 없애면 다시 낼 일이 있을 때 찾을 곳이 없다.
+// ==========================================================================
+const ALL_DONE = mkSessions(7).map(s => ({
+  member_id: 'u1', lecture: s.name, kind: '독후감', content: '', submitted_at: null,
+}));
+const full = await openApp(mkSessions(7), ALL_DONE);
+await lookup(full.page, '김조원', '1111');
+const fullTodo = await full.page.evaluate(() => {
+  const box = document.getElementById('myHomeworkTodo');
+  return {
+    cls: box.className,
+    title: box.querySelector('.hw-todo-title')?.textContent.trim() || '',
+    href: box.querySelector('.hw-todo-btn')?.getAttribute('href') || '',
+    chips: box.querySelectorAll('.hw-todo-chip').length,
+  };
+});
+ok('다 낸 사람에게는 안 낸 건수를 안 띄운다',
+   fullTodo.cls.includes('done') && !/제출하지 않은/.test(fullTodo.title), fullTodo.title);
+ok('그래도 제출 링크는 남는다',
+   fullTodo.href === 'https://forms.gle/cnhxuonpz2tmMu2y9', fullTodo.href);
+ok('밀린 강의 목록은 없다', fullTodo.chips === 0, `${fullTodo.chips}개`);
+await full.page.locator('#myHomeworkSection').screenshot({ path: `${SHOT}/dg-hw-done.png` });
+await full.context.close();
+
+// ==========================================================================
+// 4. 회차를 못 받아 왔을 때 — '모두 냈어요' 는 거짓말이 된다
+//
+// 안 낸 것이 없는 게 아니라 모르는 것이다. 링크만 남기고 판단은 하지 않는다.
+// ==========================================================================
+const blind = await openApp([], []);
+await blind.page.fill('#name', '김조원');
+await blind.page.fill('#phone', '1111');
+await blind.page.click('#searchBtn');
+await blind.page.waitForTimeout(1500);
+const blindTodo = await blind.page.evaluate(() => {
+  const box = document.getElementById('myHomeworkTodo');
+  return { title: box.querySelector('.hw-todo-title')?.textContent.trim() || '',
+           href: box.querySelector('.hw-todo-btn')?.getAttribute('href') || '' };
+});
+ok('회차를 모르면 다 냈다고 하지 않는다', !/모두 냈/.test(blindTodo.title), blindTodo.title || '(비어 있음)');
+
+await blind.context.close();
 
 await browser.close();
 server.close();

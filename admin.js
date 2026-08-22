@@ -34,7 +34,7 @@ import {
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
-} from './scripts/members-data.js?v=96';
+} from './scripts/members-data.js?v=97';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {

@@ -125,6 +125,29 @@ ok('두 버튼 다 입장하기로 끝난다',
    /입장하기$/.test(o1.team?.text || '') && /입장하기$/.test(o1.group?.text || ''),
    `${o1.team?.text} · ${o1.group?.text}`);
 
+// --- 푸터 — 문의 하나 · 버전 표시 -------------------------------------------
+//
+// 버전을 HTML 에 손으로 박아 두면 배포 때 한 번 빠뜨리는 순간 새로고침해도
+// 옛 번호가 남는다. 정작 확인하려던 '지금 뜬 게 새것인가' 를 못 본다.
+const foot = await page.evaluate(() => {
+  const btns = [...document.querySelectorAll('.footer-btn')];
+  const src = document.querySelector('script[src*="script.js"]').getAttribute('src');
+  return {
+    n: btns.length,
+    href: btns[0]?.getAttribute('href') || '',
+    text: btns[0]?.textContent.trim() || '',
+    version: document.getElementById('appVersion')?.textContent.trim() || '',
+    scriptV: (src.match(/[?&]v=(\d+)/) || [])[1] || '',
+    dividers: document.querySelectorAll('.footer-divider').length,
+  };
+});
+ok('푸터 버튼은 문의 하나', foot.n === 1 && foot.text === '문의', `${foot.n}개 · ${foot.text}`);
+ok('문의는 메일로 간다', foot.href.startsWith('mailto:dev@plch.or.kr'), foot.href);
+ok('가름줄도 같이 없앴다', foot.dividers === 0, `${foot.dividers}개`);
+ok('버전이 보인다', /^v\d+$/.test(foot.version), foot.version);
+ok('보이는 버전이 실제로 받아 온 것과 같다', foot.version === `v${foot.scriptV}`,
+   `${foot.version} / script.js?v=${foot.scriptV}`);
+
 // 실제로 어떻게 보이는지 한 장 남긴다
 await lookup('온라인원', '1001');
 await page.locator('.result-card').screenshot({ path: `${SHOT}/dg-rooms.png` });

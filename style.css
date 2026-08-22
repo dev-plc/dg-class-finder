@@ -485,6 +485,14 @@ body.dark-mode .icon-btn:hover {
     margin: 0;
 }
 
+/* 새로고침이 먹었는지 보려고 읽는 숫자다. 눈에 띄되 이름보다 세지 않게. */
+.footer-version {
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.65;
+    letter-spacing: 0.02em;
+}
+
 .footer-buttons {
     display: flex;
     align-items: center;
@@ -1265,6 +1273,77 @@ body.large-text .map-image {
     padding-top: 14px;
     border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
+/* 안 낸 과제와 소감문 알림.
+   목록보다 위에 둔다 — 낸 것을 먼저 보여 주면 빠뜨린 줄을 모르고 지나친다.
+   주황은 이 화면에서 여기만 쓴다. 여러 곳에 쓰면 아무 데도 안 눈에 띈다. */
+.hw-todo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.hw-todo.done {
+    background: var(--milk-beige);
+    border-color: var(--warm-beige);
+}
+.hw-todo-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.hw-todo-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+.hw-todo-title b { color: #B45309; }
+body.dark-mode .hw-todo-title b { color: #FBBF24; }
+/* 주황 바탕 위의 글씨는 두 모드에서 같은 흰색이다 — 토큰을 쓰면
+   다크에서 --white 가 남색 카드색이라 글씨가 통째로 사라진다. */
+.hw-todo-btn {
+    flex-shrink: 0;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: #F59E0B;
+    color: #FFFFFF !important;
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none !important;
+    white-space: nowrap;
+}
+.hw-todo-btn:hover { background: #D97706; }
+/* 다 낸 사람에게도 링크는 남기되 조용하게 — 다시 낼 일이 있다 */
+.hw-todo.done .hw-todo-btn {
+    background: transparent;
+    color: var(--midnight-blue) !important;
+    border: 1px solid var(--warm-beige);
+}
+.hw-todo.done .hw-todo-btn:hover { background: var(--warm-beige); }
+.hw-todo-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+.hw-todo-chip {
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.18);
+    color: var(--text-dark);
+}
+.hw-todo-rest {
+    padding: 3px 4px;
+    font-size: 11px;
+    opacity: 0.7;
+}
+
 /* 오래된 과제는 접어 둔다 — 목록이 길어지면 아래의 조원 명단이 밀린다 */
 .my-homework-list.folded .hw-row.old { display: none; }
 .hw-more { margin-top: 8px; margin-bottom: 0; }

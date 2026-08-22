@@ -18,7 +18,7 @@ import {
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
-} from './scripts/members-data.js?v=96';
+} from './scripts/members-data.js?v=97';
 
 // 1-1. 내 정보 기억
 //
@@ -280,8 +280,11 @@ function displayResult(member) {
     }
 
     // 본인 출석 현황은 조장·조원 모두에게 보여준다.
-    renderMyAttendance(member);
-    renderMyHomework(member);
+    // 과제 쪽은 출결 행(회차 이름 · 📝 여부)이 있어야 '안 낸 것' 을 셀 수 있어
+    // 이어 붙인다. 따로 부르면 같은 조회를 두 번 하게 된다.
+    renderMyAttendance(member)
+        .then(rows => renderMyHomework(member, rows))
+        .catch(err => console.log('본인 현황 표시 실패:', err));
 
     elements.resultContainer.style.display = 'block';
     elements.resultContainer.scrollIntoView({ behavior: 'smooth' });
@@ -320,6 +323,9 @@ const MY_ATT_OPEN = 10;
 // 과제는 다섯 건. 한 줄이 회차 칩보다 굵어서 같은 수만큼 펴 두면 더 길어 보인다.
 const MY_HW_OPEN = 5;
 
+// 과제와 소감문 제출 폼. 화면 여러 곳에서 쓰지 않도록 한 곳에 둔다.
+const HOMEWORK_FORM_URL = 'https://forms.gle/cnhxuonpz2tmMu2y9';
+
 // 5-1. 본인 출석 현황
 //
 // 조원도 자기 이력은 볼 수 있어야 한다. 조 전체 출석표는 조장 것이다.
@@ -338,12 +344,12 @@ async function renderMyAttendance(member) {
         rows = await getMyAttendance(member);
     } catch (err) {
         console.log('본인 출석 조회 실패:', err);
-        return;
+        return [];
     }
-    if (!rows.length) return;
+    if (!rows.length) return rows;
 
     // 화면이 다른 사람으로 넘어갔으면 늦게 온 응답은 버린다.
-    if (!shownMember || shownMember.id !== member.id) return;
+    if (!shownMember || shownMember.id !== member.id) return rows;
 
     const present = rows.filter(r => r.status.toUpperCase() === 'O').length;
     const absent = rows.filter(r => r.status.toUpperCase() === 'X').length;
@@ -370,7 +376,7 @@ async function renderMyAttendance(member) {
         const st = classifyStatus(r.status);
         const badges = (r.lunch ? '🍙' : '') + (r.homework ? '📝' : '');
         const tip = [r.key, r.name, st.title,
-                     r.lunch ? '🍙 김밥 신청' : '', r.homework ? '📝 과제 제출' : '']
+                     r.lunch ? '🍙 김밥 신청' : '', r.homework ? '📝 과제와 소감문 제출' : '']
                     .filter(Boolean).join(' · ');
 
         return `<div class="att-chip ${st.cls}${i < folded ? ' old' : ''}" title="${escapeAttr(tip)}">
@@ -385,6 +391,7 @@ async function renderMyAttendance(member) {
 
     section.style.display = 'block';
     renderMyLunch(rows);
+    return rows;
 }
 
 /**
@@ -440,7 +447,7 @@ function renderMyLunch(rows) {
 //
 // '몇 강' 을 회차 날짜에 짝지우지 않는다. 시트가 그 대응을 말해주지 않아서
 // 순서로 짐작하면 엉뚱한 회차에 붙는다. 적힌 그대로 보여준다.
-async function renderMyHomework(member) {
+async function renderMyHomework(member, attRows = []) {
     const section = document.getElementById('myHomeworkSection');
     const list = document.getElementById('myHomeworkList');
     const summary = document.getElementById('myHomeworkSummary');
@@ -448,17 +455,28 @@ async function renderMyHomework(member) {
 
     section.style.display = 'none';
 
-    let rows;
+    let rows = [];
     try {
         rows = await getMyHomework(member);
     } catch (err) {
         console.log('본인 과제 조회 실패:', err);
-        return;
     }
-    if (!rows.length) return;
     if (!shownMember || shownMember.id !== member.id) return;
 
-    if (summary) summary.textContent = `총 ${rows.length}건 제출`;
+    // 아직 안 낸 강의. 지나간 회차 중 '강' 이 붙은 것만 센다 —
+    // 자유교제·수련회에는 낼 과제가 없다.
+    const missing = attRows.filter(r => isClassSession(r.name) && !r.homework)
+                           .map(r => r.name);
+
+    // 출결을 못 받아 왔으면 안 낸 것이 없는 게 아니라 **모르는** 것이다.
+    // 그때 '모두 냈어요' 라고 하면 거짓말이 된다.
+    const known = attRows.some(r => isClassSession(r.name));
+    renderHomeworkTodo(missing, known);
+
+    // 낸 것도 없고 안 낸 것도 없으면 (회차가 아직 없다) 구역째 감춘다.
+    if (!rows.length && !missing.length) return;
+
+    if (summary) summary.textContent = rows.length ? `총 ${rows.length}건 제출` : '제출 내역 없음';
 
     // 최근 것부터 다섯 건만 펴 둔다. 차례는 데이터 계층이 정한다 (강 번호 내림차순).
     const folded = Math.max(0, rows.length - MY_HW_OPEN);
@@ -480,6 +498,44 @@ async function renderMyHomework(member) {
 
     setMyHwFold(folded, false);
     section.style.display = 'block';
+}
+
+/**
+ * 안 낸 과제와 소감문 알림.
+ *
+ * 낸 것만 보여 주면 빠뜨린 사람은 빠뜨린 줄을 모른다. 지나간 회차 중
+ * '몇 강' 인 것만 세고, 자유교제·수련회는 뺀다 — 낼 것이 없는 회차다.
+ *
+ * 다 낸 사람에게도 제출 링크는 남긴다. 다시 낼 일이 있고, 여기가 아니면
+ * 링크를 찾을 곳이 없다.
+ */
+function renderHomeworkTodo(missing, known = true) {
+    const box = document.getElementById('myHomeworkTodo');
+    if (!box) return;
+
+    const btn = `<a class="hw-todo-btn" href="${HOMEWORK_FORM_URL}" target="_blank" rel="noopener">제출하기 →</a>`;
+
+    if (!missing.length) {
+        box.className = 'hw-todo done';
+        box.innerHTML = `<div class="hw-todo-head">
+                <span class="hw-todo-title">${known ? '지난 회차 과제와 소감문을 모두 냈어요' : '과제와 소감문 제출'}</span>
+                ${btn}
+            </div>`;
+        return;
+    }
+
+    // 회차가 많으면 앞의 여덟 개만. 스무 줄짜리 목록은 아무도 안 읽는다.
+    const SHOW = 8;
+    const chips = missing.slice(0, SHOW)
+        .map(n => `<span class="hw-todo-chip">${escapeHtml(n)}</span>`).join('');
+    const rest = missing.length > SHOW ? `<span class="hw-todo-rest">외 ${missing.length - SHOW}건</span>` : '';
+
+    box.className = 'hw-todo';
+    box.innerHTML = `<div class="hw-todo-head">
+            <span class="hw-todo-title">📝 제출하지 않은 과제와 소감문 <b>${missing.length}건</b></span>
+            ${btn}
+        </div>
+        <div class="hw-todo-list">${chips}${rest}</div>`;
 }
 
 /**
@@ -1143,10 +1199,26 @@ subscribe((event) => {
     if (event.type === 'refresh' || event.type === 'cohort-changed') rerenderShown();
 });
 
+/**
+ * 푸터에 지금 떠 있는 버전을 적는다.
+ *
+ * 숫자를 HTML 에 박아 두면 배포할 때마다 손으로 고쳐야 하고, 한 번 빠뜨리면
+ * 새로고침해도 옛 번호가 그대로 보인다 — 정작 확인하려던 '이게 새것인가' 를
+ * 못 본다. 브라우저가 실제로 받아 온 script 태그의 ?v= 를 그대로 읽는다.
+ */
+function showAppVersion() {
+    const el = document.getElementById('appVersion');
+    if (!el) return;
+    const src = document.querySelector('script[src*="script.js"]')?.getAttribute('src') || '';
+    const v = src.match(/[?&]v=(\d+)/);
+    el.textContent = v ? `v${v[1]}` : '';
+}
+
 // 12. 실행
 window.addEventListener('load', () => {
     loadData();
     initEventListeners();
     initModal();
     applyLastSearch();
+    showAppVersion();
 });
