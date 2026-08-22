@@ -23,6 +23,7 @@ import {
     getMyAttendance,
     getMyHomework,
     getSessions,
+    getHomeworkChecker,
     getSessionExtras,
     getToday,
     isAbsent,
@@ -34,7 +35,7 @@ import {
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
-} from './scripts/members-data.js?v=98';
+} from './scripts/members-data.js?v=99';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1107,6 +1108,8 @@ let abSessionDate = null;
 let abHistory = null;          // Map(uuid → Map(date → status))
 let abMin = 2;                 // 몇 회 이상을 보여줄까
 let abSort = 'team';           // 'team' | 'pastor'
+let abMonth = null;            // 하차 검토가 보는 달 ('YYYY-MM')
+let abHw = null;               // 과제 조회 결과 { loaded, has(uuid, 강의명) }
 let abLoading = false;
 let abLoadedAtMs = 0;
 
@@ -1124,9 +1127,25 @@ async function openAbsenceTab() {
             ? (nearestSessionDate(sessions, getToday()) || sessions[sessions.length - 1].date)
             : null;
     }
+    const months = abMonths();
+    if (!abMonth || !months.includes(abMonth)) abMonth = months[months.length - 1] || null;
     renderAbSessionPicker();
+    renderAbMonthPicker();
     if (!abHistory) await loadAbsence();
     else renderAbsence();
+}
+
+/** 강의 회차가 있는 달 목록 ('YYYY-MM', 이른 순) */
+function abMonths() {
+    return [...new Set(abClassSessions().map(s => s.date.slice(0, 7)))];
+}
+
+function renderAbMonthPicker() {
+    const el = document.getElementById('abMonthPicker');
+    if (!el) return;
+    el.innerHTML = abMonths().map(mo =>
+        `<option value="${attEsc(mo)}"${mo === abMonth ? ' selected' : ''}>` +
+        `${attEsc(mo.slice(0, 4))}년 ${Number(mo.slice(5))}월</option>`).join('');
 }
 
 function renderAbSessionPicker() {
@@ -1141,7 +1160,14 @@ async function loadAbsence() {
     abLoading = true;
     renderAbsence();
     try {
-        abHistory = await getAttendanceHistory();
+        // 과제는 하차 검토가 쓴다 — 과제를 낸 결석은 한 달에 한 번까지
+        // 출석으로 인정되므로, 결석만 세면 없는 하차 대상을 만든다.
+        const [hist, hw] = await Promise.all([
+            getAttendanceHistory(),
+            getHomeworkChecker().catch(() => null),
+        ]);
+        abHistory = hist;
+        abHw = hw;
         abLoadedAtMs = Date.now();
     } catch (err) {
         console.log('결석 현황 조회 실패:', err);
@@ -1207,6 +1233,68 @@ function abCounts() {
         : (b.dates.length - a.dates.length || abCompare(a.m, b.m))));
 }
 
+/**
+ * 하차 검토 대상 — 공지 규칙 6번.
+ *
+ *   "특별한 이유없이 월 2회 이상 결석시 하차하게 되며 …"
+ *
+ * 그리고 규칙 5번이 결석 하나를 지워 준다.
+ *
+ *   "출석이 불가능한 경우는 조장에게 미리 알려주시고 예습과제와 소감문을 낸
+ *    경우 한달에 1회에 한하여 출석으로 인정합니다."
+ *
+ * 그래서 세는 차례가 이렇다.
+ *   1. 그 달의 **지나간 강의 회차** 중 X 인 것을 모은다 (빈칸·◎·−·돌봄 은 아니다)
+ *   2. 그중 과제를 낸 회차 하나를 출석으로 인정한다 — **한 달에 하나뿐이다**
+ *   3. 남은 결석이 2회 이상이면 검토 대상
+ *
+ * ⚠️ '특별한 이유' 는 이 화면이 알 수 없다. 격주 근무·출장·온라인 참여는
+ * 오직교적과 행정방에 적히지 시트에는 없다. 그래서 이 목록은 하차 확정이
+ * 아니라 **검토할 사람**이고, 화면에도 그렇게 적어 둔다.
+ *
+ * 과제를 못 받아 왔을 때(loaded=false)는 인정 계산을 하지 않고 그 사실을
+ * 알린다. 모르는 것을 '안 냈다' 로 세면 없는 하차 대상을 만든다.
+ */
+const AB_DROP_MIN = 2;          // 월 2회 이상
+const AB_HW_CREDIT_PER_MONTH = 1;   // 과제로 인정되는 결석은 한 달에 한 번
+
+function abDropoutRows(month) {
+    if (!month) return [];
+    const inMonth = abClassSessions().filter(s => s.date.slice(0, 7) === month);
+    const out = [];
+
+    for (const m of memberData) {
+        if (!m._uuid) continue;
+        const byDate = abHistory?.get(m._uuid);
+        if (!byDate) continue;
+
+        const absent = inMonth.filter(s => isAbsent(byDate.get(s.date)));
+        if (absent.length < AB_DROP_MIN) continue;      // 인정 없이도 못 미친다
+
+        // 과제를 낸 결석 회차. 인정은 한 달에 하나뿐이라 이른 것부터 하나만 쓴다.
+        const withHw = abHw?.loaded
+            ? absent.filter(s => abHw.has(m._uuid, s.name))
+            : [];
+        const credited = withHw.slice(0, AB_HW_CREDIT_PER_MONTH);
+        const creditedDates = new Set(credited.map(s => s.date));
+
+        const counted = absent.length - credited.length;
+        if (counted < AB_DROP_MIN) continue;
+
+        out.push({
+            m,
+            counted,
+            dates: absent.map(s => s.key),
+            absent,
+            creditedDates,
+        });
+    }
+
+    return out.sort((a, b) => (abSort === 'pastor'
+        ? (abCompare(a.m, b.m) || b.counted - a.counted)
+        : (b.counted - a.counted || abCompare(a.m, b.m))));
+}
+
 function abRow(m, extra = '') {
     // 교역자는 있을 때만 적는다. 빈 칸을 자리만 잡아 두면 줄이 성글어 보인다.
     const pastor = (m.pastor || '').trim();
@@ -1238,6 +1326,10 @@ function renderAbsence() {
         const msg = abLoading ? '불러오는 중...' : '불러오지 못했습니다.';
         weekList.innerHTML = `<div class="att-empty">${msg}</div>`;
         totalList.innerHTML = '';
+        const dl = document.getElementById('abDropList');
+        if (dl) dl.innerHTML = '';
+        const dc = document.getElementById('abDropCount');
+        if (dc) dc.textContent = '';
         if (weekCount) weekCount.textContent = '';
         if (totalCount) totalCount.textContent = '';
         if (weekNote) weekNote.textContent = '';
@@ -1295,6 +1387,55 @@ function renderAbsence() {
                 + `<span class="ab-dates">${r.dates.map(d => `<span class="ab-chip">${attEsc(d)}</span>`).join('')}</span>`);
           }).join('')
         : `<div class="att-empty">${abMin}회 이상 결석한 사람이 없습니다.</div>`;
+
+    renderAbDropouts();
+}
+
+/**
+ * 하차 검토 목록.
+ *
+ * 결석 칩에 과제로 인정된 회차를 따로 표시한다 — 몇 회 결석인지만 적으면
+ * 왜 3회 결석인데 2회로 세는지 알 수 없고, 그러면 이 숫자를 못 믿는다.
+ */
+function renderAbDropouts() {
+    const list = document.getElementById('abDropList');
+    const count = document.getElementById('abDropCount');
+    const note = document.getElementById('abDropNote');
+    if (!list) return;
+
+    const rows = abDropoutRows(abMonth);
+    const inMonth = abClassSessions().filter(s => s.date.slice(0, 7) === abMonth);
+
+    if (count) count.textContent = rows.length ? `${rows.length}명` : '';
+
+    if (note) {
+        const parts = [`${Number((abMonth || '').slice(5))}월 강의 ${inMonth.length}회차 기준`];
+        // 과제를 못 받아 왔으면 '안 냈다' 가 아니라 '모른다' 다. 그 상태로 센
+        // 숫자는 부풀어 있다 — 인정받을 사람이 인정을 못 받는다.
+        if (!abHw?.loaded) {
+            parts.push('⚠️ 과제 기록을 읽지 못해 인정(월 1회)을 계산하지 못했습니다');
+        }
+        note.textContent = parts.join(' · ');
+        note.classList.toggle('warn', !abHw?.loaded);
+    }
+
+    list.innerHTML = rows.length
+        ? rows.map(r => {
+            const chips = r.absent.map(sn => {
+                const credited = r.creditedDates.has(sn.date);
+                return `<span class="ab-chip${credited ? ' credited' : ''}"` +
+                       `${credited ? ' title="과제·소감문 제출 — 출석으로 인정 (월 1회)"' : ''}>` +
+                       `${attEsc(sn.key)}${credited ? ' 📝' : ''}</span>`;
+            }).join('');
+            const credited = r.creditedDates.size;
+            return abRow(r.m,
+                `<b class="ab-n">결석 ${r.counted}회</b>`
+                + (credited ? `<span class="ab-credit">과제 인정 ${credited}회</span>` : '')
+                + `<span class="ab-dates">${chips}</span>`);
+          }).join('')
+        : `<div class="att-empty">${inMonth.length
+              ? '이 달에 하차 검토 대상이 없습니다.'
+              : '이 달에는 강의 회차가 없습니다.'}</div>`;
 }
 
 /**
@@ -1327,7 +1468,10 @@ async function abCopy(btn, rows, title) {
         // 연속 태그는 두 목록에 다 붙는다 — 연락할 때 첫마디가 되는 값이다.
         const streak = abStreak(m);
         const parts = [];
-        if (r.dates) parts.push(`${r.dates.length}회: ${r.dates.join(' ')}`);
+        // 하차 검토는 '몇 회 결석' 이 인정(월 1회)을 뺀 수라 줄 수가 다르다.
+        // 화면과 다른 수를 복사해 보내면 그 자리에서 말이 어긋난다.
+        if (r.note) parts.push(r.note);
+        else if (r.dates) parts.push(`${r.dates.length}회: ${r.dates.join(' ')}`);
         if (streak > 1) parts.push(`${streak}주 연속`);
         const tail = parts.length ? ` (${parts.join(' · ')})` : '';
         // 교역자는 정렬과 상관없이 늘 붙인다. 그대로 나눠 보내는 명단이라,
@@ -1345,6 +1489,11 @@ async function abCopy(btn, rows, title) {
         prompt('복사해서 쓰세요 (Ctrl+C)', text.replace(/\n/g, ' / '));
     }
 }
+
+document.getElementById('abMonthPicker')?.addEventListener('change', (e) => {
+    abMonth = e.target.value;
+    renderAbsence();
+});
 
 abSessionPicker?.addEventListener('change', (e) => {
     abSessionDate = e.target.value;
@@ -1381,6 +1530,19 @@ document.getElementById('abWeekCopyBtn')?.addEventListener('click', (e) => {
 document.getElementById('abTotalCopyBtn')?.addEventListener('click', (e) => {
     const hit = abHistory ? abCounts().filter(r => r.dates.length >= abMin) : [];
     abCopy(e.currentTarget, hit, `${abMin}회 이상 결석 ${hit.length}명`);
+});
+
+document.getElementById('abDropCopyBtn')?.addEventListener('click', (e) => {
+    const rows = abHistory ? abDropoutRows(abMonth) : [];
+    // 인정받은 회차에는 📝 를 붙인다 — 명단을 받은 교역자가 '왜 이 사람이
+    // 3회 빠졌는데 2회인가' 를 되묻지 않아도 되게.
+    const withNote = rows.map(r => ({
+        ...r,
+        note: `결석 ${r.counted}회: ` + r.absent
+            .map(sn => sn.key + (r.creditedDates.has(sn.date) ? '📝' : '')).join(' '),
+    }));
+    const mo = Number((abMonth || '').slice(5));
+    abCopy(e.currentTarget, withNote, `${mo}월 하차 검토 ${rows.length}명 (📝 = 과제 인정)`);
 });
 
 // ==================== 출석부 출력 ====================

@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=98';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=98';
+import { matches as hangulMatches } from './hangul.js?v=99';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=99';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -536,6 +536,49 @@ export async function getSessionExtras(sessionDate, lectureName) {
     hwLoaded,
     hwTotal: hwRows.length,
     hwNear: homework.size ? [] : nearbyLectures(hwRows, lectureName),
+  };
+}
+
+/**
+ * 누가 어느 강의의 과제를 냈는지 한 번에 받는다.
+ *
+ * 하차 검토가 쓴다 — 공지 규칙상 '예습과제와 소감문을 낸 결석' 은 한 달에
+ * 한 번까지 출석으로 인정되므로, 결석 회차마다 과제가 있었는지 알아야 한다.
+ *
+ * 강의명 정규화를 밖으로 내보내지 않는 이유: 시트('18강')와 폼('제18강')이
+ * 따로 적히기 때문에 견주는 규칙이 한 곳에만 있어야 한다. 화면은 회차 이름을
+ * 그대로 넘기고 판단은 여기서 한다.
+ *
+ * @returns { loaded, has(uuid, lectureName) }
+ *          loaded=false 는 '안 냈다' 가 아니라 '모른다' 다 — 화면이 구별해서
+ *          말해야 한다. 못 받아 온 것을 미제출로 세면 없는 결석을 만든다.
+ */
+export async function getHomeworkChecker() {
+  let loaded = true;
+  if (!homeworkAllCache) {
+    try {
+      homeworkAllCache = await sbSelect(
+        'dg_homework?select=member_id,lecture&order=member_id,lecture');
+    } catch (err) {
+      console.log('과제 조회 실패:', err);
+      loaded = false;      // 실패는 캐시하지 않는다 — 다음에 다시 받는다
+    }
+  }
+
+  const byMember = new Map();
+  for (const r of homeworkAllCache || []) {
+    const key = normalizeLecture(r.lecture);
+    if (!key) continue;
+    if (!byMember.has(r.member_id)) byMember.set(r.member_id, new Set());
+    byMember.get(r.member_id).add(key);
+  }
+
+  return {
+    loaded,
+    has(uuid, lectureName) {
+      const key = normalizeLecture(lectureName);
+      return !!key && !!byMember.get(uuid)?.has(key);
+    },
   };
 }
 

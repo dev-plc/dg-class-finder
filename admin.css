@@ -1194,6 +1194,43 @@ body.dark-mode .ab-pastor { color: var(--text-dark); }
     border-radius: 999px;
 }
 
+/* 하차 검토 — 규칙을 그대로 적어 둔다. 사람 이름이 올라가는 목록이라,
+   무슨 기준으로 뽑혔는지 모르면 이 화면을 아무도 못 믿는다. */
+.ab-rule {
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-dark);
+    background: var(--milk-beige);
+    border-left: 3px solid var(--midnight-blue);
+    border-radius: 0 8px 8px 0;
+}
+.ab-rule b { color: var(--midnight-blue); }
+body.dark-mode .ab-rule b { color: var(--text-dark); }
+/* 화면이 모르는 것을 아는 척하지 않는다 */
+.ab-rule-warn { display: block; margin-top: 4px; color: #92400e; }
+body.dark-mode .ab-rule-warn { color: #fbbf24; }
+
+/* 과제로 인정된 결석 회차. 몇 회인지만 적으면 왜 3회가 2회로 세어지는지
+   알 수 없고, 그러면 숫자를 못 믿는다. */
+.ab-chip.credited {
+    color: #166534;
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(16, 185, 129, 0.45);
+}
+body.dark-mode .ab-chip.credited { color: #6ee7b7; }
+.ab-credit {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-light);
+}
+
+/* 달 고르는 칸은 제 폭만. 늘려 두면 제목과 건수를 왼쪽 끝으로 밀어낸다 */
+.ab-head .att-picker { flex: 0 0 auto; }
+.ab-head .att-select { min-width: 130px; width: auto; }
+#abDropCopyBtn { margin-left: auto; }
+
 body.dark-mode .ab-count { color: #fca5a5; }
 body.dark-mode .ab-streak, body.dark-mode .ab-n { color: #fca5a5; }
 body.dark-mode .ab-note.warn { color: #fbbf24; }

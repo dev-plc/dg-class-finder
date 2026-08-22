@@ -36,6 +36,7 @@ const MEMBERS = [
   { id: 'u6', name: '돌봄이', team: 'C1', team_no: 2, role: '조원', pastor: '' },
   { id: 'u7', name: '이수료', team: 'C1', team_no: 3, role: '조원', pastor: '' },
   { id: 'u8', name: '자유만빠짐', team: 'C1', team_no: 4, role: '조원', pastor: '' },
+  { id: 'u9', name: '과제낸이', team: 'YF1', team_no: 3, role: '조원', pastor: '이목사' },
 ].map((m, i) => ({ ...m, cohort_id: COHORT, phone: String(1001 + i), sheet_row: i + 1,
                    location: '웨슬리홀', lunch: 'O', status: 'active', age: 30 }));
 
@@ -72,6 +73,19 @@ const ATT = [
 
   { member_id: 'u8', session_date: D['06/07'], status: 'X' },
   { member_id: 'u8', session_date: D['08/09'], status: 'O' },
+
+  // u9 5월에 세 번 빠지고 그중 두 번은 과제를 냈다.
+  // 인정은 한 달에 한 번뿐이라 2회로 남는다 → 5월 하차 검토 대상.
+  ...['05/03', '05/10', '05/17'].map(k => ({ member_id: 'u9', session_date: D[k], status: 'X' })),
+  ...['08/02', '08/09'].map(k => ({ member_id: 'u9', session_date: D[k], status: 'O' })),
+];
+
+// 과제 — 공지 규칙 5번. '예습과제와 소감문을 낸 결석' 은 한 달에 1회까지
+// 출석으로 인정된다. 강의명으로 회차와 짝을 짓는다 (폼은 날짜를 모른다).
+const HOMEWORK = [
+  { member_id: 'u2', lecture: '14강' },   // 5월 결석 두 번 중 하나만 냈다
+  { member_id: 'u9', lecture: '14강' },   // 5월 결석 세 번 중 둘을 냈다
+  { member_id: 'u9', lecture: '제15강' }, // 폼에는 '제' 가 붙기도 한다
 ];
 
 const { ok, done } = makeReporter('결석 현황');
@@ -95,6 +109,8 @@ await page.route('**/rest/v1/**', route => {
     body = select === 'cohort_id' ? [{ cohort_id: COHORT }] : MEMBERS;
   } else if (table === 'dg_sessions') {
     body = SESSIONS;
+  } else if (table === 'dg_homework') {
+    body = HOMEWORK;
   } else if (table === 'dg_attendance') {
     // 전 회차를 한 번에 받는 조회만 이력이다 (session_date 로 좁히지 않는 쪽)
     if (select.includes('session_date') && !url.search.includes('session_date=eq.')) {
@@ -164,9 +180,9 @@ const total = () => page.$$eval('#abTotalList .ab-row', els => els.map(r => ({
 })));
 
 const t2 = await total();
-ok('2회 이상만 나온다', t2.map(x => x.name).join(',') === '세번결석,연속결석',
+ok('2회 이상만 나온다', t2.map(x => x.name).join(',') === '세번결석,과제낸이,연속결석',
    t2.map(x => `${x.name}(${x.n})`).join(' | '));
-ok('결석 많은 순', t2[0].n === '3회' && t2[1].n === '2회',
+ok('결석 많은 순', t2[0].n === '3회' && t2[2].n === '2회',
    t2.map(x => `${x.name} ${x.n}`).join(' | '));
 ok('어느 회차에 빠졌는지 보여준다',
    t2[0].dates.join(',') === '05/03,05/10,08/09', t2[0].dates.join(','));
@@ -189,7 +205,7 @@ ok('세는 규칙을 화면에 적어 둔다',
 await page.click('#abThresholds button[data-min="3"]');
 await page.waitForTimeout(300);
 const t3 = await total();
-ok('3회 이상으로 좁힌다', t3.map(x => x.name).join(',') === '세번결석',
+ok('3회 이상으로 좁힌다', t3.map(x => x.name).join(',') === '세번결석,과제낸이',
    t3.map(x => x.name).join(','));
 ok('고른 문턱에 표시가 남는다',
    await page.$eval('#abThresholds button[data-min="3"]', el => el.classList.contains('on')));
@@ -235,7 +251,7 @@ ok('묶음 안에서는 조 차례',
    wp.map(x => x.name).join(','));
 
 const tp = await total();
-ok('누적도 교역자별로 묶인다', tp.map(x => x.name).join(',') === '세번결석,연속결석',
+ok('누적도 교역자별로 묶인다', tp.map(x => x.name).join(',') === '세번결석,연속결석,과제낸이',
    tp.map(x => x.name).join(','));
 
 await page.selectOption('#abSortPicker', 'team');
@@ -296,6 +312,75 @@ ok('누적 명단에도 교역자가 붙는다', /\[김목사\] YF1 세번결석
 ok('누적 복사본에도 연속 태그가 붙는다',
    /연속결석 \(2회: 08\/02 08\/09 · 2주 연속\)/.test(copied2),
    copied2.replace(/\n/g, ' / '));
+
+// --- 하차 검토 ---------------------------------------------------------------
+//
+// 공지 규칙 6번: "특별한 이유없이 월 2회 이상 결석시 하차하게 되며"
+// 공지 규칙 5번: "예습과제와 소감문을 낸 경우 한달에 1회에 한하여 출석으로 인정"
+//
+// 사람 이름이 올라가는 목록이라 규칙을 넓게 잡으면 안 된다. 한 번이라도
+// 엉뚱한 사람이 오르면 이 화면을 아무도 안 믿는다.
+const drop = () => page.$$eval('#abDropList .ab-row', els => els.map(r => ({
+  name: r.querySelector('.ab-name').childNodes[0].textContent.trim(),
+  n: r.querySelector('.ab-n')?.textContent.trim() || '',
+  credit: r.querySelector('.ab-credit')?.textContent.trim() || '',
+  chips: [...r.querySelectorAll('.ab-chip')].map(c => c.textContent.trim()),
+  credited: [...r.querySelectorAll('.ab-chip.credited')].map(c => c.textContent.trim()),
+})));
+const setMonth = async (mo) => {
+  await page.selectOption('#abMonthPicker', mo);
+  await page.waitForTimeout(300);
+};
+
+const months = await page.$$eval('#abMonthPicker option', els => els.map(e => e.value));
+ok('강의가 있는 달만 고를 수 있다', months.join(',') === '2026-05,2026-08', months.join(','));
+ok('기본은 가장 최근 달',
+   await page.$eval('#abMonthPicker', el => el.value) === '2026-08');
+
+// 8월 강의는 08/02 · 08/09 둘. 연속결석이 둘 다 빠졌고 과제는 없다.
+await setMonth('2026-08');
+const aug = await drop();
+ok('월 2회 이상 결석한 사람이 오른다', aug.map(x => x.name).join(',') === '연속결석',
+   aug.map(x => `${x.name}(${x.n})`).join(' | '));
+ok('몇 회 결석인지 적는다', aug[0].n === '결석 2회', aug[0].n);
+ok('어느 회차인지 보여준다', aug[0].chips.join(',') === '08/02,08/09', aug[0].chips.join(','));
+ok('한 번만 빠진 사람은 오르지 않는다', !aug.some(x => x.name === '세번결석'),
+   aug.map(x => x.name).join(','));
+ok('개근한 사람도 오르지 않는다', !aug.some(x => x.name === '개근이'));
+
+// 5월 — 과제를 낸 결석은 한 달에 하나까지 출석으로 인정된다
+await setMonth('2026-05');
+const may = await drop();
+ok('과제를 내서 1회로 줄면 오르지 않는다', !may.some(x => x.name === '세번결석'),
+   may.map(x => `${x.name}(${x.n})`).join(' | '));
+ok('인정은 한 달에 한 번뿐 — 두 번 냈어도 하나만 지워진다',
+   may.some(x => x.name === '과제낸이' && x.n === '결석 2회'),
+   may.map(x => `${x.name}(${x.n})`).join(' | '));
+
+const hwMan = may.find(x => x.name === '과제낸이');
+ok('세 회차 다 보여준다 — 지운 것도 보여야 믿는다', hwMan.chips.length === 3,
+   hwMan.chips.join(','));
+ok('인정받은 회차를 따로 표시한다', hwMan.credited.length === 1, hwMan.credited.join(','));
+ok('인정 회차에 📝 를 붙인다', /📝/.test(hwMan.credited[0]), hwMan.credited[0]);
+ok('몇 회 인정됐는지 적는다', /과제 인정 1회/.test(hwMan.credit), hwMan.credit);
+
+// 규칙을 모르면 숫자를 믿을 수 없다
+const rule = await page.$eval('.ab-rule', el => el.textContent.replace(/\s+/g, ' ').trim());
+ok('규칙을 화면에 적어 둔다', /월 2회 이상/.test(rule) && /한 달에 1회까지/.test(rule), rule);
+ok('화면이 모르는 것을 아는 척하지 않는다',
+   /특별한 이유.*알지 못합니다/.test(rule) && /하차 확정이 아니라/.test(rule), rule);
+
+// 복사본이 화면과 다른 수를 말하면 그 자리에서 어긋난다
+await page.click('#abDropCopyBtn');
+await page.waitForTimeout(300);
+const dropCopied = await page.evaluate(() => navigator.clipboard.readText());
+ok('복사본도 인정을 뺀 수로 적는다', /결석 2회/.test(dropCopied),
+   dropCopied.replace(/\n/g, ' / '));
+ok('복사본에도 인정 표시가 남는다', /📝/.test(dropCopied), dropCopied.replace(/\n/g, ' / '));
+ok('무슨 목록인지 첫 줄에 적는다', /5월 하차 검토/.test(dropCopied),
+   dropCopied.split('\n')[0]);
+ok('복사본에도 교역자가 붙는다', /\[이목사\] YF1 과제낸이/.test(dropCopied),
+   dropCopied.replace(/\n/g, ' / '));
 
 await page.screenshot({ path: `${SHOT}/dg-absence.png`, fullPage: true });
 
