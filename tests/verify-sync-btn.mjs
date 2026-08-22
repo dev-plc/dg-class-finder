@@ -1,6 +1,8 @@
 // 관리자 페이지의 '시트에서 지금 가져오기' · '화면 새로 고침' 검증.
 
-import { serveRepo, launch, makeReporter } from './lib/harness.mjs';
+import { readFileSync } from 'node:fs';
+
+import { serveRepo, launch, makeReporter, ROOT } from './lib/harness.mjs';
 
 const PORT = 8095;
 const server = await serveRepo(PORT);
@@ -101,6 +103,64 @@ const names = await page.$$eval('.member-card-id', els => els.map(e => e.textCon
 ok('추가된 인원이 화면에 나온다', names.some(n => n.includes('새로온이')), names.join(', '));
 const info3 = await page.$eval('#syncInfo', el => el.textContent.trim());
 ok('새로 고침 결과를 알린다', /읽었습니다/.test(info3), info3);
+
+// --- 자동 동기화 주기 --------------------------------------------------------
+//
+// 과제·김밥·명단은 이 워크플로로만 DB 에 들어온다 (GAS 10분 트리거는 출석만).
+// 하루 한 번이던 때는 낮에 낸 과제가 다음 날까지 앱에 안 보였다.
+const yml = readFileSync(`${ROOT}/.github/workflows/sync-db.yml`, 'utf8');
+const cron = (yml.match(/cron:\s*'([^']+)'/) || [])[1] || '';
+ok('예약 실행이 하루 한 번보다 잦다', cron === '20 */2 * * *', cron || '(없음)');
+ok('정각은 피한다 — GitHub 예약은 정각에 30~45분씩 밀린다',
+   !/^0\s/.test(cron), cron);
+
+// 화면이 알려주는 다음 시각이 그 cron 과 같아야 한다. 두 곳이 어긋나면
+// 화면이 거짓말을 하고, 사람은 오지 않을 시각을 기다린다.
+//
+// 시계를 고정하고 실제 화면 문구를 읽는다 — 규칙을 검증 쪽에 옮겨 적으면
+// 화면이 틀려도 검증은 통과한다.
+async function syncInfoAt(iso) {
+  const ctx = await browser.newContext();
+  await ctx.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+  const p2 = await ctx.newPage();
+  await p2.clock.setFixedTime(new Date(iso));
+  await p2.route('**/rest/v1/**', route => {
+    const url = new URL(route.request().url());
+    const table = url.pathname.split('/').pop();
+    let body = [];
+    if (table === 'dg_members') {
+      body = url.searchParams.get('select') === 'cohort_id' ? [{ cohort_id: COHORT }] : MEMBERS;
+    } else if (table === 'dg_sessions') body = SESSIONS;
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await p2.route('**/script.google.com/**', route =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+                    body: JSON.stringify({ success: true }) }));
+  await p2.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
+  await p2.waitForFunction(() => document.getElementById('syncInfo')?.textContent.includes('다음'),
+                           null, { timeout: 20000 });
+  const text = await p2.$eval('#syncInfo', el => el.textContent.trim());
+  await ctx.close();
+  return text;
+}
+
+// KST = UTC+9. 04:20 UTC = 오후 1:20, 06:20 UTC = 오후 3:20, 00:20 UTC = 오전 9:20
+const at0400 = await syncInfoAt('2026-08-22T04:00:00Z');   // 04:20 이 아직 안 지났다
+ok('아직 안 지난 짝수 시는 그대로', /다음 오후 1:20 무렵/.test(at0400), at0400);
+
+const at0430 = await syncInfoAt('2026-08-22T04:30:00Z');   // 지났으니 06:20
+ok('지나갔으면 두 시간 뒤', /다음 오후 3:20 무렵/.test(at0430), at0430);
+
+const at0330 = await syncInfoAt('2026-08-22T03:30:00Z');   // 홀수 시 → 04:20
+ok('홀수 시에는 다음 짝수 시', /다음 오후 1:20 무렵/.test(at0330), at0330);
+
+const at2330 = await syncInfoAt('2026-08-22T23:30:00Z');   // 날을 넘긴다
+ok('자정을 넘겨도 이어진다', /다음 오전 9:20 무렵/.test(at2330), at2330);
+
+ok('2시간마다라고 알린다', /2시간마다/.test(at0400), at0400);
+// '무렵' 인 이유: GitHub 의 예약 실행은 30~45분씩 밀린다. 딱 떨어지는 시각을
+// 적으면 그 시각에 안 돌았을 때 고장으로 읽힌다.
+ok("'무렵' 이라고 적는다 — 예약 실행은 밀린다", /무렵/.test(at0400), at0400);
 
 await page.screenshot({ path: '/dg-sync-btn.png' });
 

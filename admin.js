@@ -34,7 +34,7 @@ import {
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
-} from './scripts/members-data.js?v=97';
+} from './scripts/members-data.js?v=98';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -166,6 +166,37 @@ function setSyncInfo(msg, kind = '') {
     syncInfo.textContent = msg;
     syncInfo.className = 'sync-info' + (kind ? ' ' + kind : '');
 }
+
+/**
+ * 다음 자동 동기화 시각. 워크플로의 cron 과 같은 규칙이다 (2시간마다 :20 UTC).
+ *
+ * 언제 저절로 도는지 안 보이면 기다릴 수가 없어서 버튼부터 누르게 된다 —
+ * 실제로 자동 실행 8분 전에 손으로 돌린 적이 있다.
+ *
+ * ⚠️ 워크플로의 cron 을 고치면 여기도 같이 고칠 것. 두 곳에 적힌 값이
+ * 어긋나면 화면이 거짓말을 한다.
+ */
+function nextAutoSync(now = new Date()) {
+    const t = new Date(now.getTime());
+    t.setUTCMinutes(20, 0, 0);
+    // 짝수 시 :20 이 지나갔으면 다음 짝수 시로
+    if (t <= now || t.getUTCHours() % 2 !== 0) {
+        t.setUTCHours(t.getUTCHours() + (t.getUTCHours() % 2 === 0 ? 2 : 1));
+    }
+    return t;
+}
+
+function syncIdleMessage(now = new Date()) {
+    const next = nextAutoSync(now);
+    const hhmm = next.toLocaleTimeString('ko-KR',
+        { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Seoul' });
+    // '무렵' 인 이유: GitHub 의 예약 실행은 30~45분씩 밀린다. 정확한 시각을
+    // 적어 두면 그 시각에 안 돌았을 때 고장으로 읽힌다.
+    return `2시간마다 저절로 가져옵니다 (다음 ${hhmm} 무렵). ` +
+           `급하면 여기서 바로. 보통 1~2분 걸립니다.`;
+}
+
+setSyncInfo(syncIdleMessage());
 
 syncBtn?.addEventListener('click', async () => {
     syncBtn.disabled = true;

@@ -17,8 +17,15 @@ on:
         required: false
         default: false
   schedule:
-    # 매일 03:00 UTC = 12:00 KST. Supabase 7일 pause 방지 겸용
-    - cron: '0 3 * * *'
+    # 2시간마다 (:20 UTC). Supabase 7일 pause 방지 겸용.
+    #
+    # 하루 한 번(12:00 KST)이었는데, 과제·김밥·명단은 **이 워크플로로만** DB 에
+    # 들어온다 — GAS 의 10분 트리거는 출석만 민다. 그래서 낮 12시 이후에 낸
+    # 과제는 다음 날 낮까지 앱에 안 보였다. 최대 24시간이다.
+    #
+    # 정각은 피한다. GitHub 의 예약 실행은 정각에 몰려서 30~45분씩 밀린다
+    # (실제로 '0 3' 이 03:31~03:43 에 돌았다).
+    - cron: '20 */2 * * *'
 
 concurrency:
   group: sync-db

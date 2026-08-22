@@ -7,12 +7,12 @@
 //   조회(명단·조·위치·배치도·안내방)  Supabase 가 원본. 시트에서 일 1회 동기화된다.
 //   출석                              시트가 원본. 쓰기는 GAS 로 가고, DB 는 비추기만 한다.
 //
-// 출석만 GAS 를 계속 쓰는 이유: 동기화가 하루 한 번이라 DB 값은 그날 안에 뒤처진다.
+// 출석만 GAS 를 계속 쓰는 이유: DB 값은 시트보다 뒤처진다 (워크플로 2시간).
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=97';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=97';
+import { matches as hangulMatches } from './hangul.js?v=98';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=98';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -813,7 +813,7 @@ export async function saveAttendance(session, changes) {
 /**
  * 시트 → DB 동기화를 지금 실행한다 (GitHub Actions).
  *
- * 명단·편성·위치·과제는 하루 한 번 도는 워크플로로만 DB 에 들어온다. 수업 직전에
+ * 명단·편성·위치·과제는 2시간마다 도는 워크플로로만 DB 에 들어온다. 수업 직전에
  * 장소를 옮기거나 인원을 추가하면 그때까지 앱에 안 나오는데, 지금까지는 관리자가
  * GitHub 에 들어가 워크플로를 손으로 돌리는 것 말고 방법이 없었다.
  *
