@@ -43,6 +43,23 @@ const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
 });
 
 const trim = (v) => (v == null ? '' : String(v).trim());
+
+/**
+ * 아이디를 한 규칙으로 다듬는다 (GAS 의 DG_normalizeId_ 와 같은 규칙).
+ *
+ * 아이디는 '이름+전화뒷4' 인데 손입력과 폼 응답이 섞여 들어온다.
+ *   '김도현 5326' · '김도현-5326' · '김도현(5326)' · '김도현５３２６'
+ * 기호만 지우면 전각 숫자는 통째로 사라져 이름만 남고, 명단과 짝이 안 맞아
+ * 그 사람의 과제·출석이 조용히 버려진다.
+ *
+ * **만드는 쪽과 맞추는 쪽 모두** 같은 규칙을 써야 한다. 한쪽만 다듬으면
+ * 오히려 더 어긋난다. GAS 를 아직 새 버전으로 안 올렸어도 여기서 한 번 더
+ * 다듬으므로 짝은 맞는다.
+ */
+const normId = (v) => String(v == null ? '' : v)
+  .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+  .normalize('NFC')
+  .replace(/[^a-zA-Z0-9가-힣]/g, '');
 const toInt = (v) => {
   const n = parseInt(String(v ?? '').replace(/[^0-9-]/g, ''), 10);
   return Number.isFinite(n) ? n : null;
@@ -284,7 +301,7 @@ if (Array.isArray(gas.sessions) && gas.sessions.length) {
   }
 
   for (const r of rows) {
-    const id = `${trim(r.name)}${trim(r.phone)}`;
+    const id = normId(`${r.name}${r.phone}`);
     const map = r.attendanceByDate || {};
     for (const iso of isoList) {
       const status = trim(map[iso]);
@@ -303,7 +320,7 @@ if (Array.isArray(gas.sessions) && gas.sessions.length) {
   console.log('   GAS 를 v19 로 올리면 연도를 GAS 가 확정해 줍니다.');
 
   for (const r of rows) {
-    const id = `${trim(r.name)}${trim(r.phone)}`;
+    const id = normId(`${r.name}${r.phone}`);
     const map = r.attendanceByDate || {};
     for (const key of gas.sessionDates) {
       const iso = dateOf.get(key);
@@ -320,7 +337,7 @@ if (Array.isArray(gas.sessions) && gas.sessions.length) {
     for (const r of rows) {
       const status = trim(r.attendance);
       if (!status) continue;
-      attendanceBySheetId.push({ _id: `${trim(r.name)}${trim(r.phone)}`, session_date: iso, status });
+      attendanceBySheetId.push({ _id: normId(`${r.name}${r.phone}`), session_date: iso, status });
     }
     console.log(`▶ 출석 ${attendanceBySheetId.length}건 (오늘 ${gas.todayKey} 만)`);
   }
@@ -419,11 +436,11 @@ if (sessionRows.length) {
 
 // -------------------------------------------------------------------- 김밥
 {
-  const uuidById = new Map(saved.map(m => [`${m.name}${m.phone || ''}`, m.id]));
+  const uuidById = new Map(saved.map(m => [normId(`${m.name}${m.phone || ''}`), m.id]));
   const lunchRows = [];
   const appliedByDate = new Map();      // 'YYYY-MM-DD' → Set(uuid)
   for (const r of rows) {
-    const uuid = uuidById.get(`${trim(r.name)}${trim(r.phone)}`);
+    const uuid = uuidById.get(normId(`${r.name}${r.phone}`));
     if (!uuid) continue;
     for (const [date, val] of Object.entries(r.lunchByDate || {})) {
       if (!trim(val)) continue;
@@ -490,12 +507,12 @@ if (sessionRows.length) {
 // -------------------------------------------------------------------- 과제
 if (Array.isArray(gas.homework) && gas.homework.length) {
   console.log('▶ dg_homework');
-  const uuidById = new Map(saved.map(m => [`${m.name}${m.phone || ''}`, m.id]));
+  const uuidById = new Map(saved.map(m => [normId(`${m.name}${m.phone || ''}`), m.id]));
 
   const rows = [];
   const unknown = [];
   for (const h of gas.homework) {
-    const uuid = uuidById.get(trim(h.id));
+    const uuid = uuidById.get(normId(h.id));
     if (!uuid) { unknown.push(trim(h.id)); continue; }
     rows.push({
       cohort_id: COHORT_ID,
@@ -520,7 +537,7 @@ if (Array.isArray(gas.homework) && gas.homework.length) {
 
 if (attendanceBySheetId.length) {
   console.log('▶ dg_attendance');
-  const uuidById = new Map(saved.map(m => [`${m.name}${m.phone || ''}`, m.id]));
+  const uuidById = new Map(saved.map(m => [normId(`${m.name}${m.phone || ''}`), m.id]));
   const attRows = [];
   const orphans = [];
   for (const a of attendanceBySheetId) {

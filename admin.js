@@ -33,7 +33,7 @@ import {
     requestSheetSync,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=94';
+} from './scripts/members-data.js?v=95';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {

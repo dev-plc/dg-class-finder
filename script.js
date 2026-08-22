@@ -17,7 +17,7 @@ import {
     refreshAttendance,
     saveAttendance,
     subscribe,
-} from './scripts/members-data.js?v=94';
+} from './scripts/members-data.js?v=95';
 
 // 1-1. 내 정보 기억
 //
@@ -112,8 +112,13 @@ async function loadData() {
 
 // 4. 검색 로직
 function searchMember() {
-    const name = elements.nameInput.value.trim().replace(/\s/g, '');
-    const phone = elements.phoneInput.value.trim().replace(/[^0-9]/g, '');
+    // 폰 자판에서 전각 숫자·영문이 들어오는 일이 있다 ('１１１１').
+    // 여기서 반각으로 바꾸지 않으면 아래에서 숫자가 아니라고 통째로 지워져,
+    // 번호를 분명히 넣었는데 '번호를 입력해주세요' 가 뜬다.
+    const half = (v) => String(v || '').replace(/[Ａ-Ｚａ-ｚ０-９]/g,
+        (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    const name = half(elements.nameInput.value).trim().replace(/\s/g, '');
+    const phone = half(elements.phoneInput.value).trim().replace(/[^0-9]/g, '');
 
     if (!name || !phone) {
         showError("이름과 번호 4자리를 입력해주세요.");

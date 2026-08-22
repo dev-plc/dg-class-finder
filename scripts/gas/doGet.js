@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v27)
+// DGfinder — Google Apps Script 전체 코드 (v28)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,14 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v28
+//   - 아이디를 한 규칙으로 다듬는다 (DG_normalizeId_). 과제·김밥 탭 아이디는
+//     손입력과 폼 응답이 섞여 '김도현 5326' · '김도현-5326' · '김도현(5326)' ·
+//     '김도현５３２６' 처럼 제각각 들어온다. 기호만 지우면 전각 숫자는 통째로
+//     사라져 이름만 남고, 명단과 짝이 안 맞아 조용히 버려졌다.
+//     전각을 반각으로 바꾸고 자모를 합친 뒤 한글·영문·숫자만 남긴다.
+//     ⚠️ 아이디를 만들고 맞추는 자리 전부(출석부·김밥·과제·저장·밀어넣기)에 넣었다.
 //
 // v27
 //   - 인원마다 pastor(담당교역자)를 담는다. 결석 현황을 교역자별로 갈라 보려는
@@ -87,7 +95,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 27;
+var DG_VERSION = 28;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -318,7 +326,7 @@ function DG_readLunchByDate(ss, tz) {
   if (!cols.length) return none;
 
   for (var r = headerIdx + 1; r < values.length; r++) {
-    var id = String(values[r][idIdx]).replace(/[^a-zA-Z0-9가-힣]/g, '');
+    var id = DG_normalizeId_(values[r][idIdx]);
     if (!id) continue;
 
     var map = {};
@@ -332,6 +340,30 @@ function DG_readLunchByDate(ss, tz) {
     out[id] = map;
   }
   return { byId: out, dates: cols.map(function (c) { return c.date; }) };
+}
+
+/**
+ * 아이디를 한 규칙으로 다듬는다.
+ *
+ * 아이디는 '이름+전화뒷4' 를 기대하는데, 손입력과 폼 응답이 섞여 들어온다.
+ *   '김도현 5326' · '김도현-5326' · '김도현(5326)' · '김도현５３２６'
+ * 기호만 지우면 전각 숫자('５３２６')는 통째로 사라져 이름만 남는다. 그러면
+ * 명단과 짝이 안 맞아 그 사람의 과제가 조용히 버려진다 — 오류가 안 나서
+ * 아무도 알아채지 못한다.
+ *
+ * ⚠️ **아이디를 만드는 곳과 맞추는 곳 모두**에 써야 한다. 한쪽만 다듬으면
+ * 오히려 더 어긋난다.
+ */
+function DG_normalizeId_(v) {
+  var s = String(v == null ? '' : v);
+  // 전각 → 반각 ('５３２６' → '5326', 'Ａ' → 'A')
+  s = s.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function (c) {
+    return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+  });
+  // 자모가 풀린 채로 오면 한 글자로 합친다 ('ㄱㅣㅁ' → '김')
+  if (s.normalize) s = s.normalize('NFC');
+  // 한글·영문·숫자만 남긴다. 띄어쓰기·괄호·붙임표는 사람마다 달리 적는다.
+  return s.replace(/[^a-zA-Z0-9가-힣]/g, '');
 }
 
 /**
@@ -397,7 +429,7 @@ function DG_readHomework(ss, tz) {
     var row = values[r];
 
     // 아이디는 '이름+전화뒷4' 형태를 기대한다. 공백·전각이 섞여 오므로 정규화한다.
-    var id = String(row[iId] == null ? '' : row[iId]).replace(/[^a-zA-Z0-9가-힣]/g, '');
+    var id = DG_normalizeId_(row[iId]);
     if (!id) continue;
 
     // 아이디에 번호가 안 붙어 있으면 연락처 뒷 4자리로 보완한다.
@@ -584,7 +616,7 @@ function doPost(e) {
     // 배포 URL 은 인증이 없다. 값을 반드시 검증한다.
     var entries = [];
     for (var i = 0; i < incoming.length; i++) {
-      var name = String(incoming[i].name || '').replace(/[^a-zA-Z0-9가-힣]/g, '');
+      var name = DG_normalizeId_(incoming[i].name);
       var phone = String(incoming[i].phone || '').replace(/[^0-9]/g, '');
       var status = String(incoming[i].status == null ? '' : incoming[i].status).trim().toUpperCase();
 
@@ -639,7 +671,7 @@ function doPost(e) {
       // ---- id → 행 인덱스 --------------------------------------------------
       var rowOf = {};
       for (var r = headerRowIdx + 1; r < values.length; r++) {
-        var rawId = String(values[r][idIdx]).replace(/[^a-zA-Z0-9가-힣]/g, '');
+        var rawId = DG_normalizeId_(values[r][idIdx]);
         if (rawId) rowOf[rawId] = r;
       }
 
@@ -862,7 +894,7 @@ function DG_pushToDb() {
     // 시트의 현재 값
     var sheetRows = [];
     for (var r = headerRowIdx + 1; r < values.length; r++) {
-      var id = String(values[r][idIdx]).replace(/[^a-zA-Z0-9가-힣]/g, '');
+      var id = DG_normalizeId_(values[r][idIdx]);
       if (!id) continue;
       for (var s = 0; s < sessions.length; s++) {
         var cell = values[r][sessions[s].col];
@@ -1004,7 +1036,7 @@ function doGet(e) {
 
         if (targetKbIdx !== -1 && kbIdIdx !== -1) {
           for (var kr = kbHeaderIdx + 1; kr < kbValues.length; kr++) {
-            var kbId = String(kbValues[kr][kbIdIdx]).replace(/[^a-zA-Z0-9가-힣]/g, '');
+            var kbId = DG_normalizeId_(kbValues[kr][kbIdIdx]);
             if (!kbId) continue;
             kimbapMap[kbId] = String(kbValues[kr][targetKbIdx]).trim() !== '' ? 'O' : 'X';
           }
@@ -1091,7 +1123,7 @@ function doGet(e) {
 
     var jsonData = [];
     for (var i = headerRowIdx + 1; i < data.length; i++) {
-      var rawId = String(data[i][idIdx]).replace(/[^a-zA-Z0-9가-힣]/g, '');
+      var rawId = DG_normalizeId_(data[i][idIdx]);
       if (!rawId) continue;
 
       var obj = {};

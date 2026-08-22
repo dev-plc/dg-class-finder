@@ -79,6 +79,22 @@ await page.click('#searchBtn');
 await page.waitForSelector('#teamMemberList .team-member-item', { timeout: 10000 });
 ok('조장 조회 → 조원 명단 표시', true);
 
+// 폰 자판에서 전각 숫자가 들어오는 일이 있다 ('１１１１').
+// 그대로 두면 숫자가 아니라고 지워져 '번호를 안 넣었다' 는 오류가 난다.
+await page.click('#closeBtn');
+await page.fill('#name', '김조장');
+await page.fill('#phone', '１１１１');
+await page.click('#searchBtn');
+await page.waitForTimeout(600);
+ok('전각 숫자로 쳐도 찾는다',
+   await page.evaluate(() => getComputedStyle(document.getElementById('resultContainer')).display !== 'none'),
+   await page.$eval('#errorText', el => el.textContent.trim()).catch(() => ''));
+
+// 뒤 검증이 쓸 수 있게 원래대로 다시 조회해 둔다
+await page.fill('#phone', '1111');
+await page.click('#searchBtn');
+await page.waitForSelector('#teamMemberList .team-member-item', { timeout: 10000 });
+
 // --- 회차 드롭다운 --------------------------------------------------------
 const pickerOk = await page.waitForSelector('#sessionPicker', { timeout: 10000 })
   .then(() => true).catch(() => false);

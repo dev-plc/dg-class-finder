@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=94';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=94';
+import { matches as hangulMatches } from './hangul.js?v=95';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=95';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -272,8 +272,12 @@ export function getCohortId() {
  * 정확 매칭 우선, 실패하면 초성·부분 매칭 (전화번호는 정확 일치 필수).
  */
 export function findMember(name, phone) {
-  const cleanName = (name || '').trim().replace(/\s/g, '');
-  const cleanPhone = (phone || '').trim().replace(/[^0-9]/g, '');
+  // 폰 자판에서 전각 숫자('５３２６')가 들어오는 일이 있다. 그대로 두면
+  // 숫자가 아니라고 지워져 '번호를 안 넣었다' 는 오류가 난다.
+  const half = (v) => String(v || '').replace(/[Ａ-Ｚａ-ｚ０-９]/g,
+    (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  const cleanName = half(name).trim().replace(/\s/g, '').normalize('NFC');
+  const cleanPhone = half(phone).trim().replace(/[^0-9]/g, '');
   if (!cleanName || !cleanPhone) return null;
 
   const target = cleanName + cleanPhone;
