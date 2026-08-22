@@ -309,21 +309,12 @@ ok('   다른 장의 체크는 그대로', stillChecked === 5, `${stillChecked}�
 await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
 await page.click('#prPrintBtn');
 await page.waitForTimeout(300);
-// DOM 순서상 마지막 '살아 있는' 장에 표시돼야 한다 (조 정렬 순서와 무관하게).
-const lastCheck = await page.evaluate(() => {
-  const live = [...document.querySelectorAll('.pr-sheet:not(.pr-skip)')];
-  const marked = [...document.querySelectorAll('.pr-last')];
-  return {
-    expected: live[live.length - 1]?.dataset.team || '',
-    marked: marked.map(e => e.dataset.team),
-    skippedMarked: marked.some(e => e.classList.contains('pr-skip')),
-  };
-});
-ok('5. 실제로 인쇄되는 마지막 장에 표시 (빈 종이 방지)',
-   lastCheck.marked.length === 1 && lastCheck.marked[0] === lastCheck.expected
-   && !lastCheck.skippedMarked,
-   JSON.stringify(lastCheck));
 ok('5. 인쇄가 호출된다', await page.evaluate(() => window.__printed) === 1);
+
+// 장 나누기는 CSS 가 한다 — 버튼을 거쳐야만 맞는 규칙은 규칙이 아니다.
+// (Ctrl+P 로 인쇄하면 그 표시가 없어서 빈 종이가 딸려 나왔다)
+ok('5. 인쇄 버튼이 장에 표시를 달지 않는다',
+   await page.$$eval('.pr-last', els => els.length) === 0);
 
 // --- 조작부 — 한 줄에 담고, 버튼은 지금 할 일을 말한다 --------------------
 //
@@ -342,7 +333,21 @@ const bar = await page.evaluate(() => {
 ok('조작부는 두 줄', bar.rows === 2, `${bar.rows}줄`);
 ok('넓은 화면에서 출력·항목이 한 줄에', bar.lines === 2, `${bar.lines}단`);
 ok('조작부가 화면을 덜 먹는다 (200px 이내)', bar.height <= 200, `${bar.height}px`);
-ok('묶음 이름은 출력 · 항목', bar.labels.join(',') === '출력,항목', bar.labels.join(','));
+// 손이 가는 차례 — 칸을 고르고(항목) 낼 장을 고르고(출력) 인쇄.
+// 인쇄가 윗줄에 있으면 장을 고른 자리에서 눈과 손이 한 번 되돌아간다.
+ok('묶음 이름은 항목 · 출력', bar.labels.join(',') === '항목,출력', bar.labels.join(','));
+const flow = await page.evaluate(() => {
+  const x = (sel) => Math.round(document.querySelector(sel).getBoundingClientRect().left);
+  return {
+    cols: x('.pr-cols'), out: x('.pr-out'), print: x('#prPrintBtn'),
+    pick: x('#prPickToggleBtn'),
+    sameRow: Math.abs(document.querySelector('#prPickToggleBtn').getBoundingClientRect().top
+                    - document.querySelector('#prPrintBtn').getBoundingClientRect().top) < 12,
+  };
+});
+ok('항목이 왼쪽, 출력이 오른쪽', flow.cols < flow.out, `${flow.cols} < ${flow.out}`);
+ok('인쇄는 출력 묶음 안, 맨 오른쪽', flow.print > flow.pick, `${flow.pick} → ${flow.print}`);
+ok('장을 고른 그 줄에서 바로 누른다', flow.sameRow);
 ok('집계표 이름이 짧아졌다', bar.cols.includes('집계표') && !bar.cols.some(c => c.includes('조별 집계표')),
    bar.cols.join(' | '));
 
@@ -1123,6 +1128,63 @@ await page.waitForTimeout(1200);
 await page.click('.tab-btn[data-tab="print"]');
 await page.waitForTimeout(800);
 ok('다른 탭에 있는 동안 늘어난 회차도 따라간다', await prWeek() === '2026-08-12', await prWeek());
+
+// --- 종이 수 — 고른 만큼만 나오는가 ------------------------------------------
+//
+// 화면의 '몇 장 출력' 은 맞는데 종이가 한 장 더 나오는 일이 있었다. 미리보기로는
+// 안 보인다 — 진짜로 PDF 를 뽑아서 쪽수를 세는 수밖에 없다.
+//
+// 원인 둘. (1) .admin-container 의 min-height: 100vh — 인쇄에서 1vh 는 종이
+// 한 장이라, 한 장만 골라도 컨테이너가 종이 높이를 차지하고 body 여백이 거기
+// 얹혀 빈 종이가 생겼다. (2) 장을 '뒤에서 끊기' 로 나눠서, 뒤에 뺀 장이 남아
+// 있으면 마지막 장 뒤의 끊김이 지워지지 않았다.
+const pdfPages = async () => {
+  // ⚠️ page.pdf() 는 **지금 흉내 내고 있는 매체**를 따른다. 이 파일은 앞에서
+  // screen 으로 되돌려 놓기 때문에, 그냥 부르면 인쇄 규칙이 하나도 안 걸린
+  // 화면 그대로가 PDF 로 나온다 (탭 전부 · 뺀 장까지). 여기서 다시 print 로.
+  await page.emulateMedia({ media: 'print' });
+  const buf = await page.pdf({ format: 'A4', printBackground: true,
+                               margin: { top: '12mm', bottom: '12mm', left: '12mm', right: '12mm' } });
+  await page.emulateMedia({ media: 'screen' });
+  return (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+};
+const liveCount = () => page.$$eval('.pr-sheet:not(.pr-skip)', els => els.length);
+
+// 전부 켠 상태로 되돌린다
+await page.evaluate(() => {
+  localStorage.removeItem('dg_admin_print_skip_v1');
+});
+await page.reload({ waitUntil: 'load' });
+await page.waitForFunction(() => document.querySelectorAll('.team-card').length > 0,
+                           null, { timeout: 20000 });
+await page.click('.tab-btn[data-tab="print"]');
+await page.waitForSelector('.pr-sheet', { timeout: 15000 });
+await page.waitForTimeout(400);
+
+const allLive = await liveCount();
+ok('종이 수 = 고른 장 수 (전부 켰을 때)', await pdfPages() === allLive,
+   `${await pdfPages()}쪽 / ${allLive}장`);
+
+// 한 조만 남긴다 — 여기서 빈 종이가 딸려 나왔다
+await page.click('#prPickToggleBtn');
+await page.waitForTimeout(200);
+await page.click('#prAllToggleBtn');          // 전체 해제
+await page.waitForTimeout(200);
+const oneTeam = await page.$eval('.pr-pick-chip input', el => el.dataset.team);
+await page.click(`.pr-pick-chip input[data-team="${oneTeam}"]`);
+await page.waitForTimeout(400);
+ok('한 장만 남았다', await liveCount() === 1, `${await liveCount()}장`);
+ok('한 장을 고르면 종이도 한 장 (빈 종이가 안 딸려 온다)', await pdfPages() === 1,
+   `${await pdfPages()}쪽`);
+
+// 가운데를 뺀 경우 — 끊김이 뺀 장 자리에 남으면 안 된다
+await page.click('#prAllToggleBtn');           // 전체 선택
+await page.waitForTimeout(300);
+const midTeam = await page.$$eval('.pr-pick-chip input', els => els[1].dataset.team);
+await page.click(`.pr-pick-chip input[data-team="${midTeam}"]`);
+await page.waitForTimeout(400);
+ok('가운데를 빼도 종이 수가 맞는다', await pdfPages() === await liveCount(),
+   `${await pdfPages()}쪽 / ${await liveCount()}장`);
 
 await browser.close();
 server.close();

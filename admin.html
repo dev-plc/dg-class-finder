@@ -12,8 +12,8 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=100">
-    <link rel="stylesheet" href="admin.css?v=100">
+    <link rel="stylesheet" href="style.css?v=101">
+    <link rel="stylesheet" href="admin.css?v=101">
 </head>
 <body class="dark-mode">
     <div class="admin-container">
@@ -242,22 +242,13 @@
                         <span class="att-picker-label">이동</span>
                         <select id="prScopePicker" class="att-select"></select>
                     </label>
-                    <button type="button" id="prPrintBtn" class="sync-btn">🖨️ 인쇄</button>
                 </div>
 
-                <!-- '출력' 과 '항목' 을 한 줄에. 화면이 좁으면 두 줄로 접힌다.
-                     조작부가 화면 위에 붙어 있어서, 한 줄이 늘 때마다 아래 출석부가
-                     그만큼 가려진다. -->
+                <!-- 손이 가는 차례대로 왼쪽에서 오른쪽으로 둔다.
+                     칸을 고르고(항목) → 낼 장을 고르고(출력) → 인쇄.
+                     인쇄 버튼을 위 줄에 두었더니 장을 고른 자리에서 눈과 손이
+                     한 번 위로 되돌아가야 했다. -->
                 <div class="pr-row pr-row-2">
-                    <div class="pr-group">
-                        <span class="pr-group-label">출력</span>
-                        <!-- 전체 선택·해제를 한 버튼에. 지금 상태를 보고 반대쪽 일을 한다 -->
-                        <button type="button" id="prAllToggleBtn" class="att-bulk-btn">전체 해제</button>
-                        <button type="button" id="prPickToggleBtn" class="att-bulk-btn pr-pick-toggle"
-                                aria-expanded="false" aria-controls="prPickList">▾ 부분 선택</button>
-                        <span class="pr-count" id="prCount"></span>
-                    </div>
-
                     <div class="pr-group pr-cols">
                         <span class="pr-group-label">항목</span>
                         <label class="pr-chk"><input type="checkbox" id="prColLunch" checked> 김밥 현황</label>
@@ -265,6 +256,17 @@
                         <label class="pr-chk"><input type="checkbox" id="prColHw" checked> 과제</label>
                         <label class="pr-chk"><input type="checkbox" id="prColMemo" checked> 메모</label>
                         <label class="pr-chk"><input type="checkbox" id="prColSummary"> 집계표</label>
+                    </div>
+
+                    <div class="pr-group pr-out">
+                        <span class="pr-group-label">출력</span>
+                        <!-- 전체 선택·해제를 한 버튼에. 지금 상태를 보고 반대쪽 일을 한다 -->
+                        <button type="button" id="prAllToggleBtn" class="att-bulk-btn">전체 해제</button>
+                        <button type="button" id="prPickToggleBtn" class="att-bulk-btn pr-pick-toggle"
+                                aria-expanded="false" aria-controls="prPickList">▾ 부분 선택</button>
+                        <span class="pr-count" id="prCount"></span>
+                        <!-- 고른 자리에서 바로 누른다 -->
+                        <button type="button" id="prPrintBtn" class="sync-btn">🖨️ 인쇄</button>
                     </div>
                 </div>
 
@@ -308,7 +310,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=100"></script>
+    <script type="module" src="admin.js?v=101"></script>
 </body>
 </html>
 

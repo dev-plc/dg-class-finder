@@ -35,7 +35,7 @@ import {
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
-} from './scripts/members-data.js?v=100';
+} from './scripts/members-data.js?v=101';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -2147,12 +2147,12 @@ prPickToggle?.addEventListener('click', () => {
 
 document.getElementById('prPrintBtn')?.addEventListener('click', () => {
     if (!prPreview) return;
-    // 마지막 장을 :last-child 로 잡으면 안 된다. 뺀 장은 숨겨질 뿐 DOM 상으로는
-    // 여전히 마지막일 수 있어서, 그 뒤에 빈 종이가 한 장 나온다.
-    const live = [...prPreview.querySelectorAll('.pr-sheet:not(.pr-skip)')];
-    if (!live.length) { alert('출력할 장이 없습니다. 최소 한 조는 선택해 주세요.'); return; }
-    prPreview.querySelectorAll('.pr-last').forEach(el => el.classList.remove('pr-last'));
-    live[live.length - 1].classList.add('pr-last');
+    const live = prPreview.querySelectorAll('.pr-sheet:not(.pr-skip)').length;
+    if (!live) { alert('출력할 장이 없습니다. 최소 한 조는 선택해 주세요.'); return; }
+    // 장 나누기는 CSS 가 한다 (admin.css 의 '앞에서 끊기' 규칙).
+    // 여기서 마지막 장에 표시를 달던 때가 있었는데, Ctrl+P 로 인쇄하면
+    // 그 표시가 없어서 빈 종이가 딸려 나왔다 — 버튼을 거쳐야만 맞는 규칙은
+    // 규칙이 아니다.
     window.print();
 });
 

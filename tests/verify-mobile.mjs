@@ -177,6 +177,18 @@ const barLines = await page.evaluate(() => {
 ok('좁은 화면에서는 출력·항목이 줄을 나눠 쓴다',
    barLines.groups === 2 && barLines.lines === 2, JSON.stringify(barLines));
 
+// 인쇄 버튼이 조작부 밖으로 잘려 나가면 안 된다. '출력' 묶음이 안 줄어들게
+// 두었더니 좁은 화면에서 버튼 오른쪽이 통째로 잘렸다.
+const printBtnFits = await page.evaluate(() => {
+  const btn = document.getElementById('prPrintBtn').getBoundingClientRect();
+  const box = document.querySelector('.pr-controls').getBoundingClientRect();
+  return { btnRight: Math.round(btn.right), boxRight: Math.round(box.right),
+           w: Math.round(btn.width) };
+});
+ok('인쇄 버튼이 조작부 안에 들어온다',
+   printBtnFits.btnRight <= printBtnFits.boxRight + 1 && printBtnFits.w > 40,
+   JSON.stringify(printBtnFits));
+
 await page.screenshot({ path: `${SHOT}/dg-mobile-print.png` });
 
 // --- 출석 관리 탭 -----------------------------------------------------------

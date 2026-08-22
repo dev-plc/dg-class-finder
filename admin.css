@@ -1295,14 +1295,22 @@ body.dark-mode .ab-note.warn { color: #fbbf24; }
     color: var(--text-light);
     letter-spacing: -0.2px;
 }
-.pr-row-2 .pr-group:first-child { flex: 0 1 auto; }
+/* 손이 가는 차례대로 — 항목(왼쪽) → 출력(오른쪽) → 인쇄.
+   '출력' 묶음은 오른쪽 끝에 붙여, 장을 고른 손이 그 자리에서 인쇄를 누른다. */
 .pr-row-2 .pr-cols { flex: 1 1 auto; }
+/* 0 0 auto 로 두면 이 묶음이 안 줄어들어, 좁은 화면에서 인쇄 버튼이
+   조작부 밖으로 잘려 나간다. 줄어들 수 있게 두면 안에서 알아서 접힌다. */
+.pr-row-2 .pr-out {
+    flex: 0 1 auto;
+    margin-left: auto;
+    justify-content: flex-end;
+}
+.pr-row-2 .pr-out #prPrintBtn { margin-left: 4px; }
 
 /* 주차·이동은 라벨을 옆에 붙여 한 줄로 (위아래로 쌓으면 그만큼 길어진다) */
 .pr-row .pr-picker { display: flex; align-items: center; gap: 8px; flex: 1 1 200px; }
 .pr-row .pr-picker .att-picker-label { margin-bottom: 0; white-space: nowrap; }
 .pr-row .pr-picker .att-select { min-height: 40px; }
-.pr-row #prPrintBtn { margin-left: auto; }
 
 .pr-cols-label { font-size: 13px; font-weight: 700; color: var(--text-light); }
 .pr-chk {
@@ -1511,15 +1519,28 @@ body.dark-mode .pr-data-warn { color: #fbbf24; }
     .admin-header, .sync-bar, .tab-nav, .pr-controls, .pr-pick,
     .team-modal, .att-save-bar { display: none !important; }
     .tab-content:not(#printTab) { display: none !important; }
-    .admin-container { max-width: none; padding: 0; }
-    body { background: #fff; }
+    /* min-height: 100vh 를 그대로 두면 안 된다. 인쇄에서 1vh 는 종이 한 장이라,
+       조를 한 장만 골라도 컨테이너가 종이 높이만큼 자리를 잡고 body 여백이
+       거기에 얹혀 **빈 종이가 한 장 더** 나온다. */
+    .admin-container { max-width: none; padding: 0; min-height: 0; }
+    body { background: #fff; margin: 0; padding: 0; }
 
     .pr-preview { display: block; gap: 0; }
-    .pr-sheet { max-width: none; break-after: page; page-break-after: always; }
+    .pr-sheet { max-width: none; }
     /* 뺀 장은 아예 없는 것으로 */
     .pr-sheet.pr-skip { display: none !important; }
-    /* 실제로 인쇄되는 마지막 장 뒤에는 새 장을 만들지 않는다 */
-    .pr-sheet.pr-last { break-after: auto; page-break-after: auto; }
+
+    /* 장 사이를 가르는 방법 — '뒤에서 끊기' 가 아니라 '앞에서 끊기'.
+       뒤에서 끊으면 마지막 장 뒤에도 끊김이 남아 빈 종이가 한 장 더 나온다.
+       (브라우저는 그 장이 문서의 마지막 요소일 때만 알아서 지운다. 그래서
+       조를 하나만 골라 뒤에 뺀 장이 남아 있으면 빈 종이가 딸려 나왔다.)
+
+       ~ 는 앞선 형제를 본다. 그러니 이 규칙은 '앞에 인쇄되는 장이 하나라도
+       있는 장' 에만 걸린다 — 첫 장은 안 걸리고, 뺀 장은 세지 않는다. */
+    .pr-sheet:not(.pr-skip) ~ .pr-sheet:not(.pr-skip) {
+        break-before: page;
+        page-break-before: always;
+    }
 
     /* 브라우저는 기본적으로 배경색을 인쇄하지 않는다. 이게 없으면 표 머리글
        음영도 합계 줄 강조도 하나도 안 나와 인쇄물이 밋밋해진다 */
@@ -1613,6 +1634,7 @@ body.dark-mode .pr-page { background: #fff; color: #111; }
     .pr-controls { padding: 12px; }
     /* 폭이 좁으면 '출력' 과 '항목' 이 각각 제 줄을 쓴다 */
     .pr-row-2 .pr-group { flex: 1 1 100%; }
+    .pr-row-2 .pr-out { margin-left: 0; }
     .pr-row .pr-picker { flex: 1 1 100%; }
     .pr-row #prPrintBtn { margin-left: 0; flex: 1 1 100%; }
     .pr-count { margin-left: 0; flex: 1 1 100%; text-align: right; }
