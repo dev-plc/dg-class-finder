@@ -1234,6 +1234,37 @@ body.dark-mode .ab-chip.credited { color: #6ee7b7; }
 }
 body.dark-mode .ab-chip.hw { color: var(--text-dark); }
 
+/* 과제+소감문으로 대체된 결석. 목록에서 빼지 않고 표시만 다르게 한다 —
+   조용히 빼면 '두 번 빠졌는데 왜 안 보이지' 가 되고, 그냥 결석으로 두면
+   이미 낸 사람에게 '왜 안 내셨냐' 고 묻게 된다. */
+.ab-replaced {
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #166534;
+    background: rgba(16, 185, 129, 0.16);
+    border-radius: 999px;
+    white-space: nowrap;
+}
+body.dark-mode .ab-replaced { color: #6ee7b7; }
+
+/* 냈지만 대체 한도(월 1회)에 걸린 회차 — 결석은 그대로 남는다 */
+.ab-submitted {
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--midnight-blue);
+    background: var(--white);
+    border: 1px solid var(--warm-beige);
+    border-radius: 999px;
+    white-space: nowrap;
+}
+body.dark-mode .ab-submitted { color: var(--text-dark); }
+
+/* 검토 대상이 아닌 줄. 지우지 않되 눈이 먼저 가지 않게. */
+.ab-row-quiet { opacity: 0.72; }
+.ab-row-quiet .ab-name { font-weight: 600; }
+
 /* 과제 제출 현황 — 심방 전에 보는 값이라 그 줄에 둔다 (규칙 1번) */
 .ab-hw {
     padding: 2px 8px;

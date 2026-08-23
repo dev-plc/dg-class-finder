@@ -146,6 +146,9 @@ const week = () => page.$$eval('#abWeekList .ab-row', els => els.map(r => ({
   name: r.querySelector('.ab-name').childNodes[0].textContent.trim(),
   pastor: r.querySelector('.ab-pastor')?.textContent.trim() || '',
   extra: r.querySelector('.ab-extra').textContent.trim(),
+  replaced: r.querySelector('.ab-replaced')?.textContent.trim() || '',
+  submitted: r.querySelector('.ab-submitted')?.textContent.trim() || '',
+  quiet: r.classList.contains('ab-row-quiet'),
 })));
 
 const w = await week();
@@ -171,6 +174,36 @@ ok('머리말이 주차와 인원을 보여준다',
 const note = await page.$eval('#abWeekNote', el => el.textContent.trim());
 ok('기록 없는 사람은 결석으로 세지 않았다고 알린다', /기록이 없습니다/.test(note), note);
 
+// 과제+소감문으로 대체된 결석을 그냥 결석으로 보여주면, 연락할 때 이미 낸
+// 사람에게 '왜 안 내셨냐' 고 묻게 된다. 05/03(14강)은 두 사람이 냈다.
+await page.selectOption('#abSessionPicker', D['05/03']);
+await page.waitForTimeout(300);
+const w0503 = await week();
+const rep0503 = w0503.filter(x => x.replaced);
+ok('대체된 결석은 이 주차 명단에서도 대체라고 적는다',
+   rep0503.length === 2 && rep0503.every(x => /과제\+소감문 대체/.test(x.replaced)),
+   w0503.map(x => `${x.name}:${x.replaced || '-'}`).join(' | '));
+ok('대체된 사람도 명단에서 빼지 않는다', w0503.some(x => x.name === '세번결석'),
+   w0503.map(x => x.name).join(','));
+ok('대체된 줄은 눈이 먼저 가지 않게 둔다', rep0503.every(x => x.quiet));
+ok('대체 아닌 사람에게는 안 붙는다',
+   w0503.filter(x => !x.replaced).every(x => !x.quiet),
+   w0503.map(x => `${x.name}:${x.quiet}`).join(' | '));
+
+// 05/10(15강)은 과제낸이만 냈지만 그 달의 대체는 05/03 하나로 끝났다.
+// '냈다' 와 '대체됐다' 는 다른 말이다 — 섞으면 결석 수가 안 맞는다.
+await page.selectOption('#abSessionPicker', D['05/10']);
+await page.waitForTimeout(300);
+const w0510 = await week();
+const over = w0510.find(x => x.name === '과제낸이');
+ok('한도에 걸린 제출은 대체가 아니라 제출로 적는다',
+   over.submitted === '📝 과제+소감문 제출' && !over.replaced,
+   `${over.submitted} / ${over.replaced}`);
+ok('그 줄은 결석으로 남는다 (흐리게 두지 않는다)', !over.quiet);
+
+await page.selectOption('#abSessionPicker', D['08/09']);
+await page.waitForTimeout(300);
+
 // --- 2회 이상 결석자 -------------------------------------------------------
 const total = () => page.$$eval('#abTotalList .ab-row', els => els.map(r => ({
   name: r.querySelector('.ab-name').childNodes[0].textContent.trim(),
@@ -184,8 +217,13 @@ ok('2회 이상만 나온다', t2.map(x => x.name).join(',') === '세번결석,�
    t2.map(x => `${x.name}(${x.n})`).join(' | '));
 ok('결석 많은 순', t2[0].n === '3회' && t2[2].n === '2회',
    t2.map(x => `${x.name} ${x.n}`).join(' | '));
+// 칩에는 회차와 함께 대체 표시(📝)가 붙는다 — 3회 중 하나가 대체면
+// '3회' 만 보고는 판단할 수 없다.
 ok('어느 회차에 빠졌는지 보여준다',
-   t2[0].dates.join(',') === '05/03,05/10,08/09', t2[0].dates.join(','));
+   t2[0].dates.map(d => d.slice(0, 5)).join(',') === '05/03,05/10,08/09',
+   t2[0].dates.join(','));
+ok('대체된 회차에 표시가 붙는다', /📝/.test(t2[0].dates[0]) && !/📝/.test(t2[0].dates[1]),
+   t2[0].dates.join(','));
 ok('한 번만 빠진 사람은 없다', !t2.some(x => x.name === '한번결석'),
    t2.map(x => x.name).join(','));
 // 같은 3회라도 띄엄띄엄 빠진 사람과 내리 두 주 안 나온 사람은 다른 이야기다
@@ -305,7 +343,8 @@ dialogs.length = 0;
 await page.click('#abTotalCopyBtn');
 await page.waitForTimeout(500);
 const copied2 = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''));
-ok('누적 명단에는 회차까지 붙는다', /세번결석 \(3회: 05\/03 05\/10 08\/09\)/.test(copied2),
+ok('누적 명단에는 회차까지 붙는다',
+   /세번결석 \(3회: 05\/03📝 05\/10 08\/09 · 과제\+소감문 대체 1회\)/.test(copied2),
    copied2.replace(/\n/g, ' / '));
 ok('누적 명단에도 교역자가 붙는다', /\[김목사\] YF1 세번결석/.test(copied2),
    copied2.replace(/\n/g, ' / '));
@@ -324,6 +363,8 @@ const drop = () => page.$$eval('#abDropList .ab-row', els => els.map(r => ({
   name: r.querySelector('.ab-name').childNodes[0].textContent.trim(),
   n: r.querySelector('.ab-n')?.textContent.trim() || '',
   credit: r.querySelector('.ab-credit')?.textContent.trim() || '',
+  replaced: r.querySelector('.ab-replaced')?.textContent.trim() || '',
+  quiet: r.classList.contains('ab-row-quiet'),
   chips: [...r.querySelectorAll('.ab-chip')].map(c => c.textContent.trim()),
   credited: [...r.querySelectorAll('.ab-chip.credited')].map(c => c.textContent.trim()),
   hwChips: [...r.querySelectorAll('.ab-chip.hw')].map(c => c.textContent.trim()),
@@ -354,8 +395,16 @@ ok('개근한 사람도 오르지 않는다', !aug.some(x => x.name === '개근�
 // 5월 — 과제를 낸 결석은 한 달에 하나까지 출석으로 인정된다
 await setMonth('2026-05');
 const may = await drop();
-ok('과제를 내서 1회로 줄면 오르지 않는다', !may.some(x => x.name === '세번결석'),
-   may.map(x => `${x.name}(${x.n})`).join(' | '));
+// 대체로 문턱 아래로 내려간 사람도 목록에 남긴다. 조용히 빼면 '두 번
+// 빠졌는데 왜 안 보이지' 가 되고, 확인할 길이 없다.
+const 대체 = may.find(x => x.name === '세번결석');
+ok('대체로 문턱 아래가 된 사람도 목록에 남는다', !!대체,
+   may.map(x => x.name).join(','));
+ok('대신 대체라고 적는다', /과제\+소감문 대체/.test(대체.replaced), 대체.replaced);
+ok('몇 회가 몇 회로 줄었는지 적는다', /결석 2회 중 1회 인정 → 1회/.test(대체.credit),
+   대체.credit);
+ok('검토 대상과 다르게 보인다 (눈이 먼저 가지 않게)', 대체.quiet && !대체.n,
+   `quiet=${대체.quiet} n='${대체.n}'`);
 ok('인정은 한 달에 한 번뿐 — 두 번 냈어도 하나만 지워진다',
    may.some(x => x.name === '과제낸이' && x.n === '결석 2회'),
    may.map(x => `${x.name}(${x.n})`).join(' | '));
@@ -365,7 +414,7 @@ ok('세 회차 다 보여준다 — 지운 것도 보여야 믿는다', hwMan.ch
    hwMan.chips.join(','));
 ok('인정받은 회차를 따로 표시한다', hwMan.credited.length === 1, hwMan.credited.join(','));
 ok('인정 회차에 📝 를 붙인다', /📝/.test(hwMan.credited[0]), hwMan.credited[0]);
-ok('몇 회 인정됐는지 적는다', /과제 인정 1회/.test(hwMan.credit), hwMan.credit);
+ok('몇 회 대체됐는지 적는다', /과제\+소감문 대체 1회/.test(hwMan.credit), hwMan.credit);
 
 // 규칙 1번 — "결석자 심방시 … 반드시 과제 제출 확인할 것".
 // 연락하기 전에 봐야 하는 값이라 이름을 눌러 들어가지 않고 그 줄에서 본다.
@@ -395,6 +444,23 @@ ok('규칙을 화면에 적어 둔다', /월 2회 이상/.test(rule) && /한 달
 ok('화면이 모르는 것을 아는 척하지 않는다',
    /특별한 이유.*알지 못합니다/.test(rule) && /하차 확정이 아니라/.test(rule), rule);
 
+// 머리말 수는 검토 대상만 센다. 대체된 사람까지 세면 '이 달에 2명 하차' 로
+// 읽히는데, 그건 사실이 아니다.
+const dropHead = await page.evaluate(() => ({
+  count: document.getElementById('abDropCount').textContent.trim(),
+  note: document.getElementById('abDropNote').textContent.trim(),
+  rows: document.querySelectorAll('#abDropList .ab-row').length,
+}));
+ok('머리말은 검토 대상만 센다', dropHead.count === '1명' && dropHead.rows === 2,
+   `${dropHead.count} / 줄 ${dropHead.rows}개`);
+ok('대체로 빠진 사람이 몇인지 알린다', /1명은 과제\+소감문 대체로 문턱 아래/.test(dropHead.note),
+   dropHead.note);
+
+// 검토 대상이 먼저, 대체는 뒤로 (참고용이다)
+const dropOrder = (await drop()).map(x => x.name);
+ok('검토 대상이 위, 대체는 아래', dropOrder.join(',') === '과제낸이,세번결석',
+   dropOrder.join(','));
+
 // 복사본이 화면과 다른 수를 말하면 그 자리에서 어긋난다
 await page.click('#abDropCopyBtn');
 await page.waitForTimeout(300);
@@ -408,6 +474,10 @@ ok('복사본에도 교역자가 붙는다', /\[이목사\] YF1 과제낸이/.te
    dropCopied.replace(/\n/g, ' / '));
 ok('복사본에도 과제 현황이 붙는다 — 심방 전에 확인할 값이다',
    /과제 2건 최근 15강/.test(dropCopied), dropCopied.replace(/\n/g, ' / '));
+ok('복사본도 대체된 사람을 표시한다',
+   /과제\+소감문 대체 · 결석 1회/.test(dropCopied), dropCopied.replace(/\n/g, ' / '));
+ok('첫 줄이 검토 대상과 대체를 나눠 말한다',
+   /하차 검토 1명 · 과제\+소감문 대체 1명/.test(dropCopied), dropCopied.split('\n')[0]);
 
 await page.screenshot({ path: `${SHOT}/dg-absence.png`, fullPage: true });
 
