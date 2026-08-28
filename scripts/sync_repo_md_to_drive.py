@@ -35,11 +35,11 @@ synced_at: 2026-08-27T12:00:00
 
 import os
 import io
-import json
 import fnmatch
 from datetime import datetime, timezone
 
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -64,11 +64,17 @@ def get_env(name, default=None, required=False):
 
 
 def build_drive_service():
-    sa_key_json = get_env("GDRIVE_SA_KEY_JSON", required=True)
-    info = json.loads(sa_key_json)
-    creds = service_account.Credentials.from_service_account_info(
-        info, scopes=SCOPES
+    # 서비스 계정은 자체 저장 용량이 없어 개인 My Drive에는 업로드가 막히므로
+    # (storageQuotaExceeded), 본인 Google 계정으로 인증하는 OAuth 리프레시 토큰 사용
+    creds = Credentials(
+        None,
+        refresh_token=get_env("GDRIVE_OAUTH_REFRESH_TOKEN", required=True),
+        client_id=get_env("GDRIVE_OAUTH_CLIENT_ID", required=True),
+        client_secret=get_env("GDRIVE_OAUTH_CLIENT_SECRET", required=True),
+        token_uri="https://oauth2.googleapis.com/token",
+        scopes=SCOPES,
     )
+    creds.refresh(Request())
     return build("drive", "v3", credentials=creds)
 
 
