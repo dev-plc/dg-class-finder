@@ -30,3 +30,9 @@ jobs:
           # 필요시 저장소별로 다른 하위 폴더명을 쓰고 싶으면 아래 값을 수정하세요.
           SYNC_SUBFOLDER: "dev-notes"
         run: python scripts/sync_repo_md_to_drive.py
+
+      - name: Mirror markdown files to knowledge-base repo
+        env:
+          GH_TOKEN: ${{ secrets.KB_GITHUB_TOKEN }}
+          KB_REPO: dev-plc/knowledge-base
+        run: bash scripts/sync_repo_md_to_github_kb.sh
