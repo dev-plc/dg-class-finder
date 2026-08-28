@@ -1,27 +1,26 @@
 name: Sync markdown to Obsidian vault
-
+ 
 on:
   push:
-    branches: [main]
     paths:
       - "**/*.md"
   workflow_dispatch: {}  # 수동 실행 버튼도 사용 가능하도록
-
+ 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+ 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
+ 
       - name: Install dependencies
         run: pip install google-api-python-client google-auth
-
+ 
       - name: Sync markdown files to Google Drive
         env:
           GDRIVE_SA_KEY_JSON: ${{ secrets.GDRIVE_SA_KEY_JSON }}
