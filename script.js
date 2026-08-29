@@ -18,7 +18,7 @@ import {
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
-} from './scripts/members-data.js?v=102';
+} from './scripts/members-data.js?v=103';
 
 // 1-1. 내 정보 기억
 //

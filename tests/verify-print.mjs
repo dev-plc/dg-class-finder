@@ -1177,6 +1177,30 @@ ok('한 장만 남았다', await liveCount() === 1, `${await liveCount()}장`);
 ok('한 장을 고르면 종이도 한 장 (빈 종이가 안 딸려 온다)', await pdfPages() === 1,
    `${await pdfPages()}쪽`);
 
+// 한 장짜리일 때 표가 종이 한가운데로 내려앉지 않는가.
+//
+// body 는 화면에서 가운데 정렬 flex 상자다. 인쇄에서 그대로 두면 한 장짜리는
+// 세로 가운데로 가고, 두 장 이상은 내용이 종이보다 커서 넘치니 위쪽 정렬처럼
+// 보인다 — 한 장을 뽑아 보기 전에는 안 드러난다.
+await page.emulateMedia({ media: 'print' });
+await page.setViewportSize({ width: 794, height: 1123 });   // A4
+await page.waitForTimeout(400);
+const topGap = await page.evaluate(() => {
+  const sheet = document.querySelector('.pr-sheet:not(.pr-skip)');
+  return {
+    top: Math.round(sheet.getBoundingClientRect().top + window.scrollY),
+    h: Math.round(sheet.getBoundingClientRect().height),
+    bodyDisplay: getComputedStyle(document.body).display,
+  };
+});
+await page.emulateMedia({ media: 'screen' });
+await page.setViewportSize({ width: 1100, height: 900 });
+await page.waitForTimeout(300);
+ok('한 장만 뽑아도 표가 종이 위에 붙는다', topGap.top <= 4,
+   `위에서 ${topGap.top}px (표 높이 ${topGap.h}px)`);
+ok('인쇄에서 body 는 가운데 정렬 상자가 아니다', topGap.bodyDisplay === 'block',
+   topGap.bodyDisplay);
+
 // 가운데를 뺀 경우 — 끊김이 뺀 장 자리에 남으면 안 된다
 await page.click('#prAllToggleBtn');           // 전체 선택
 await page.waitForTimeout(300);

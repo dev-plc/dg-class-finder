@@ -1554,7 +1554,17 @@ body.dark-mode .pr-data-warn { color: #fbbf24; }
        조를 한 장만 골라도 컨테이너가 종이 높이만큼 자리를 잡고 body 여백이
        거기에 얹혀 **빈 종이가 한 장 더** 나온다. */
     .admin-container { max-width: none; padding: 0; min-height: 0; }
-    body { background: #fff; margin: 0; padding: 0; }
+    /* body 는 화면에서 가운데 정렬용 flex 상자다 (style.css:44-55).
+       인쇄에서 그대로 두면 **한 장짜리일 때만** 표가 종이 한가운데로 내려앉는다 —
+       두 장 이상이면 내용이 종이보다 커서 넘치니 위쪽 정렬처럼 보여, 한 장을
+       뽑아 보기 전에는 드러나지 않았다. 종이에서는 그냥 위에서부터 쌓는다. */
+    body {
+        display: block;
+        min-height: 0;
+        background: #fff;
+        margin: 0;
+        padding: 0;
+    }
 
     .pr-preview { display: block; gap: 0; }
     .pr-sheet { max-width: none; }
