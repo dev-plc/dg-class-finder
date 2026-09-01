@@ -922,3 +922,44 @@ export function clearCache() {
     try { localStorage.removeItem(k); } catch { /* 무시 */ }
   }
 }
+
+// ============================================================================
+// 자동 새로고침 (Polling)
+// ============================================================================
+let lastUpdatedAt = null;
+let pollTimer = null;
+
+/**
+ * dg_members 테이블의 가장 최근 updated_at 값을 폴링하여
+ * 변경이 감지되면 자동으로 백그라운드 갱신을 수행합니다.
+ */
+export function startAutoRefresh(intervalMs = 30000) {
+  if (pollTimer) clearInterval(pollTimer);
+  
+  pollTimer = setInterval(async () => {
+    try {
+      const cohortId = state.cohortId || await getActiveCohortId();
+      if (!cohortId) return;
+      
+      const enc = encodeURIComponent(cohortId);
+      // 가장 최근 수정된 1건의 updated_at 조회
+      const rows = await sbSelect(`dg_members?select=updated_at&cohort_id=eq.${enc}&order=updated_at.desc.nullslast&limit=1`);
+      
+      if (rows && rows.length > 0 && rows[0].updated_at) {
+        const latest = rows[0].updated_at;
+        
+        if (!lastUpdatedAt) {
+          lastUpdatedAt = latest;
+        } else if (latest !== lastUpdatedAt) {
+          console.log(`데이터 변경 감지 (${lastUpdatedAt} -> ${latest}), 자동 갱신 시작...`);
+          lastUpdatedAt = latest;
+          
+          // forceRefresh 로 최신 데이터를 불러오고 화면에 notify
+          ensureLoaded({ forceRefresh: true }).catch(err => console.log('자동 갱신 실패:', err));
+        }
+      }
+    } catch (err) {
+      console.log('자동 새로고침 폴링 실패:', err);
+    }
+  }, intervalMs);
+}

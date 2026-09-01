@@ -310,7 +310,25 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=103"></script>
+    <!-- 조 전체 출석표 -->
+    <div class="matrix-modal" id="matrixModal" aria-hidden="true">
+        <div class="matrix-modal-inner" role="dialog" aria-modal="true" aria-labelledby="matrixTitle">
+            <div class="matrix-modal-header">
+                <h3 id="matrixTitle">조 전체 출석표</h3>
+                <button type="button" id="matrixCloseBtn" class="matrix-close-btn" aria-label="닫기">✕</button>
+            </div>
+            <div class="matrix-legend">
+                <span><b>O</b> 출석</span><span><b>X</b> 결석</span>
+                <span><b>−</b> 수업 없음</span><span><b>·</b> 기록 없음</span>
+                <span>🍙 김밥</span><span class="hw-legend">📝 과제+소감문</span>
+                <span class="legend-dim">흐린 열은 수료에 안 들어가는 회차</span>
+                <span>그 밖의 표기는 시트에 적힌 그대로</span>
+            </div>
+            <div class="matrix-scroll" id="matrixScroll"></div>
+        </div>
+    </div>
+
+    <script type="module" src="admin.js?v=106"></script>
 </body>
 </html>
 

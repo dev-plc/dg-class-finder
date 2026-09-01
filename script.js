@@ -15,10 +15,12 @@ import {
     getTeamExtras,
     isClassSession,
     refreshAttendance,
-    saveAttendance,
     splitSubmissionLinks,
     subscribe,
+    startAutoRefresh,
 } from './scripts/members-data.js?v=103';
+
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=106';
 
 // 1-1. 내 정보 기억
 //
@@ -374,7 +376,9 @@ async function renderMyAttendance(member) {
 
     grid.innerHTML = rows.map((r, i) => {
         const st = classifyStatus(r.status);
-        const badges = (r.lunch ? '🍙' : '') + (r.homework ? '📝' : '');
+        const isReplaced = (st.label === 'X' || st.label.includes('대체')) && r.homework;
+        const hwIcon = r.homework ? (isReplaced ? '<span class="hw-badge">📝</span>' : '📝') : '';
+        const badges = (r.lunch ? '🍙' : '') + hwIcon;
         const tip = [r.key, r.name, st.title,
                      r.lunch ? '🍙 김밥 신청' : '', r.homework ? '📝 과제와 소감문 제출' : '']
                     .filter(Boolean).join(' · ');
@@ -817,31 +821,6 @@ async function saveAttendanceChanges() {
 // 대응이 어긋나고, 어긋나도 오류가 안 나서 📝 가 한 번도 안 뜬다.
 // ============================================================================
 
-// 시트 값을 표시용으로 나눈다. O·X 말고도 사람이 적은 표기가 들어온다.
-function classifyStatus(raw) {
-    const v = String(raw || '').trim();
-    if (v === '') return { label: '·', cls: 'empty', title: '기록 없음' };
-    const up = v.toUpperCase();
-    if (up === 'O') return { label: 'O', cls: 'present', title: '출석' };
-    if (up === 'X') return { label: 'X', cls: 'absent', title: '결석' };
-    // 시트의 '-' 는 그 주에 수업이 없었다는 뜻이다. '돌봄' 같은 표기와 같이
-    // 묶어 눈에 띄게 칠하면, 빠진 것처럼 읽혀 조장이 헛걸음한다.
-    if (v === '-' || v === '−') return { label: '−', cls: 'none', title: '수업 없음' };
-    return { label: v, cls: 'special', title: `시트 표기: ${v}` };
-}
-
-// 회차를 컬럼으로 바꾼다. 두 키(date · name)를 같이 들고 다니는 게 핵심이다.
-function buildSessionColumns() {
-    return getSessions()
-        .map(s => ({
-            date: s.date,                    // ← 출결·김밥을 찾을 키
-            key: s.key,                      // ← 화면에 찍는 MM/DD
-            name: s.name || '',              // ← 과제를 찾을 키
-            isClass: isClassSession(s.name), // ← '자유교제' 같은 회차는 흐리게
-        }))
-        .filter(c => c.date);
-}
-
 // extras 는 getTeamExtras() 결과. 없으면 뱃지 없이 그대로 그린다
 // (모달을 여는 순간 표는 뜨고, 김밥·과제는 도착하는 대로 다시 그린다).
 function renderTeamMatrix(teamName, members, extras) {
@@ -849,77 +828,10 @@ function renderTeamMatrix(teamName, members, extras) {
     const titleEl = document.getElementById('matrixTitle');
     if (!scrollEl) return;
 
-    const cols = buildSessionColumns();
-    if (titleEl) titleEl.textContent = `👥 ${teamName} 전체 출석표 (${members.length}명 · ${cols.length}회차)`;
+    const { titleText, tableHTML } = renderTeamMatrixHTML(teamName, members, extras);
 
-    const lunchMap = extras?.lunch || new Map();
-    const hwMap = extras?.homework || new Map();
-
-    const sorted = [...members].sort((a, b) => {
-        const pa = rolePriority[a.role] || 4;
-        const pb = rolePriority[b.role] || 4;
-        if (pa !== pb) return pa - pb;
-        return a.name.localeCompare(b.name, 'ko');
-    });
-
-    const headRow = cols.map(c =>
-        `<th class="${c.isClass ? '' : 'non-class'}">
-            <span class="mx-session">${escapeHtml(c.name || '-')}</span>
-            <span class="mx-date">${escapeHtml(c.key)}</span>
-        </th>`
-    ).join('');
-
-    const bodyRows = sorted.map(m => {
-        const att = m.attendanceByDate || {};
-        const present = cols.filter(c => String(att[c.date] || '').toUpperCase() === 'O').length;
-        const myLunch = lunchMap.get(m._uuid) || null;
-        const myHw = hwMap.get(m._uuid) || null;
-
-        const cells = cols.map(c => {
-            const st = classifyStatus(att[c.date]);
-            const lunch = !!(myLunch && myLunch.has(c.date));
-            // 회차에 강의명이 없으면 과제를 붙일 근거가 없다. 순서로 짐작하지 않는다.
-            const homework = !!(myHw && c.name && myHw.has(normalizeLectureKey(c.name)));
-
-            const badges = (lunch ? '🍙' : '') + (homework ? '📝' : '');
-            const tip = [m.name, c.key, c.name, st.title,
-                         lunch ? '🍙 김밥 신청' : '', homework ? '📝 과제 제출' : '']
-                        .filter(Boolean).join(' · ');
-
-            return `<td class="mx-cell ${st.cls}${c.isClass ? '' : ' non-class'}" title="${escapeAttr(tip)}">
-                        <span class="mx-status">${escapeHtml(st.label)}</span>
-                        ${badges ? `<span class="mx-badges">${badges}</span>` : ''}
-                    </td>`;
-        }).join('');
-
-        return `
-            <tr>
-                <th class="mx-name-cell" scope="row">
-                    <span class="mx-name">${escapeHtml(m.name)}</span>
-                    <span class="mx-role">${escapeHtml(m.role || '조원')} · 출석 ${present}</span>
-                </th>
-                ${cells}
-            </tr>
-        `;
-    }).join('');
-
-    scrollEl.innerHTML = `
-        <table class="matrix-table">
-            <thead><tr><th class="mx-name-cell mx-corner">조원</th>${headRow}</tr></thead>
-            <tbody>${bodyRows}</tbody>
-        </table>
-    `;
-}
-
-// 데이터 계층의 정규화와 같은 규칙. 회차 이름(시트)과 과제 이름(폼)이
-// 서로 다르게 적히므로 양쪽을 같은 모양으로 만든 뒤에 견준다.
-function normalizeLectureKey(v) {
-    const raw = String(v || '').replace(/\s/g, '');
-    const m = raw.match(/^제?(\d+)강/);
-    if (m) return m[1] + '강';
-    if (/^자유교재/.test(raw)) return '자유교제';
-    if (/^교재/.test(raw)) return '교제';
-    return raw.toLowerCase();
+    if (titleEl) titleEl.textContent = titleText;
+    scrollEl.innerHTML = tableHTML;
 }
 
 let matrixToken = 0;
@@ -1221,4 +1133,5 @@ window.addEventListener('load', () => {
     initModal();
     applyLastSearch();
     showAppVersion();
+    startAutoRefresh();
 });

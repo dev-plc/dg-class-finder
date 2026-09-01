@@ -23,6 +23,7 @@ import {
     getMyAttendance,
     getMyHomework,
     getSessions,
+    getTeamExtras,
     getHomeworkChecker,
     getSessionExtras,
     getToday,
@@ -35,7 +36,10 @@ import {
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
+    startAutoRefresh,
 } from './scripts/members-data.js?v=103';
+
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=106';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -283,9 +287,11 @@ function renderTeamsView(filterText = '') {
             teamGroups[member.team] = {
                 name: member.team,
                 location: member.location,
+                pastor: '',
                 members: []
             };
         }
+        if (member.pastor) teamGroups[member.team].pastor = member.pastor;
         teamGroups[member.team].members.push(member);
     });
     
@@ -298,7 +304,8 @@ function renderTeamsView(filterText = '') {
     const filteredTeams = filterText 
         ? sortedTeams.filter(team => 
             team.name.toLowerCase().includes(filterText.toLowerCase()) ||
-            team.location.toLowerCase().includes(filterText.toLowerCase())
+            team.location.toLowerCase().includes(filterText.toLowerCase()) ||
+            (team.pastor && team.pastor.toLowerCase().includes(filterText.toLowerCase()))
           )
         : sortedTeams;
     
@@ -313,17 +320,32 @@ function renderTeamsView(filterText = '') {
         const card = document.createElement('div');
         card.className = 'team-card';
         const lunchCount = team.members.filter(m => (m.lunch && String(m.lunch).trim().toUpperCase() === 'O')).length;
+        const pastorHtml = team.pastor ? `<span class="team-card-pastor" style="font-size: 13px; color: var(--text-light);"><span class="md-hw-link" style="text-decoration:none;cursor:default;">👤</span> ${escapeHtml(team.pastor)}</span>` : '';
+        
         card.innerHTML = `
             <div class="team-card-header">
-                <div class="team-card-name">${team.name}</div>
+                <div class="team-card-name">${escapeHtml(team.name)}</div>
                 <div class="team-card-count">${team.members.length}명</div>
             </div>
-            <div class="team-card-location">${team.location}</div>
-            <div class="team-card-lunch" style="font-size: 0.88em; margin-top: 6px; color: #166534; font-weight: 600;">
-                🍱 김밥 ${lunchCount}개 (${team.members.length}명 중)
+            <div class="team-card-location" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>${escapeHtml(team.location)}</span>
+                ${pastorHtml}
+            </div>
+            <div class="team-card-actions-row" style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+                <div class="team-card-lunch">
+                    🍱 김밥 ${lunchCount}개 <span style="font-size:0.9em; opacity:0.8;">(${team.members.length}명 중)</span>
+                </div>
+                <button type="button" class="team-members-btn" style="padding: 6px 12px; font-size: 13px; border-radius: 4px; background: var(--milk-beige); border: 1px solid rgba(0,0,0,0.1); cursor: pointer; color: var(--text-dark); font-weight: 600;">👥 명단</button>
             </div>
         `;
-        card.addEventListener('click', () => showTeamMembers(team));
+        
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('.team-members-btn')) {
+                showTeamMembers(team);
+            } else {
+                openAdminMatrixModal(team);
+            }
+        });
         teamsGrid.appendChild(card);
     });
 }
@@ -331,6 +353,58 @@ function renderTeamsView(filterText = '') {
 // 조별 보기 필터
 teamFilter.addEventListener('input', (e) => {
     renderTeamsView(e.target.value.trim());
+});
+
+let matrixToken = 0;
+
+function openAdminMatrixModal(team) {
+    const modal = document.getElementById('matrixModal');
+    const scrollEl = document.getElementById('matrixScroll');
+    const titleEl = document.getElementById('matrixTitle');
+    if (!modal || !scrollEl) return;
+
+    // 표부터 띄운다
+    const res = renderTeamMatrixHTML(team.name, team.members, null);
+    if (titleEl) titleEl.innerHTML = res.titleText + (res.foldBtnHtml || '');
+    scrollEl.innerHTML = res.tableHTML;
+
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    const token = ++matrixToken;
+    getTeamExtras(team.members)
+        .then(extras => {
+            if (token !== matrixToken || !modal.classList.contains('active')) return;
+            const res2 = renderTeamMatrixHTML(team.name, team.members, extras);
+            if (titleEl) titleEl.innerHTML = res2.titleText + (res2.foldBtnHtml || '');
+            scrollEl.innerHTML = res2.tableHTML;
+        })
+        .catch(err => console.log('조 김밥·과제 조회 실패:', err));
+}
+
+// 매트릭스 모달 닫기
+const matrixCloseBtn = document.getElementById('matrixCloseBtn');
+if (matrixCloseBtn) {
+    matrixCloseBtn.addEventListener('click', closeMatrixModal);
+}
+
+function closeMatrixModal() {
+    const modal = document.getElementById('matrixModal');
+    if (!modal) return;
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+}
+
+// ESC 키 연동 (기존 ESC 핸들러에 추가)
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const matrixModal = document.getElementById('matrixModal');
+        if (matrixModal && matrixModal.classList.contains('active')) {
+            closeMatrixModal();
+        }
+    }
 });
 
 // 조원 목록 모달 표시
@@ -435,15 +509,6 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function classifyStatus(raw) {
-    const v = String(raw || '').trim();
-    if (v === '') return { label: '·', cls: 'empty', title: '기록 없음' };
-    const up = v.toUpperCase();
-    if (up === 'O') return { label: 'O', cls: 'present', title: '출석' };
-    if (up === 'X') return { label: 'X', cls: 'absent', title: '결석' };
-    return { label: v, cls: 'special', title: `시트 표기: ${v}` };
-}
-
 async function showMemberDetail(member) {
     const phoneDisplay = member.phone ? ` (${member.phone})` : '';
     memberDetailTitle.textContent = `${member.name}${phoneDisplay} · ${member.team} · ${member.location}`;
@@ -479,8 +544,10 @@ async function showMemberDetail(member) {
             html += `<div class="md-att-grid">`;
             html += [...attRows].reverse().map((r, idx) => {
                 const st = classifyStatus(r.status);
-                const badges = (r.lunch ? '🍙' : '') + (r.homework ? '📝' : '');
-                const hiddenClass = idx >= 5 ? ' md-hidden md-att-hidden' : '';
+                const isReplaced = (st.label === 'X' || st.label.includes('대체')) && r.homework;
+                const hwIcon = r.homework ? (isReplaced ? '<span class="hw-badge">📝</span>' : '📝') : '';
+                const badges = (r.lunch ? '🍙' : '') + hwIcon;
+                const hiddenClass = idx >= 10 ? ' md-hidden md-att-hidden' : '';
                 return `<div class="att-chip ${st.cls}${hiddenClass}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${st.title}">
                     <span class="att-date">${escapeHtml(r.key)}</span>
                     ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}
@@ -489,8 +556,8 @@ async function showMemberDetail(member) {
                 </div>`;
             }).join('');
             html += `</div>`;
-            if (attRows.length > 5) {
-                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-att-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${attRows.length - 5}개)</button>`;
+            if (attRows.length > 10) {
+                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-att-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${attRows.length - 10}개)</button>`;
             }
         } else {
             html += `<div class="md-empty">출석 기록이 없습니다.</div>`;
@@ -504,19 +571,19 @@ async function showMemberDetail(member) {
         if (lunchApplied.length) {
             html += `<div class="md-lunch-list">`;
             html += [...lunchApplied].reverse().map((r, idx) => {
-                const hiddenClass = idx >= 5 ? ' md-hidden md-lunch-hidden' : '';
+                const hiddenClass = idx >= 10 ? ' md-hidden md-lunch-hidden' : '';
                 return `<span class="md-lunch-chip${hiddenClass}">${r.name ? `<b>${escapeHtml(r.name)}</b> ` : ''}${escapeHtml(r.key)}</span>`;
             }).join('');
             html += `</div>`;
-            if (lunchApplied.length > 5) {
-                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-lunch-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${lunchApplied.length - 5}개)</button>`;
+            if (lunchApplied.length > 10) {
+                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-lunch-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${lunchApplied.length - 10}개)</button>`;
             }
         }
         html += `</div>`;
 
         // ── 과제 현황 ──
         html += `<div class="md-section">`;
-        html += `<div class="md-section-head"><h3>📝 과제</h3><span class="md-summary">${hwRows.length ? `총 ${hwRows.length}건 제출` : '제출 내역 없음'}</span></div>`;
+        html += `<div class="md-section-head"><h3>📝 과제+소감문</h3><span class="md-summary">${hwRows.length ? `총 ${hwRows.length}건 제출` : '제출 내역 없음'}</span></div>`;
         if (hwRows.length) {
             html += `<div class="md-hw-list">`;
             // 차례는 데이터 계층이 정한다 (강 번호 내림차순). 여기서 제출일로 다시
@@ -524,7 +591,7 @@ async function showMemberDetail(member) {
             // 섞이면 그 사이에서 차례가 흔들린다.
             html += hwRows.map((r, idx) => {
                 const when = r.submittedAt ? String(r.submittedAt).slice(0, 10) : '';
-                const hiddenClass = idx >= 5 ? ' md-hidden md-hw-hidden' : '';
+                const hiddenClass = idx >= 10 ? ' md-hidden md-hw-hidden' : '';
                 // 파일을 두 개 이상 올리면 한 칸에 쉼표로 이어 붙어 온다.
                 // 통째로 href 에 넣으면 아무것도 안 열린다 — 낱개로 갈라 준다.
                 const { links, text } = splitSubmissionLinks(r.content);
@@ -543,8 +610,8 @@ async function showMemberDetail(member) {
                 </div>`;
             }).join('');
             html += `</div>`;
-            if (hwRows.length > 5) {
-                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-hw-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${hwRows.length - 5}개)</button>`;
+            if (hwRows.length > 10) {
+                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-hw-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${hwRows.length - 10}개)</button>`;
             }
         }
         html += `</div>`;
@@ -1918,7 +1985,7 @@ function renderPrDataInfo() {
     const hwN = people.filter(m => prHwSet.has(m._uuid)).length;
     const offList = prLunchSet.size - lunchN;
 
-    const info = `🍙 김밥 ${lunchN}명 · 📝 과제 ${hwN}명`
+    const info = `🍙 김밥 ${lunchN}명 · 📝 과제+소감문 ${hwN}명`
                + (name ? ` (‘${attEsc(name)}’ 기준)` : '')
                + (offList > 0 ? ` · 지금 명단에 없는 ${offList}명 제외` : '');
 
@@ -2424,6 +2491,7 @@ document.addEventListener('keydown', (e) => {
 // 안전한 초기화 함수
 function initAdmin() {
     loadData();
+    startAutoRefresh();
 }
 
 if (document.readyState === 'loading') {

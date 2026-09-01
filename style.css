@@ -1096,6 +1096,20 @@ body.large-text .map-image {
     width: max-content;
     min-width: 100%;
 }
+.matrix-table.folded th.old-col,
+.matrix-table.folded td.old-col {
+    display: none;
+}
+.matrix-fold-btn {
+    background: var(--milk-beige);
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 4px;
+    color: var(--text-dark);
+    cursor: pointer;
+    margin-left: 10px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
 .matrix-table th,
 .matrix-table td {
     border-right: 1px solid rgba(0, 0, 0, 0.06);
@@ -1238,7 +1252,7 @@ body.large-text .map-image {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1px;
+    gap: 3px;
     padding: 6px 4px;
     border-radius: 8px;
     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -1401,7 +1415,7 @@ body.dark-mode .hw-todo-title b { color: #FBBF24; }
     font-size: 15px;
     line-height: 1;
 }
-/* 파일을 여러 개 낸 칸. 🔗 만 늘어놓으면 어느 것을 눌렀는지 알 수 없어
+/* файлов를 여러 개 낸 칸. 🔗 만 늘어놓으면 어느 것을 눌렀는지 알 수 없어
    번호를 붙이고, 낱개로 눌리는 것이 보이도록 테를 두른다. */
 .hw-links a.multi {
     display: inline-flex;
@@ -1412,6 +1426,15 @@ body.dark-mode .hw-todo-title b { color: #FBBF24; }
     border: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 999px;
     background: var(--milk-beige);
+}
+.hw-legend, .hw-badge {
+    background-color: #fef08a;
+    padding: 1px 3px;
+    border-radius: 4px;
+    color: #854d0e;
+    font-weight: 800;
+    display: inline-block;
+    line-height: 1;
 }
 .hw-links a.multi b {
     font-size: 11px;
