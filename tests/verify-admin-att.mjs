@@ -1,7 +1,7 @@
 // 관리자 출석 관리 화면 검증 — 사양서 검증 1~8번.
 // Supabase / GAS 는 가짜 응답으로 대신한다 (컨테이너 밖으로 못 나간다).
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=108';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
 
 const PORT = 8094;
 const server = await serveRepo(PORT);

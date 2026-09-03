@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 
-import { serveRepo, launch, makeReporter, ROOT } from './lib/harness.mjs?v=108';
+import { serveRepo, launch, makeReporter, ROOT } from './lib/harness.mjs';
 
 const PORT = 8095;
 const server = await serveRepo(PORT);

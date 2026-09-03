@@ -1,4 +1,14 @@
-import { getSessions, isClassSession } from './members-data.js?v=108';
+// 조 전체 출석표(매트릭스) — 조회 화면과 관리자 화면이 함께 쓴다.
+//
+// ⚠️ **칸 값을 어디서 읽는지가 이 파일의 전부다.** 기본값은 `m.attendanceByDate` 인데
+// 그 객체를 전 회차로 채우는 것은 `refreshAttendance()`(GAS 왕복) 뿐이고,
+// **관리자 화면은 그것을 부르지 않는다.** 새 화면에서 쓸 때는 `getStatus` 를 넘길 것.
+// 안 넘기면 값이 한 열만 차는데 오류가 안 나고, localStorage 캐시 때문에 개발 중엔
+// 되는 것처럼 보인다 — 확인은 시크릿 창에서. (자세히는 docs/HANDOVER.md)
+//
+// 노란 '과제' 칸이 월 1회 한도를 안 보는 이유는 docs/RULES.md 에 있다.
+
+import { getSessions, isClassSession, normalizeLecture } from './members-data.js?v=111';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -19,17 +29,6 @@ export function classifyStatus(raw) {
     // 묶어 눈에 띄게 칠하면, 빠진 것처럼 읽혀 조장이 헛걸음한다.
     if (v === '-' || v === '−') return { label: '−', cls: 'none', title: '수업 없음' };
     return { label: v, cls: 'special', title: `시트 표기: ${v}` };
-}
-
-// 데이터 계층의 정규화와 같은 규칙. 회차 이름(시트)과 과제 이름(폼)이
-// 서로 다르게 적히므로 양쪽을 같은 모양으로 만든 뒤에 견준다.
-export function normalizeLectureKey(v) {
-    const raw = String(v || '').replace(/\s/g, '');
-    const m = raw.match(/^제?(\d+)강/);
-    if (m) return m[1] + '강';
-    if (/^자유교재/.test(raw)) return '자유교제';
-    if (/^교재/.test(raw)) return '교제';
-    return raw.toLowerCase();
 }
 
 // 회차를 컬럼으로 바꾼다. 두 키(date · name)를 같이 들고 다니는 게 핵심이다.
@@ -54,7 +53,25 @@ const rolePriority = {
 
 // extras 는 getTeamExtras() 결과. 없으면 뱃지 없이 그대로 그린다
 // (모달을 여는 순간 표는 뜨고, 김밥·과제는 도착하는 대로 다시 그린다).
-export function renderTeamMatrixHTML(teamName, members, extras) {
+/**
+ * 조 전체 출석표 HTML.
+ *
+ * ⚠️ 칸 값을 어디서 읽는지가 이 함수의 함정이다. 기본값은 `m.attendanceByDate`
+ * 인데, **그 객체를 전 회차로 채우는 것은 `refreshAttendance()`(GAS 왕복) 뿐이다.**
+ * 조회 화면(조장)은 조원 명단을 열 때 그것을 부르지만 **관리자 화면은 안 부른다** —
+ * 거기서는 `loadAttendanceForSession()` 이 넣은 **한 회차**만 들어 있다.
+ *
+ * 그래서 관리자처럼 다른 곳에서 쓸 때는 `getStatus` 를 반드시 넘긴다.
+ * 안 넘기면 나머지 열이 전부 `·`(기록 없음)로 나오는데 **오류가 안 나서 조용히
+ * 틀린다.** 게다가 같은 브라우저로 조장 화면을 먼저 열었으면 localStorage 캐시
+ * 덕에 맞아 보이므로, 확인은 반드시 **시크릿 창**에서 할 것.
+ *
+ * @param {object} [opts]
+ * @param {(member, date) => string} [opts.getStatus] 칸 값을 읽는 함수
+ */
+export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
+    const getStatus = opts.getStatus
+        || ((m, date) => (m.attendanceByDate || {})[date]);
     const cols = buildSessionColumns();
     const titleText = `👥 ${teamName} 전체 출석표 (${members.length}명 · ${cols.length}회차)`;
 
@@ -80,18 +97,19 @@ export function renderTeamMatrixHTML(teamName, members, extras) {
     }).join('');
 
     const bodyRows = sorted.map(m => {
-        const att = m.attendanceByDate || {};
-        const present = cols.filter(c => String(att[c.date] || '').toUpperCase() === 'O').length;
+        const present = cols.filter(c => String(getStatus(m, c.date) || '').toUpperCase() === 'O').length;
         const myLunch = lunchMap.get(m._uuid) || null;
         const myHw = hwMap.get(m._uuid) || null;
 
         const cells = cols.map((c, i) => {
-            const st = classifyStatus(att[c.date]);
+            const st = classifyStatus(getStatus(m, c.date));
             const lunch = !!(myLunch && myLunch.has(c.date));
             // 회차에 강의명이 없으면 과제를 붙일 근거가 없다. 순서로 짐작하지 않는다.
-            const homework = !!(myHw && c.name && myHw.has(normalizeLectureKey(c.name)));
+            const homework = !!(myHw && c.name && myHw.has(normalizeLecture(c.name)));
 
-            const isReplaced = (st.label === 'X' || st.label.includes('대체')) && homework;
+            // 결석인데 과제+소감문을 냈다. (월 1회 한도는 여기서 보지 않는다 —
+            // 그 판정은 하차 검토가 한다. docs/RULES.md 참고)
+            const isReplaced = st.cls === 'absent' && homework;
             if (isReplaced) {
                 st.label = '과제';
                 st.cls = 'makeup';
@@ -121,8 +139,11 @@ export function renderTeamMatrixHTML(teamName, members, extras) {
         `;
     }).join('');
 
+    // 인라인 onclick 대신 표식만 남긴다. 전역 querySelector 로 표를 찾으면
+    // 표가 둘이 되는 순간 엉뚱한 것을 접는다 — 누르는 쪽에서 제 표를 찾게 한다.
     const foldBtnHtml = foldedCount > 0
-        ? `<button type="button" class="matrix-fold-btn" onclick="document.querySelector('.matrix-table').classList.toggle('folded'); this.textContent = this.textContent.includes('전체') ? '최근 10회차 보기' : '전체보기'">전체보기</button>`
+        ? `<button type="button" class="matrix-fold-btn" data-matrix-fold
+                   aria-expanded="false">전체 ${cols.length}회차 보기</button>`
         : '';
 
     const tableHTML = `

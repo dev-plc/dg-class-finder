@@ -4,7 +4,7 @@
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT, serveRepo, launch, makeReporter } from './lib/harness.mjs?v=108';
+import { ROOT, serveRepo, launch, makeReporter } from './lib/harness.mjs';
 
 // 이 검증은 '재배포' 를 흉내내려고 실제로 자산 버전을 올린다. 끝나면 되돌린다 —
 // 검사를 돌렸다는 이유로 커밋할 것이 생기면 안 된다.

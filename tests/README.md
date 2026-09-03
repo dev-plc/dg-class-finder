@@ -47,3 +47,17 @@ node tests/verify-print.mjs       # 하나만
   검사하면 오늘 통과하고 내일 깨진다.
 - **고친 뒤에는 되돌려서 실패하는지 본다.** 통과만 보고 넘기면, 아무것도 검사하지
   않는 검사를 늘리게 된다.
+
+---
+
+## 함정
+
+- **`page.pdf()` 는 지금 흉내 내고 있는 매체를 따른다.** `emulateMedia({media:'screen'})`
+  뒤에 그냥 부르면 인쇄 규칙이 하나도 안 걸린 화면이 PDF 가 된다.
+  쪽수를 세려면 `emulateMedia({ media: 'print' })` 를 먼저 부를 것 (`verify-print.mjs`).
+- **`nth-child` 로 표의 열을 집지 말 것.** 전체 출석표는 앞쪽 회차를 `.old-col`
+  (`display:none`)로 접는다 — 숨은 칸의 좌표는 뜻이 없어 sticky 가 깨진 것처럼 보인다.
+- **가짜 응답은 조회 조건까지 흉내 낸다.** `dg_attendance` 를 사람 구별 없이 다 돌려주면
+  상세 모달의 '기록 없음' 칸이 사라져 검증이 헛돈다 (`verify-admin.mjs` 참고).
+- 조회 화면 픽스처는 GAS 의 `attendanceByDate`(키가 `이름+전화`), 관리자 픽스처는
+  `dg_attendance` REST(키가 **uuid**). **서로 못 가져다 쓴다.**

@@ -37,9 +37,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=108';
+} from './scripts/members-data.js?v=111';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=108';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=111';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -279,6 +279,26 @@ function compareTeamName(a, b) {
     return String(a).localeCompare(String(b), 'ko', { numeric: true });
 }
 
+/**
+ * 조의 담당교역자 — **조장 것 우선, 없으면 그 조 최빈값**.
+ *
+ * 조원마다 다르게 적혀 있는 조가 있어서 하나를 골라야 한다. 마지막으로 만난 값을
+ * 쓰면 명단 차례가 바뀔 때마다 카드의 교역자가 바뀐다.
+ */
+function teamPastor(members) {
+    const lead = members.find(m => (m.role || '').includes('조장') && (m.pastor || '').trim());
+    if (lead) return lead.pastor.trim();
+
+    const n = new Map();
+    for (const m of members) {
+        const p = (m.pastor || '').trim();
+        if (p) n.set(p, (n.get(p) || 0) + 1);
+    }
+    // 같은 수면 가나다순 — 새로 그릴 때마다 이름이 바뀌면 안 된다
+    return [...n.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))[0]?.[0] || '';
+}
+
 function renderTeamsView(filterText = '') {
     // 조별로 그룹화
     const teamGroups = {};
@@ -291,11 +311,14 @@ function renderTeamsView(filterText = '') {
                 members: []
             };
         }
-        if (member.pastor) teamGroups[member.team].pastor = member.pastor;
+
         teamGroups[member.team].members.push(member);
     });
     
     // 조 이름 차례 (YF1, YF2, ..., YM1, ..., C1, ..., 남1, ..., 여1, ...)
+    // 담당교역자는 조원이 다 모인 뒤에 정한다 (루프 안에서 정하면 마지막 값이 이긴다).
+    for (const t of Object.values(teamGroups)) t.pastor = teamPastor(t.members);
+
     const sortedTeams = Object.values(teamGroups).sort((a, b) => compareTeamName(a.name, b.name));
 
     allTeams = sortedTeams;
@@ -355,18 +378,60 @@ teamFilter.addEventListener('input', (e) => {
     renderTeamsView(e.target.value.trim());
 });
 
-let matrixToken = 0;
+/**
+ * 전체 출석표 접기 버튼 배선.
+ *
+ * 버튼은 머리줄(모달)에 있고 표는 스크롤 영역에 있어 형제가 아니다. 그래서
+ * **모달 안에서** 표를 찾는다 — 전역으로 찾으면 표가 둘일 때 첫 것을 집는다.
+ */
+function wireMatrixFold(modalEl) {
+    modalEl?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-matrix-fold]');
+        if (!btn) return;
+        const table = modalEl.querySelector('.matrix-table');
+        if (!table) return;
+        const folded = table.classList.toggle('folded');
+        btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+        const total = table.querySelectorAll('thead th').length - 1;
+        btn.textContent = folded ? `전체 ${total}회차 보기` : '최근 10회차만';
+    });
+}
 
-function openAdminMatrixModal(team) {
+let matrixToken = 0;
+wireMatrixFold(document.getElementById('matrixModal'));
+
+/**
+ * 관리자용 전체 출석표.
+ *
+ * ⚠️ **`getStatus` 를 반드시 넘긴다.** 렌더러의 기본값은 `m.attendanceByDate` 인데,
+ * 관리자 화면은 `refreshAttendance()`(GAS 왕복)를 부르지 않아 그 객체에 **지금 고른
+ * 출석관리 주차 한 회차**밖에 없다. 안 넘기면 나머지 열이 전부 `·` 로 나오는데
+ * 오류가 안 나서 조용히 틀린다. (같은 브라우저로 조장 화면을 먼저 열었으면
+ * localStorage 캐시 때문에 맞아 보인다 — 확인은 시크릿 창에서.)
+ */
+async function openAdminMatrixModal(team) {
     const modal = document.getElementById('matrixModal');
     const scrollEl = document.getElementById('matrixScroll');
     const titleEl = document.getElementById('matrixTitle');
     if (!modal || !scrollEl) return;
 
-    // 표부터 띄운다
-    const res = renderTeamMatrixHTML(team.name, team.members, null);
-    if (titleEl) titleEl.innerHTML = res.titleText + (res.foldBtnHtml || '');
-    scrollEl.innerHTML = res.tableHTML;
+    // 결석 현황이 이미 읽어 둔 것이 있으면 그것을 쓴다 (요청을 아낀다)
+    if (!abHistory) {
+        try {
+            abHistory = await getAttendanceHistory();
+        } catch (err) {
+            console.log('출결 이력 조회 실패:', err);
+        }
+    }
+    const getStatus = (m, date) => abHistory?.get(m._uuid)?.get(date) ?? '';
+
+    const draw = (extras) => {
+        const res = renderTeamMatrixHTML(team.name, team.members, extras, { getStatus });
+        if (titleEl) titleEl.innerHTML = res.titleText + (res.foldBtnHtml || '');
+        scrollEl.innerHTML = res.tableHTML;
+    };
+
+    draw(null);          // 표부터 띄운다 — 김밥·과제는 도착하는 대로 다시 그린다
 
     modal.classList.add('active');
     modal.setAttribute('aria-hidden', 'false');
@@ -376,9 +441,7 @@ function openAdminMatrixModal(team) {
     getTeamExtras(team.members)
         .then(extras => {
             if (token !== matrixToken || !modal.classList.contains('active')) return;
-            const res2 = renderTeamMatrixHTML(team.name, team.members, extras);
-            if (titleEl) titleEl.innerHTML = res2.titleText + (res2.foldBtnHtml || '');
-            scrollEl.innerHTML = res2.tableHTML;
+            draw(extras);
         })
         .catch(err => console.log('조 김밥·과제 조회 실패:', err));
 }
@@ -544,14 +607,18 @@ async function showMemberDetail(member) {
             html += `<div class="md-att-grid">`;
             html += [...attRows].reverse().map((r, idx) => {
                 const st = classifyStatus(r.status);
-                const isReplaced = (st.label === 'X' || st.label.includes('대체')) && r.homework;
-                const hwIcon = r.homework ? (isReplaced ? '<span class="hw-badge">📝</span>' : '📝') : '';
-                const badges = (r.lunch ? '🍙' : '') + hwIcon;
+                // 결석인데 과제+소감문을 냈으면 전체 출석표·조원 화면과 같은 모양으로.
+                // (월 1회 한도는 하차 검토만 본다 — docs/RULES.md)
+                const isReplaced = st.cls === 'absent' && r.homework;
+                const cls = isReplaced ? 'makeup' : st.cls;
+                const label = isReplaced ? '과제' : st.label;
+                const badges = (r.lunch ? '🍙' : '') + (r.homework && !isReplaced ? '📝' : '');
                 const hiddenClass = idx >= 10 ? ' md-hidden md-att-hidden' : '';
-                return `<div class="att-chip ${st.cls}${hiddenClass}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${st.title}">
+                const tip = isReplaced ? '결석 — 과제와 소감문으로 메움' : st.title;
+                return `<div class="att-chip ${cls}${hiddenClass}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${escapeHtml(tip)}">
                     <span class="att-date">${escapeHtml(r.key)}</span>
                     ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}
-                    <span class="att-mark">${escapeHtml(st.label)}</span>
+                    <span class="att-mark">${escapeHtml(label)}</span>
                     <span class="att-badges">${badges}</span>
                 </div>`;
             }).join('');

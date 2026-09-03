@@ -1,7 +1,7 @@
 // 전체 출석표에 김밥(🍙) · 과제(📝) 가 붙는지 검증.
 // Supabase / GAS 는 가짜 응답으로 대신한다 (컨테이너 밖으로 못 나간다).
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=108';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
 
 const PORT = 8093;
 const server = await serveRepo(PORT);
@@ -180,7 +180,10 @@ const stick = await page.evaluate(() => {
   return new Promise(r => requestAnimationFrame(() => {
     const scRect = sc.getBoundingClientRect();
     const nameCell = document.querySelector('.matrix-table tbody tr:nth-child(20) .mx-name-cell');
-    const head = document.querySelector('.matrix-table thead th:nth-child(3)');
+    // ⚠️ nth-child 로 집으면 접힌 열(.old-col, display:none)을 잴 수 있다.
+  // 숨은 칸의 좌표는 뜻이 없어 sticky 가 깨진 것처럼 보인다 — 보이는 열을 집는다.
+  const head = [...document.querySelectorAll('.matrix-table thead th')]
+    .find(th => !th.classList.contains('mx-corner') && th.offsetParent !== null);
     const n = nameCell.getBoundingClientRect(), h = head.getBoundingClientRect();
     r({
       nameLeft: Math.round(n.left - scRect.left),

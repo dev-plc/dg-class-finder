@@ -1,6 +1,6 @@
 // 조별 출석부 출력 검증 — 사양서 검증 1~8번.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=108';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
 
 const PORT = 8096;
 const server = await serveRepo(PORT);
@@ -1017,7 +1017,7 @@ const hwTicks = () => page.$$eval('.pr-sheet[data-team="Y1"] tbody tr',
 const dataInfo = () => page.$eval('#prDataInfo', el => el.textContent.trim());
 
 ok('과제가 붙는다', await hwTicks() === 1, `${await hwTicks()}명`);
-ok('몇 명에게 붙었는지 알려 준다', /📝 과제 1명/.test(await dataInfo()), await dataInfo());
+ok('몇 명에게 붙었는지 알려 준다', /📝 과제\+소감문 1명/.test(await dataInfo()), await dataInfo());
 ok('어느 강의명으로 붙였는지 알려 준다', /19강/.test(await dataInfo()), await dataInfo());
 
 // 위쪽 집계와 집계표 합계가 같은 사람을 세는가
@@ -1040,7 +1040,7 @@ hwRows.push({ member_id: 'u2', lecture: '제19강' });
 await page.click('#syncReloadBtn');
 await page.waitForTimeout(1500);
 ok('동기화한 과제가 새로 고침으로 붙는다', await hwTicks() === 2, `${await hwTicks()}명`);
-ok('집계도 같이 늘어난다', /📝 과제 2명/.test(await dataInfo()), await dataInfo());
+ok('집계도 같이 늘어난다', /📝 과제\+소감문 2명/.test(await dataInfo()), await dataInfo());
 
 // --- 붙지 않을 때 이유를 말하는가 -----------------------------------------
 await page.selectOption('#prSessionPicker', '2026-08-30');   // 20강 — 폼에는 '20과'

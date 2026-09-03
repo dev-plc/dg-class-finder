@@ -1,7 +1,7 @@
 // 본인 출석 그리드 — 최근 10회차만 펴 두고 나머지는 접는지 검증.
 // Supabase / GAS 는 가짜 응답으로 대신한다 (컨테이너 밖으로 못 나간다).
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=108';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
 
 const PORT = 8098;
 const server = await serveRepo(PORT);

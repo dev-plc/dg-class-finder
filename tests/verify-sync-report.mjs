@@ -4,7 +4,7 @@
 // ⚠️ 이 저장소는 public 이다. Actions 로그도 누구나 읽는다. 파일에 실명을
 // 안 넣는 것과 같은 이유로 로그에도 안 넣는다 — 그런데 로그는 눈에 잘 안 띈다.
 
-import { makeReporter } from './lib/harness.mjs?v=108';
+import { makeReporter } from './lib/harness.mjs';
 
 const { ok, done } = makeReporter('동기화 기록');
 

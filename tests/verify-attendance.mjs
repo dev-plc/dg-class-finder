@@ -1,7 +1,7 @@
 // 회차 선택 · 배치 저장 · 갱신 후 재렌더 검증.
 // Supabase 와 GAS 는 가짜 응답으로 대신한다 (컨테이너에서 나갈 수 없다).
 
-import { serveRepo, launch, makeReporter } from './lib/harness.mjs?v=108';
+import { serveRepo, launch, makeReporter } from './lib/harness.mjs';
 
 const PORT = 8091;
 const server = await serveRepo(PORT);

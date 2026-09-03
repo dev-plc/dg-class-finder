@@ -1,7 +1,7 @@
 // 관리자 화면 검증 — 검색(동명이인 포함) · 조별 보기 · 개인별 보기 · 필터.
 // Supabase 는 가짜 응답으로 대신한다.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=108';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
 
 const PORT = 8092;
 const server = await serveRepo(PORT);
@@ -14,7 +14,7 @@ const M = [
   { id: 'u4', cohort_id: COHORT, name: '박집사', phone: '4444', team: '남1', team_no: 1,
     location: '칼빈', role: '조장', age: 52, lunch: 'O', status: 'active' },
   { id: 'u1', cohort_id: COHORT, name: '김철수', phone: '1111', team: 'YF1', team_no: 1,
-    location: '칼빈', role: '조장', age: 28, lunch: 'O', status: 'active' },
+    location: '칼빈', role: '조장', age: 28, lunch: 'O', status: 'active', pastor: '이목사' },
   { id: 'u5', cohort_id: COHORT, name: '최권사', phone: '5555', team: '여1', team_no: 1,
     location: '칼빈', role: '조장', age: 60, lunch: 'X', status: 'active' },
   { id: 'u2', cohort_id: COHORT, name: '김철수', phone: '2222', team: 'YM1', team_no: 1,
@@ -24,8 +24,9 @@ const M = [
     location: '웨슬리홀', role: '조장', age: 26, lunch: 'O', status: 'active' },
   { id: 'u6', cohort_id: COHORT, name: '정부부', phone: '6666', team: 'C1', team_no: 1,
     location: '온라인', role: '조장', age: 40, lunch: 'O', status: 'active' },
+  // 조장과 다른 교역자가 적힌 조원. 카드에는 **조장 것**이 나와야 한다.
   { id: 'u3', cohort_id: COHORT, name: '이영희', phone: '3333', team: 'YF1', team_no: 2,
-    location: '칼빈', role: '', age: 31, lunch: 'O', status: 'active' },
+    location: '칼빈', role: '', age: 31, lunch: 'O', status: 'active', pastor: '김목사' },
   { id: 'u7', cohort_id: COHORT, name: '한지난', phone: '7777', team: 'Y9', team_no: 1,
     location: '칼빈', role: '', age: 29, lunch: 'X', status: 'active' },
 ];
@@ -43,6 +44,10 @@ const SESSIONS = [
 const ATT = [
   { member_id: 'u1', session_date: '2026-08-09', status: 'O' },
   { member_id: 'u1', session_date: '2026-08-16', status: '-' },   // 수업 없음 — 흐린 칸
+  // 조 전체 출석표가 **여러 열**에 값을 채우는지 보려고 한 사람에 세 회차를 둔다.
+  { member_id: 'u3', session_date: '2026-08-02', status: 'O' },
+  { member_id: 'u3', session_date: '2026-08-09', status: 'X' },
+  { member_id: 'u3', session_date: '2026-08-16', status: 'O' },
 ];
 // 강 번호가 뒤죽박죽이고 제출 시각이 빈 것도 섞여 있다
 // 18강 칸은 파일을 셋 올린 사람 — 폼이 한 칸에 쉼표로 이어 붙였다
@@ -86,7 +91,11 @@ await page.route('**/rest/v1/**', route => {
   } else if (t === 'dg_sessions') {
     body = SESSIONS;
   } else if (t === 'dg_attendance') {
-    body = (u.searchParams.get('select') || '').includes('dg_members!inner') ? [] : ATT;
+    // dg_members!inner 조인은 getAttendanceHistory() 것 — 관리자 전체 출석표가 쓴다.
+    // 사람별 조회(member_id=eq.)는 **그 사람 것만** 돌려줘야 한다. 다 돌려주면
+    // 상세 모달의 '기록 없음' 칸이 사라져 검증이 헛돈다.
+    const who = (u.search.match(/member_id=eq\.([^&]+)/) || [])[1];
+    body = who ? ATT.filter(r => r.member_id === who) : ATT;
   } else if (t === 'dg_homework') {
     body = HW;
   }
@@ -208,6 +217,55 @@ ok('빈 칸에는 버튼이 없다 (모달)',
 
 await page.screenshot({ path: `${SHOT}/dg-member-detail.png` });
 await page.click('#memberDetailClose');
+await page.waitForTimeout(300);
+
+// --- 조 카드 → 전체 출석표 ---------------------------------------------------
+//
+// ⚠️ 이 검증이 잡으려는 것: 렌더러는 칸 값을 기본적으로 `m.attendanceByDate` 에서
+// 읽는데, **관리자 화면은 그 객체를 전 회차로 채우지 않는다** (refreshAttendance 를
+// 안 부른다). getStatus 를 안 넘기면 한 열만 값이 차고 나머지는 전부 `·` 가 되는데
+// **오류가 안 난다.** 그래서 '여러 열에 값이 있는가' 를 직접 센다.
+await page.click('.tab-btn[data-tab="teams"]');
+await page.waitForTimeout(400);
+await page.click('#teamsGrid .team-card');
+await page.waitForSelector('#matrixModal.active .matrix-table', { timeout: 10000 });
+await page.waitForTimeout(400);
+
+const mx = await page.evaluate(() => {
+  const cells = [...document.querySelectorAll('#matrixModal .matrix-table tbody td.mx-cell')];
+  const filled = cells.filter(c => (c.querySelector('.mx-status')?.textContent || '').trim() !== '·');
+  return {
+    rows: document.querySelectorAll('#matrixModal .matrix-table tbody tr').length,
+    filled: filled.length,
+    // 값이 찬 칸이 몇 개의 서로 다른 열에 걸쳐 있는가
+    cols: new Set(filled.map(c => [...c.parentElement.children].indexOf(c))).size,
+    title: document.getElementById('matrixTitle')?.textContent.trim() || '',
+  };
+});
+ok('조 카드를 누르면 전체 출석표가 뜬다', mx.rows > 0, `${mx.rows}줄`);
+ok('한 열만 차지 않는다 — 전 회차에 값이 온다', mx.cols >= 2,
+   `값이 찬 칸 ${mx.filled}개 / 열 ${mx.cols}개`);
+ok('제목에 조 이름과 인원', /YF1/.test(mx.title) && /명/.test(mx.title), mx.title);
+
+await page.click('#matrixCloseBtn');
+await page.waitForTimeout(300);
+ok('닫으면 사라진다',
+   !(await page.$eval('#matrixModal', el => el.classList.contains('active'))));
+
+// --- 조 카드 담당교역자 ------------------------------------------------------
+const cards = await page.$$eval('#teamsGrid .team-card', els => els.map(e => ({
+  name: e.querySelector('.team-card-name')?.textContent.trim() || '',
+  pastor: e.querySelector('.team-card-pastor')?.textContent.trim() || '',
+})));
+const yf1 = cards.find(c => c.name === 'YF1');
+ok('조 카드에 담당교역자가 보인다', /이목사/.test(yf1.pastor), yf1.pastor);
+ok('조장 것을 쓴다 (조원이 다른 교역자여도)', !/김목사/.test(yf1.pastor), yf1.pastor);
+
+await page.fill('#teamFilter', '이목사');
+await page.waitForTimeout(400);
+const found = await page.$$eval('#teamsGrid .team-card-name', els => els.map(e => e.textContent.trim()));
+ok('교역자 이름으로 검색된다', found.includes('YF1') && found.length < 7, found.join(','));
+await page.fill('#teamFilter', '');
 await page.waitForTimeout(300);
 
 // --- 검색 모드는 없앴다 -----------------------------------------------------

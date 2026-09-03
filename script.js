@@ -15,12 +15,13 @@ import {
     getTeamExtras,
     isClassSession,
     refreshAttendance,
+    saveAttendance,
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=108';
+} from './scripts/members-data.js?v=111';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=108';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=111';
 
 // 1-1. 내 정보 기억
 //
@@ -376,17 +377,22 @@ async function renderMyAttendance(member) {
 
     grid.innerHTML = rows.map((r, i) => {
         const st = classifyStatus(r.status);
-        const isReplaced = (st.label === 'X' || st.label.includes('대체')) && r.homework;
-        const hwIcon = r.homework ? (isReplaced ? '<span class="hw-badge">📝</span>' : '📝') : '';
-        const badges = (r.lunch ? '🍙' : '') + hwIcon;
-        const tip = [r.key, r.name, st.title,
+        // 결석인데 과제+소감문을 냈으면 전체 출석표와 **같은 모양**으로 보여준다.
+        // 한쪽은 X, 한쪽은 '과제' 면 조원과 조장이 같은 칸을 두고 다른 말을 한다.
+        // (월 1회 한도는 여기서 보지 않는다 — 그 판정은 하차 검토가 한다. docs/RULES.md)
+        const isReplaced = st.cls === 'absent' && r.homework;
+        const cls = isReplaced ? 'makeup' : st.cls;
+        const label = isReplaced ? '과제' : st.label;
+        const badges = (r.lunch ? '🍙' : '') + (r.homework && !isReplaced ? '📝' : '');
+        const tip = [r.key, r.name,
+                     isReplaced ? '결석 — 과제와 소감문으로 메움' : st.title,
                      r.lunch ? '🍙 김밥 신청' : '', r.homework ? '📝 과제와 소감문 제출' : '']
                     .filter(Boolean).join(' · ');
 
-        return `<div class="att-chip ${st.cls}${i < folded ? ' old' : ''}" title="${escapeAttr(tip)}">
+        return `<div class="att-chip ${cls}${i < folded ? ' old' : ''}" title="${escapeAttr(tip)}">
                     <span class="att-date">${escapeHtml(r.key)}</span>
                     ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}
-                    <span class="att-mark">${escapeHtml(st.label)}</span>
+                    <span class="att-mark">${escapeHtml(label)}</span>
                     <span class="att-badges">${badges}</span>
                 </div>`;
     }).join('');
@@ -828,13 +834,34 @@ function renderTeamMatrix(teamName, members, extras) {
     const titleEl = document.getElementById('matrixTitle');
     if (!scrollEl) return;
 
-    const { titleText, tableHTML } = renderTeamMatrixHTML(teamName, members, extras);
+    const { titleText, tableHTML, foldBtnHtml } = renderTeamMatrixHTML(teamName, members, extras);
 
-    if (titleEl) titleEl.textContent = titleText;
+    // 버튼을 버리면 접힌 앞쪽 회차를 펼칠 길이 없다 (관리자 화면과 같게 둔다).
+    if (titleEl) titleEl.innerHTML = escapeHtml(titleText) + (foldBtnHtml || '');
     scrollEl.innerHTML = tableHTML;
 }
 
+/**
+ * 전체 출석표 접기 버튼 배선.
+ *
+ * 버튼은 머리줄(모달)에 있고 표는 스크롤 영역에 있어 형제가 아니다. 그래서
+ * **모달 안에서** 표를 찾는다 — 전역으로 찾으면 표가 둘일 때 첫 것을 집는다.
+ */
+function wireMatrixFold(modalEl) {
+    modalEl?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-matrix-fold]');
+        if (!btn) return;
+        const table = modalEl.querySelector('.matrix-table');
+        if (!table) return;
+        const folded = table.classList.toggle('folded');
+        btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+        const total = table.querySelectorAll('thead th').length - 1;
+        btn.textContent = folded ? `전체 ${total}회차 보기` : '최근 10회차만';
+    });
+}
+
 let matrixToken = 0;
+wireMatrixFold(document.getElementById('matrixModal'));
 
 function openMatrixModal() {
     if (!shownMember || !shownMember.team) return;
