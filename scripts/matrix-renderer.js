@@ -8,7 +8,7 @@
 //
 // 노란 '과제' 칸이 월 1회 한도를 안 보는 이유는 docs/RULES.md 에 있다.
 
-import { getSessions, isClassSession, normalizeLecture } from './members-data.js?v=111';
+import { getSessions, getToday, isClassSession, normalizeLecture } from './members-data.js?v=112';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -33,12 +33,15 @@ export function classifyStatus(raw) {
 
 // 회차를 컬럼으로 바꾼다. 두 키(date · name)를 같이 들고 다니는 게 핵심이다.
 export function buildSessionColumns() {
-    return getSessions()
+    const today = getToday();
+    // 지난 회차 + **다가오는 회차 하나**. 다음 주에 무엇을 하는지 보여야 준비가 된다.
+    return getSessions({ throughNext: true })
         .map(s => ({
             date: s.date,                    // ← 출결·김밥을 찾을 키
             key: s.key,                      // ← 화면에 찍는 MM/DD
             name: s.name || '',              // ← 과제를 찾을 키
             isClass: isClassSession(s.name), // ← '자유교제' 같은 회차는 흐리게
+            isUpcoming: s.date > today,      // ← 아직 안 온 주
         }))
         .filter(c => c.date);
 }
@@ -90,9 +93,12 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
 
     const headRow = cols.map((c, i) => {
         const hideClass = i < foldedCount ? ' old-col' : '';
-        return `<th class="${c.isClass ? '' : 'non-class'}${hideClass}">
+        const cls = [c.isClass ? '' : 'non-class', c.isUpcoming ? 'upcoming' : '', hideClass.trim()]
+            .filter(Boolean).join(' ');
+        return `<th class="${cls}">
             <span class="mx-session">${escapeHtml(c.name || '-')}</span>
             <span class="mx-date">${escapeHtml(c.key)}</span>
+            ${c.isUpcoming ? '<span class="mx-soon">예정</span>' : ''}
         </th>`;
     }).join('');
 
@@ -109,12 +115,21 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
 
             // 결석인데 과제+소감문을 냈다. (월 1회 한도는 여기서 보지 않는다 —
             // 그 판정은 하차 검토가 한다. docs/RULES.md 참고)
-            const isReplaced = st.cls === 'absent' && homework;
+            const isReplaced = !c.isUpcoming && st.cls === 'absent' && homework;
             if (isReplaced) {
                 st.label = '과제';
                 st.cls = 'makeup';
                 st.title = '결석 — 과제·소감문으로 메움';
             }
+
+            // 아직 안 온 주. '·(기록 없음)' 으로 두면 전원이 빠진 것처럼 읽힌다.
+            // 뱃지는 남긴다 — 김밥 신청과 과제 제출은 미리 받는다.
+            if (c.isUpcoming) {
+                st.label = '·';
+                st.cls = 'upcoming';
+                st.title = '아직 안 온 회차';
+            }
+
             const hwIcon = homework ? (isReplaced ? '<span class="hw-badge">📝</span>' : '📝') : '';
             const badges = (lunch ? '🍙' : '') + hwIcon;
             const tip = [m.name, c.key, c.name, st.title,

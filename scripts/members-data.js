@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=111';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=111';
+import { matches as hangulMatches } from './hangul.js?v=112';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=112';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -718,10 +718,19 @@ export function splitSubmissionLinks(content) {
  * 관리자 화면은 지난 주차 정정이 주 업무라 { all: true } 로 전 주차를 받는다.
  * 두 화면의 정책이 다르다는 것을 알고 쓸 것.
  */
-export function getSessions({ all = false } = {}) {
+export function getSessions({ all = false, throughNext = false } = {}) {
   if (all) return state.sessions.slice();
   const today = state.today || todayISO();
-  return state.sessions.filter(s => s.date <= today);
+  const past = state.sessions.filter(s => s.date <= today);
+  if (!throughNext) return past;
+
+  // 다가오는 회차 하나만 더. 전체 출석표가 쓴다 — 다음 주에 무엇을 하는지 보여야
+  // 조장이 준비를 한다. state.sessions 는 시간순이라 첫 미래 회차가 다음 회차다.
+  //
+  // ⚠️ 기본값(인자 없이 부르기)은 절대 이걸 포함하면 안 된다. 회차 선택칸이
+  // 그 값을 쓰는데, 예정 주차를 미리 찍으면 GAS 가 거부해서 저장이 실패한다.
+  const next = state.sessions.find(s => s.date > today);
+  return next ? [...past, next] : past;   // 마지막 회차 뒤라면 지금과 똑같다
 }
 
 /** GAS 가 확정한 오늘 (YYYY-MM-DD). 미래 회차를 가려내는 데 쓴다. */

@@ -30,6 +30,11 @@ const SESSIONS = Array.from({ length: 16 }, (_, i) => {
     name: i === 1 ? '자유교제' : `${i < 1 ? i + 1 : i}강`,
   };
 });
+// 아직 안 온 회차 하나. 앞의 16개는 today('2026-08-12') 보다 전이다.
+// 전체 출석표는 이것까지 그리고, 회차 선택칸은 그리면 안 된다.
+const UPCOMING = { session_date: '2026-08-16', label: '08/16', name: '17강' };
+SESSIONS.push(UPCOMING);
+
 const D = SESSIONS.map(s => s.session_date);   // D[0] 1강 · D[1] 자유교제 · D[2] 2강
 
 // u1: D[0] 김밥 + 1강 과제 / u2: D[2] 김밥만 / u3: 2강 과제만 (폼 표기 '제2강')
@@ -129,12 +134,63 @@ ok('수업 없는 회차만 non-class',
    heads.slice(1).filter(h => h.nonClass).map(h => h.session).join(',') === '자유교제',
    heads.slice(1).map(h => `${h.session}:${h.nonClass ? '흐림' : '보통'}`).join(' '));
 
+// --- 다가오는 주차 -----------------------------------------------------------
+//
+// 20강까지 했으면 다음 주 21강 열이 보여야 준비가 된다. 다만 그 칸을 '·(기록 없음)'
+// 으로 두면 **전원이 빠진 것처럼** 읽히므로 '예정' 이라고 말해야 한다.
+const soon = await page.evaluate((label) => {
+  const ths = [...document.querySelectorAll('.matrix-table thead th')];
+  const idx = ths.findIndex(th => th.querySelector('.mx-date')?.textContent.trim() === label);
+  const th = ths[idx];
+  const row = document.querySelector('.matrix-table tbody tr');
+  const td = row?.children[idx];
+  return {
+    found: idx > 0,
+    hidden: th ? th.classList.contains('old-col') : null,
+    headCls: th?.className || '',
+    soonText: th?.querySelector('.mx-soon')?.textContent.trim() || '',
+    cellCls: td?.className || '',
+    cellText: td?.querySelector('.mx-status')?.textContent.trim() || '',
+  };
+}, UPCOMING.label);
+
+ok('다가오는 회차가 열로 들어온다', soon.found, JSON.stringify(soon));
+ok('그 열은 접히지 않는다 (최근 10회차 안)', soon.hidden === false, `old-col=${soon.hidden}`);
+ok("열 머리에 '예정' 을 단다", soon.soonText === '예정', soon.soonText);
+ok('열 머리에 표시가 붙는다', /upcoming/.test(soon.headCls), soon.headCls);
+ok('칸도 예정으로 칠한다', /upcoming/.test(soon.cellCls), soon.cellCls);
+ok('결석으로 읽히지 않는다', !/absent|makeup/.test(soon.cellCls), soon.cellCls);
+ok('칸 글자는 기록 없음 그대로', soon.cellText === '·', soon.cellText);
+
+// 예정 회차가 들어와도 출석 수는 그대로다 ('O' 만 세므로)
+const presentText = await page.$eval('.matrix-table tbody tr .mx-role',
+                                     el => el.textContent.trim());
+ok('출석 수는 예정 회차에 안 흔들린다', /출석 \d+/.test(presentText), presentText);
+
+// ⚠️ 제일 중요한 것 — 회차 선택칸에는 예정 주차가 없어야 한다.
+// 들어가면 조장이 미리 찍다가 GAS 거부로 실패한다.
+//
+// 모달은 열어 둔 채로 본다. 여기서 닫으면 뒤의 스크롤 고정 검사가 숨은 요소를
+// 재게 되고, requestAnimationFrame 이 안 돌아 그 검사가 통째로 죽는다.
+const picker = await page.$$eval('#sessionPicker option', els => els.map(e => e.value));
+ok('회차 선택칸에는 예정 주차가 없다', !picker.includes(UPCOMING.session_date),
+   picker.slice(0, 3).join(',') + ' …');
+ok('지난 회차는 그대로 고를 수 있다', picker.length === SESSIONS.length - 1,
+   `${picker.length}개 / 회차 ${SESSIONS.length}개`);
+
+// 표는 딱 한 회차만 더 그린다 — 선택칸보다 하나 많아야 한다.
+// (마지막 회차 뒤라면 더할 것이 없어 둘이 같아진다)
+const colCount = await page.$$eval('.matrix-table thead th', els => els.length - 1);
+ok('표는 선택칸보다 딱 하나 많다 (예정 하나)', colCount === picker.length + 1,
+   `표 ${colCount}열 / 선택칸 ${picker.length}개`);
+
 // --- 뱃지 위치 -------------------------------------------------------------
 const cellsOf = (rowIdx) => page.$$eval(
   `.matrix-table tbody tr:nth-child(${rowIdx}) td`,
   els => els.map(e => ({
     status: e.querySelector('.mx-status')?.textContent.trim() || '',
     badges: e.querySelector('.mx-badges')?.textContent.trim() || '',
+    cls: e.className,
   })));
 
 const nameOf = (rowIdx) => page.$eval(
@@ -203,9 +259,10 @@ ok('범례에 🍙 · 📝 설명 있음', legend.includes('🍙') && legend.inc
 
 const noneCell = (await cellsOf(rowOf('조원05')))[1];
 ok("'-' 는 수업 없음으로 표시", noneCell.status === '−', JSON.stringify(noneCell));
-const noneCls = await page.$eval('.matrix-table tbody tr:nth-child(1) td:nth-child(2)',
-  el => el.className);
-ok("'-' 칸이 특이표기(파랑)로 칠해지지 않음", !noneCls.includes('special'), noneCls);
+// ⚠️ nth-child 로 다시 집으면 안 된다 — 이름 칸(th)이 1번이라 한 칸씩 밀리고,
+// 접힌 열(.old-col)을 집을 수도 있다. 위에서 본 그 칸의 클래스를 그대로 본다.
+ok("'-' 칸이 특이표기(파랑)로 칠해지지 않음", !noneCell.cls.includes('special'), noneCell.cls);
+ok("'-' 칸은 '수업 없음'(none) 으로 칠해진다", noneCell.cls.includes('none'), noneCell.cls);
 
 await page.evaluate(() => {
   const sc = document.querySelector('.matrix-scroll');

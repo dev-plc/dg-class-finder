@@ -1152,6 +1152,21 @@ body.large-text .map-image {
 .mx-cell.non-class { background: rgba(0, 0, 0, 0.045); }
 .mx-cell.non-class .mx-status { opacity: 0.5; }
 
+/* 아직 안 온 회차. 빗금으로 '값이 없는 게 정상' 이라고 말한다 —
+   그냥 비워 두면 전원이 빠진 것처럼 읽힌다.
+   색은 rgba() 로 — .mx-* 에는 다크모드 규칙이 없고 반투명이라 저절로 따라온다. */
+.matrix-table thead th.upcoming .mx-session { opacity: 0.65; }
+.mx-soon { display: block; font-size: 8px; font-weight: 700; opacity: 0.75; }
+.mx-cell.upcoming {
+    background: repeating-linear-gradient(45deg,
+        rgba(0, 0, 0, 0.035) 0 4px, transparent 4px 8px);
+}
+.mx-cell.upcoming .mx-status { opacity: 0.35; }
+body.dark-mode .mx-cell.upcoming {
+    background: repeating-linear-gradient(45deg,
+        rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px);
+}
+
 .mx-cell.present { background: rgba(16, 185, 129, 0.16); }
 .mx-cell.absent  { background: rgba(239, 68, 68, 0.12); }
 /* 글자색을 옅은 호박색으로 두면 밝은 모드에서 대비가 1.44:1 이라 안 읽힌다.
