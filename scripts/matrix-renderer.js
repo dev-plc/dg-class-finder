@@ -1,4 +1,4 @@
-import { getSessions, isClassSession } from './members-data.js?v=103';
+import { getSessions, isClassSession } from './members-data.js?v=108';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -92,6 +92,11 @@ export function renderTeamMatrixHTML(teamName, members, extras) {
             const homework = !!(myHw && c.name && myHw.has(normalizeLectureKey(c.name)));
 
             const isReplaced = (st.label === 'X' || st.label.includes('대체')) && homework;
+            if (isReplaced) {
+                st.label = '과제';
+                st.cls = 'makeup';
+                st.title = '결석 — 과제·소감문으로 메움';
+            }
             const hwIcon = homework ? (isReplaced ? '<span class="hw-badge">📝</span>' : '📝') : '';
             const badges = (lunch ? '🍙' : '') + hwIcon;
             const tip = [m.name, c.key, c.name, st.title,

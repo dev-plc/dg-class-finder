@@ -6,7 +6,7 @@
 import { createServer } from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { ROOT, makeReporter } from './lib/harness.mjs';
+import { ROOT, makeReporter } from './lib/harness.mjs?v=108';
 
 const PORT = 8087;
 const { ok, done } = makeReporter('동기화 재시도');

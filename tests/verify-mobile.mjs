@@ -1,7 +1,7 @@
 // 관리자 화면 모바일 레이아웃 검증.
 // 좁은 폭에서 글자가 세로로 쪼개지거나 상자를 넘치지 않는지 본다.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=108';
 
 const PORT = 8097;
 const server = await serveRepo(PORT);

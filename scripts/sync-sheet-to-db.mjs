@@ -15,7 +15,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-import { normId, peopleList, classifyUnknownIds } from './sync-report.mjs';
+import { normId, peopleList, classifyUnknownIds } from './sync-report.mjs?v=108';
 
 const args = process.argv.slice(2);
 const getArg = (name) => {

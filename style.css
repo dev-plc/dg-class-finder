@@ -1154,6 +1154,7 @@ body.large-text .map-image {
 
 .mx-cell.present { background: rgba(16, 185, 129, 0.16); }
 .mx-cell.absent  { background: rgba(239, 68, 68, 0.12); }
+.mx-cell.makeup  { background: rgba(245, 158, 11, 0.20); color: #fbbf24; }
 .mx-cell.special { background: rgba(59, 130, 246, 0.14); font-size: 10px; }
 /* 기록 없는 칸·수업 없는 칸은 흐리게.
    다만 🍙·📝 까지 흐려지면 안 보이므로 표기만 흐리게 한다 */
