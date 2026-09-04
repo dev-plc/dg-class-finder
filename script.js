@@ -22,9 +22,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=114';
+} from './scripts/members-data.js?v=115';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=114';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=115';
 
 // 1-1. 내 정보 기억
 //
@@ -708,20 +708,36 @@ function renderTeamMembers(members, teamName, role) {
         // O 로 덮어 버린다. 바꿔야 한다면 시트에서 직접 고치는 게 맞다.
         const isPlain = status === '' || status.toUpperCase() === 'O' || status.toUpperCase() === 'X';
 
+        // 어느 회차에도 O/X 가 없는 사람. '안 왔다' 가 아니라 **명단에 갓
+        // 올라왔을 수 있다** — 앱은 둘을 구별할 수 없다(합류 시점을 담는 열이
+        // 없다). 체크를 안 한 채 저장하면 지금까지 X 가 나갔고, 그래서 이번 주
+        // 처음 온 사람이 지난 회차 결석으로 찍혔다.
+        //
+        // 그래서 이 사람은 **빈칸→X 에서 뺀다.** 체크를 켜면 그대로 O 로 나가고
+        // (그 순간 기록이 생긴다) 그다음부터는 여느 조원과 똑같이 동작한다.
+        const noRecord = !Object.values(m.attendanceByDate || {})
+                              .some(v => String(v || '').trim() !== '');
+
         const checked = status.toUpperCase() === 'O';
         const control = isPlain
             ? `<input type="checkbox" ${checked ? 'checked' : ''}
-                    class="attendance-check"
+                    class="attendance-check${noRecord ? ' no-record' : ''}"
                     data-name="${escapeAttr(m.name)}" data-phone="${escapeAttr(m.phone)}"
+                    data-no-record="${noRecord ? '1' : '0'}"
                     data-initial="${checked ? '1' : '0'}">`
             : `<span class="attendance-badge" title="시트에 적힌 표기입니다. 바꾸려면 시트에서 고치세요.">${escapeHtml(status)}</span>`;
+
+        // 왜 이 사람만 결석으로 안 나가는지 보이게 한다.
+        const noRecordTag = (isPlain && noRecord)
+            ? `<span class="member-newtag" title="아직 어느 회차에도 기록이 없습니다. 체크하지 않으면 결석으로 저장하지 않습니다.">기록 없음</span>`
+            : '';
 
         return `
             <div class="team-member-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     ${control}
                     <span class="member-name">
-                        ${escapeHtml(m.name)}(${escapeHtml(m.phone)}) ${lunchIcon}
+                        ${escapeHtml(m.name)}(${escapeHtml(m.phone)}) ${lunchIcon}${noRecordTag}
                     </span>
                 </div>
                 <span class="member-role-tag">
@@ -767,12 +783,18 @@ function refreshSaveBar() {
     const present = checks.filter(cb => cb.checked).length;
     const changes = changedChecks().length;
 
-    // 저장은 명단 전체를 O/X 로 쓴다. 버튼의 수도 실제로 쓰는 수여야 한다 —
+    // 실제로 나가는 사람만 센다. 기록이 한 번도 없는 사람은 체크를 안 하면
+    // 보내지 않는다 (renderTeamMembers 의 '기록 없음' 참고).
+    const sending = checks.filter(cb => cb.checked || cb.dataset.noRecord !== '1');
+    const skipped = checks.length - sending.length;
+
+    // 저장은 명단 전체를 O/X 로 쓴다. 버튼의 수도 **실제로 쓰는 수**여야 한다 —
     // '변경 1건' 이라 적고 12명을 쓰면 나중에 결석이 왜 늘었는지 알 수 없다.
-    info.textContent = `출석 ${present} · 결석 ${checks.length - present}`
-        + (changes ? ` · 변경 ${changes}건` : '');
+    info.textContent = `출석 ${present} · 결석 ${sending.length - present}`
+        + (changes ? ` · 변경 ${changes}건` : '')
+        + (skipped ? ` · 기록 없는 ${skipped}명은 그대로 둡니다` : '');
     btn.disabled = changes === 0;
-    btn.textContent = changes === 0 ? '변경 사항 없음' : `출석 반영 (${checks.length}명)`;
+    btn.textContent = changes === 0 ? '변경 사항 없음' : `출석 반영 (${sending.length}명)`;
     bar.classList.toggle('has-changes', changes > 0);
 }
 
@@ -806,11 +828,17 @@ async function saveAttendanceChanges() {
     // 그래도 전원을 보내는 것이지 전원을 덮는 것은 아니다. ◎ · − · 돌봄 처럼
     // 사람이 시트에 직접 넣은 표기는 체크박스가 아니라 배지로 그려서 여기
     // 목록에 아예 들어오지 않는다 (위 renderTeamMembers 참고).
-    const changes = attendanceChecks().map(cb => ({
-        name: cb.dataset.name,
-        phone: cb.dataset.phone,
-        status: cb.checked ? 'O' : 'X',
-    }));
+    //
+    // 다만 **어느 회차에도 기록이 없는 사람**은 뺀다. 체크를 안 했다는 것이
+    // '안 왔다' 인지 '아직 명단에 없었다' 인지 앱이 모르기 때문이다 —
+    // 모르는 쪽은 안 쓴다. 체크를 켠 사람은 기록이 없어도 O 로 나간다.
+    const changes = attendanceChecks()
+        .filter(cb => cb.checked || cb.dataset.noRecord !== '1')
+        .map(cb => ({
+            name: cb.dataset.name,
+            phone: cb.dataset.phone,
+            status: cb.checked ? 'O' : 'X',
+        }));
 
     const prevText = btn.textContent;
     btn.disabled = true;

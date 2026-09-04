@@ -41,9 +41,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=114';
+} from './scripts/members-data.js?v=115';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=114';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=115';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -803,11 +803,40 @@ function attChanges() {
  * 빈 값이 나간다 ('전체 지우기' 가 그 용도다).
  */
 function attBlanks() {
+    // ⚠️ 조를 안 골랐으면(=전체) 빈칸을 건드리지 않는다.
+    //
+    // attRoster() 가 전체일 때 **기수 전원**을 범위로 잡는다. 그 상태에서 한
+    // 명을 고치면 전원에게 X 가 나갔다 — 명단에 갓 올라온 사람들이 지난
+    // 회차 결석으로 찍힌 것이 그 경로다. 빈칸을 채우려면 조를 고른다.
+    if (!attTeam) return [];
+
     const out = [];
     for (const [uuid, status] of attDraft) {
-        if (status === '' && (attBaseline.get(uuid) ?? '') === '') out.push({ uuid, status: 'X' });
+        if (status !== '' || (attBaseline.get(uuid) ?? '') !== '') continue;
+        // 어느 회차에도 기록이 없는 사람은 '안 왔다' 가 아니라 **아직 명단에
+        // 들어온 지 얼마 안 됐다** 일 수 있다. 앱은 둘을 구별할 수 없으므로
+        // (합류 시점을 담는 열이 없다) 모르는 쪽은 쓰지 않는다.
+        // 손으로 O/X 를 고른 것은 attChanges 로 나가므로 여기 안 걸린다.
+        if (!attHasAnyRecord(uuid)) continue;
+        out.push({ uuid, status: 'X' });
     }
     return out;
+}
+
+/**
+ * 그 사람에게 **어느 회차든** 기록이 있는가.
+ *
+ * 출석 관리 탭은 한 회차만 스냅숏으로 들고 있어 다른 회차를 모른다.
+ * 결석 현황이 이미 쓰는 getAttendanceHistory() 를 함께 쓴다 (한 번만 받는다).
+ * 못 받아 왔으면 **예전대로 동작한다** — 모른다고 빈칸을 통째로 빼면
+ * 결석자가 다시 '기록 없음' 으로 쌓인다.
+ */
+function attHasAnyRecord(uuid) {
+    if (!abHistory) return true;
+    const byDate = abHistory.get(uuid);
+    if (!byDate) return false;
+    for (const v of byDate.values()) if (String(v || '').trim() !== '') return true;
+    return false;
 }
 
 function attReadOnly() {
@@ -929,6 +958,7 @@ function refreshAttSaveBar() {
         ? '아직 지나지 않은 회차라 저장할 수 없습니다'
         : !n ? '변경 사항 없음'
         : blanks ? `${n}명 변경 · 빈칸 ${blanks}명은 결석(X)으로 함께 저장`
+        : !attTeam ? `${n}명 변경됨 · 전체 보기에서는 빈칸을 건드리지 않습니다 (조를 고르면 함께 저장)`
         : `${n}명 변경됨`;
 }
 
@@ -1174,6 +1204,13 @@ async function loadSessionAttendance() {
     renderAttList();
     try {
         await loadAttendanceForSession(attSessionDate);
+        // 빈칸→X 를 가리려면 '이 사람에게 기록이 아예 없나' 를 알아야 하는데
+        // 위 조회는 한 회차만 준다. 결석 현황이 이미 읽어 둔 것이 있으면
+        // 그것을 쓰고, 없을 때만 한 번 받는다. 실패해도 저장은 막지 않는다.
+        if (!abHistory) {
+            try { abHistory = await getAttendanceHistory(); }
+            catch (err) { console.log('출결 이력 조회 실패(빈칸 판정은 예전대로):', err); }
+        }
         memberData = getMembers();
         attReady = true;
         attLoadedAtMs = Date.now();

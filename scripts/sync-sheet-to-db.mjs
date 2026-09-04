@@ -261,10 +261,19 @@ const START_YEAR = toInt(getArg('start-year')) || toInt(process.env.START_YEAR)
 const attendanceBySheetId = [];
 const sessionRows = [];   // dg_sessions 에 넣을 회차 목록
 
+// 정리 단계가 '시트가 아는 회차' 로 쓰는 목록.
+//
+// ⚠️ sessionRows 로 대신하면 안 된다. 그건 gas.sessions 갈래에서만 채워져서,
+//    옛 갈래(sessionDates·todayKey)로 물러나면 목록이 비고 정리가 **오류도
+//    로그도 없이** 통째로 건너뛴다. 비어 있는 것은 '지울 게 없다' 와 구별되지
+//    않으므로 아무도 눈치채지 못한다.
+let sheetSessionDates = [];
+
 if (Array.isArray(gas.sessions) && gas.sessions.length) {
   // GAS v19+ — 연도까지 확정된 회차를 준다. 여기서 추측하지 않는다.
   // 판단이 두 곳에 있으면 반드시 갈라지므로 GAS 한 곳으로 모았다.
   const isoList = gas.sessions.map(s => s.date);
+  sheetSessionDates = isoList;
   console.log(`▶ 회차 ${isoList.length}개: ${isoList[0]} ~ ${isoList[isoList.length - 1]} (GAS 확정)`);
 
   for (const s of gas.sessions) {
@@ -302,6 +311,7 @@ if (Array.isArray(gas.sessions) && gas.sessions.length) {
   // GAS v18 이하 — MM/DD 만 준다. 연도를 여기서 붙인다.
   const dateOf = buildSessionDates(gas.sessionDates, START_YEAR);
   const isoList = [...dateOf.values()];
+  sheetSessionDates = isoList;
 
   console.log(`▶ 회차 ${dateOf.size}개: ${isoList[0]} ~ ${isoList[isoList.length - 1]}`);
   console.log(`   (시작 연도 ${START_YEAR}. 틀리면 --start-year=YYYY 로 지정하세요)`);
@@ -322,6 +332,8 @@ if (Array.isArray(gas.sessions) && gas.sessions.length) {
 } else if (trim(gas.todayKey)) {
   const iso = toISODate(gas.todayKey, START_YEAR);
   if (iso) {
+    // 이 갈래는 오늘 하루만 안다. 정리도 그 하루만 건드린다.
+    sheetSessionDates = [iso];
     for (const r of rows) {
       const status = trim(r.attendance);
       if (!status) continue;
@@ -568,10 +580,11 @@ if (attendanceBySheetId.length) {
 //     옛 기록까지 지우면 이력이 사라진다 — 시트가 '없다' 고 말한 적이 없다.
 //   · **시트가 아는 회차**만 본다. 시트에 열이 없는 날짜는 판단할 근거가 없다.
 const rosterUuids = new Set(saved.map(m => m.id));
-// ⚠️ **시트가 아는 회차 목록**에서 뽑는다. 값이 있는 칸에서 뽑으면
-// 전원이 빈칸인 회차가 빠져 나가고, 그 회차는 영영 정리되지 않는다.
-// 회차를 못 받아 왔으면(GAS 가 이상하면) 목록이 비고 아무것도 안 지운다.
-const sheetDates = [...new Set(sessionRows.map(r => r.session_date))].sort();
+// ⚠️ **시트가 아는 회차 목록**(sheetSessionDates)에서 뽑는다.
+// 값이 있는 칸에서 뽑으면 전원이 빈칸인 회차가 빠져 나가 영영 정리되지 않고,
+// sessionRows 에서 뽑으면 옛 GAS 갈래에서 목록이 비어 조용히 건너뛴다.
+// 회차를 못 받아 왔으면 목록이 비고 아무것도 안 지운다 — 그건 옳다.
+const sheetDates = [...new Set(sheetSessionDates)].sort();
 // 시트가 값을 준 (회차 → uuid) 집합. 여기 없는 것이 '시트에서 지워진 칸' 이다.
 const keepByDate = new Map();
 for (const a of attendanceUpserted) {

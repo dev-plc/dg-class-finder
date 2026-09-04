@@ -18,6 +18,9 @@ const MEMBERS = [
   // 시트에 붙은 GAS 가 과제+소감문을 낸 결석 칸을 '과제' 로 바꿔 둔다.
   { id: 'u3', cohort_id: COHORT, name: '박과제', phone: '3333', team: 'Y1', team_no: 3,
     location: '웨슬리홀', role: '조원', lunch: 'X', status: 'active' },
+  // 이번 주에 명단에 갓 올라온 사람 — 어느 회차에도 기록이 없다.
+  { id: 'u4', cohort_id: COHORT, name: '새로온이', phone: '4444', team: 'Y1', team_no: 4,
+    location: '웨슬리홀', role: '조원', lunch: 'X', status: 'active' },
 ];
 const SESSIONS = [
   { key: '11/02', date: '2025-11-02' },
@@ -28,6 +31,7 @@ const ATT_BY_DATE = {
   '김조장1111': { '2025-11-02': 'O', '2025-11-09': 'O' },
   '이조원2222': { '2025-11-02': 'O', '2025-11-09': '돌봄' },
   '박과제3333': { '2025-11-02': 'O', '2025-11-09': '과제' },
+  // '새로온이' 는 일부러 없다 — 어느 회차에도 기록이 없는 상태.
 };
 
 const posted = [];
@@ -115,7 +119,9 @@ ok('기본값 = 가장 최근 지난 회차', selected === '2025-11-09', selecte
 const checkedOn = async () => page.$$eval('.attendance-check', els => els.map(e => e.checked));
 
 const at1109 = await checkedOn();
-ok('11/09 — 조장만 체크박스, 체크됨', JSON.stringify(at1109) === '[true]', JSON.stringify(at1109));
+// 체크박스는 조장(O)과 새로온이(빈칸)뿐 — 돌봄·과제는 배지다.
+ok('11/09 — 조장은 체크, 신규는 빈 체크박스',
+   JSON.stringify(at1109) === '[true,false]', JSON.stringify(at1109));
 
 const badges = await page.$$eval('.attendance-badge', els => els.map(e => e.textContent.trim()));
 // 체크박스로 두면 '체크 안 됨' 으로 보여서 조장이 무심코 눌러 시트 기록을 덮는다.
@@ -132,8 +138,9 @@ ok("'과제' 를 출석으로 센다 (출석 2 · 결석 0)",
 await page.selectOption('#sessionPicker', '2025-11-02');
 await page.waitForTimeout(300);
 const at1102 = await checkedOn();
-ok('11/02 로 바꾸면 셋 다 체크', JSON.stringify(at1102) === '[true,true,true]',
-   JSON.stringify(at1102));
+// 기록이 있는 셋은 체크, 기록이 없는 새로온이는 빈 채로.
+ok('11/02 로 바꾸면 기록 있는 셋만 체크',
+   JSON.stringify(at1102) === '[true,true,false,true]', JSON.stringify(at1102));
 const badges2 = await page.$$eval('.attendance-badge', els => els.length);
 ok('11/02 에는 배지 없음', badges2 === 0, `배지 ${badges2}개`);
 
@@ -163,6 +170,10 @@ ok('저장 요청에 session 포함', !!body && body.session === '2025-11-02',
 const st = Object.fromEntries((body?.batch || []).map(b => [b.name, b.status]));
 ok('명단 전체를 보낸다 (3명)', !!body && body.batch.length === 3,
    body ? JSON.stringify(body.batch) : '(요청 없음)');
+// 어느 회차에도 기록이 없는 사람은 '안 왔다' 인지 '아직 명단에 없었다' 인지
+// 앱이 모른다. 모르는 쪽은 안 쓴다 — 명단에 갓 올라온 사람이 지난 회차
+// 결석으로 찍히던 것이 이 경로였다.
+ok('기록이 아예 없는 사람은 X 로 안 보낸다', !('새로온이' in st), JSON.stringify(st));
 ok('체크를 푼 사람은 X', st['이조원'] === 'X', JSON.stringify(st));
 ok('체크한 사람은 O 그대로', st['김조장'] === 'O', JSON.stringify(st));
 
@@ -181,7 +192,7 @@ const cols = await page.$$eval('.matrix-table thead th', els => els.length);
 ok('출석표 헤더 = 이름칸 + 회차수', cols === 1 + 2, `${cols}칸`);
 
 const rows = await page.$$eval('.matrix-table tbody tr', els => els.length);
-ok('출석표 행 = 조원수', rows === 3, `${rows}행`);
+ok('출석표 행 = 조원수', rows === 4, `${rows}행`);
 
 // 줄 차례는 명단 정렬에 따라 흔들린다. 이름으로 찾는다.
 const rowCells = (name) => page.evaluate((n) => {

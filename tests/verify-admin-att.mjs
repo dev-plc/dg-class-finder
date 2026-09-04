@@ -76,10 +76,18 @@ await page.route('**/rest/v1/**', route => {
   } else if (table === 'dg_sessions') {
     body = SESSIONS;
   } else if (table === 'dg_attendance') {
-    const date = (url.searchParams.get('session_date') || '').replace('eq.', '');
-    body = MEMBERS
-      .map(m => ({ member_id: m.id, status: ATT[`${m.name}${m.phone}`]?.[date] ?? '' }))
-      .filter(r => r.status !== '');   // 빈칸은 행 자체가 없다 (동기화가 건너뛴다)
+    if (url.search.includes('inner')) {
+      // 전 회차 이력 (getAttendanceHistory). 빈칸→X 를 가릴 때 '이 사람에게
+      // 기록이 아예 없나' 를 이걸로 판단한다.
+      body = MEMBERS.flatMap(m => Object.entries(ATT[`${m.name}${m.phone}`] || {})
+        .filter(([, st]) => st !== '')
+        .map(([d, st]) => ({ member_id: m.id, session_date: d, status: st })));
+    } else {
+      const date = (url.searchParams.get('session_date') || '').replace('eq.', '');
+      body = MEMBERS
+        .map(m => ({ member_id: m.id, status: ATT[`${m.name}${m.phone}`]?.[date] ?? '' }))
+        .filter(r => r.status !== '');   // 빈칸은 행 자체가 없다 (동기화가 건너뛴다)
+    }
   }
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 });
@@ -197,25 +205,49 @@ ok('   변경 줄에 파란 띠', await page.$eval('.att-row.changed', el => !!e
 const unmarkedBar = await page.$$eval('.att-row.unmarked', els => els.length);
 ok('   미기록 줄에 주황 띠', unmarkedBar === 2, `${unmarkedBar}줄`);
 
-// 손대지 않은 빈칸(강조장 · 윤조원)도 결석으로 함께 나간다.
-// 버튼의 수는 실제로 쓰는 수여야 한다 — 2 라 적고 4명을 쓰면 안 된다.
-const saveText = await page.$eval('#attSaveBtn', el => el.textContent.trim());
-ok('   저장 버튼이 실제로 쓸 인원 표시 (변경 2 + 빈칸 2)', saveText === '4명 저장', saveText);
-const saveInfo = await page.$eval('#attSaveInfo', el => el.textContent.trim());
-ok('   빈칸이 결석으로 나간다고 알린다', /빈칸 2명은 결석/.test(saveInfo), saveInfo);
+// ⚠️ 지금은 조가 '전체' 다. 그 상태에서는 **빈칸을 건드리지 않는다** —
+// 한 명을 고치려다 기수 전원에게 X 를 쓰는 일이 실제로 있었다.
+const saveTextAll = await page.$eval('#attSaveBtn', el => el.textContent.trim());
+ok('   전체 보기에서는 바뀐 사람만 (빈칸 제외)', saveTextAll === '2명 저장', saveTextAll);
+const saveInfoAll = await page.$eval('#attSaveInfo', el => el.textContent.trim());
+ok('   전체에서는 빈칸을 안 건드린다고 알린다',
+   /전체 보기에서는 빈칸을 건드리지 않습니다/.test(saveInfoAll), saveInfoAll);
 
 await page.click('#attSaveBtn');
 await page.waitForTimeout(800);
 
 const body1 = posted[0];
 const st1 = Object.fromEntries((body1?.batch || []).map(b => [b.name, b.status]));
-ok('1. 바뀐 두 명 + 빈칸 두 명 전송', !!body1 && body1.batch.length === 4,
+ok('1. 전체 보기에서는 바뀐 두 명만 전송', !!body1 && body1.batch.length === 2,
    body1 ? JSON.stringify(body1.batch) : '(요청 없음)');
-ok('1. 손대지 않은 빈칸은 X 로 나간다',
-   st1['강조장'] === 'X' && st1['윤조원'] === 'X', JSON.stringify(st1));
+ok('1. 손대지 않은 빈칸은 안 나간다',
+   !('강조장' in st1) && !('윤조원' in st1), JSON.stringify(st1));
+
+// --- 조를 고르면 그 조의 빈칸은 예전처럼 함께 나간다 -----------------------
+//
+// 전체에서 안 건드리는 것은 '범위가 기수 전원' 이라서다. 조를 좁히면
+// 눈으로 확인할 수 있는 크기이므로 원래 동작을 그대로 둔다.
+posted.length = 0;
+await page.selectOption('#attTeamPicker', 'Y2');
+await page.waitForTimeout(300);
+await page.click('.att-state[data-uuid="u6"][data-status="O"]');   // 강조장
+await page.waitForTimeout(200);
+const saveInfoTeam = await page.$eval('#attSaveInfo', el => el.textContent.trim());
+ok('   조를 고르면 빈칸이 함께 나간다고 알린다',
+   /빈칸 1명은 결석/.test(saveInfoTeam), saveInfoTeam);
+
+await page.click('#attSaveBtn');
+await page.waitForTimeout(800);
+const stTeam = Object.fromEntries((posted[0]?.batch || []).map(b => [b.name, b.status]));
+ok('   그 조의 빈칸만 X 로 나간다',
+   stTeam['강조장'] === 'O' && stTeam['윤조원'] === 'X' && !('최빈칸' in stTeam),
+   JSON.stringify(stTeam));
+await page.selectOption('#attTeamPicker', '');
+await page.waitForTimeout(300);
 ok('1. 찍은 값은 그대로', st1['김조장'] === 'O' && st1['최빈칸'] === 'X', JSON.stringify(st1));
-ok('1. 시트에도 결석으로 들어간다',
-   ATT['강조장2001']['2026-08-09'] === 'X' && ATT['윤조원2002']['2026-08-09'] === 'X',
+// 강조장은 손으로 O 를 눌렀고, 윤조원은 손대지 않은 빈칸이라 X 로 함께 나갔다.
+ok('1. 시트에도 그대로 들어간다',
+   ATT['강조장2001']['2026-08-09'] === 'O' && ATT['윤조원2002']['2026-08-09'] === 'X',
    `강조장=${ATT['강조장2001']['2026-08-09']} 윤조원=${ATT['윤조원2002']['2026-08-09']}`);
 ok('1. 회차가 함께 전송', body1?.session === '2026-08-09', body1?.session);
 ok('1. ◎ − 돌봄 인 사람은 전송에 없음',
@@ -224,7 +256,10 @@ ok('1. ◎ − 돌봄 인 사람은 전송에 없음',
 
 // --- 검증 2: ◎ 가 있는 조에서 '빈칸 → 결석' -------------------------------
 //
-// 위 저장으로 빈칸이 하나도 남지 않았다. 강조장의 X 를 다시 눌러 비워 둔다.
+// 위 저장으로 빈칸이 하나도 남지 않았다. 강조장(O)을 눌러 비워 둔다 —
+// O → X → 빈칸. 같은 버튼을 다시 누르면 지워진다.
+await page.click('.att-state[data-uuid="u6"][data-status="X"]');
+await page.waitForTimeout(120);
 await page.click('.att-state[data-uuid="u6"][data-status="X"]');
 await page.waitForTimeout(150);
 

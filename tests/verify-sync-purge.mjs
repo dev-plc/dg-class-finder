@@ -29,18 +29,31 @@ const PEOPLE = [
 // ---- 가짜 GAS ------------------------------------------------------------
 // sheetAtt 를 바꿔 가며 '시트가 무엇을 말하는가' 를 흉내 낸다.
 let sheetAtt = {};
+// 회차를 어떤 꼴로 주는지 — GAS 판마다 다르다. 정리가 셋 다 견뎌야 한다.
+//   'sessions'     v19+ (연도까지 확정)
+//   'sessionDates' v18 이하 (MM/DD 만)
+//   'none'         아무것도 안 줌
+let sessionShape = 'sessions';
 const gas = createServer((req, res) => {
   const data = PEOPLE.map(p => ({
     id: `${p.name}${p.phone}`, name: p.name, phone: p.phone,
     team: 'Y1', team_no: 1, role: '조원', location: '웨슬리홀', lunch: 'X',
     attendanceByDate: sheetAtt[`${p.name}${p.phone}`] || {},
   }));
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
+  const body = {
     success: true, version: 29, data,
     cohortHint: COHORT, locationMap: {}, teamLinkMap: {},
-    sessions: DATES.map((d, i) => ({ date: d, key: d.slice(5).replace('-', '/'), label: `${i + 18}강` })),
-  }));
+  };
+  if (sessionShape === 'sessions') {
+    body.sessions = DATES.map((d, i) => ({
+      date: d, key: d.slice(5).replace('-', '/'), label: `${i + 18}강`,
+    }));
+  } else if (sessionShape === 'sessionDates') {
+    // 옛 꼴: MM/DD 만. 연도는 스크립트가 START_YEAR 로 붙인다.
+    body.sessionDates = DATES.map(d => d.slice(5).replace('-', '/'));
+  }
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
 });
 await new Promise(r => gas.listen(GAS_PORT, r));
 
@@ -137,6 +150,7 @@ sheetAtt = {
   '김조장1001': { [DATES[0]]: 'O' },
   '이조원2002': { [DATES[0]]: 'O' },
 };
+const mmdd = (iso) => iso.slice(5).replace('-', '/');
 reset();
 const r1 = await run();
 ok('스크립트가 끝까지 돈다', r1.status === 0, `종료코드 ${r1.status}`);
@@ -194,6 +208,47 @@ reset();
 const r4 = await run(['--allow-purge']);
 ok('--allow-purge 면 지운다', r4.status === 0 && attendance.length === 0,
    `종료코드 ${r4.status} · ${attendance.length}건 남음`);
+
+// ==========================================================================
+// 4. GAS 가 옛 꼴로 회차를 줘도 정리가 돈다
+//
+// 정리는 '시트가 아는 회차' 를 알아야 하는데, 그 목록을 sessions 갈래에서만
+// 채우면 옛 GAS 에서 목록이 비어 **오류도 로그도 없이** 통째로 건너뛴다.
+// 비어 있는 것은 '지울 게 없다' 와 구별되지 않아 아무도 눈치채지 못한다.
+// ==========================================================================
+sessionShape = 'sessionDates';
+attendance = [
+  { member_id: 'u1', session_date: DATES[0], status: 'O' },
+  { member_id: 'u1', session_date: DATES[1], status: 'X' },   // ← 시트에서 지울 것
+];
+sheetAtt = {
+  '김조장1001': { [mmdd(DATES[0])]: 'O' },   // 옛 꼴은 키가 MM/DD 다
+  '이조원2002': { [mmdd(DATES[0])]: 'O' },
+};
+reset();
+const r5 = await run();
+ok('옛 꼴(sessionDates)로 줘도 끝까지 돈다', r5.status === 0, `종료코드 ${r5.status}`);
+ok('옛 꼴에서도 시트에서 지워진 칸을 지운다',
+   !attendance.some(a => a.member_id === 'u1' && a.session_date === DATES[1]),
+   JSON.stringify(attendance));
+
+// ==========================================================================
+// 5. 회차를 아예 못 받아 오면 아무것도 안 지운다
+//
+// 시트가 무엇을 말하는지 모르는 상태다. 모르면 안 건드리는 게 맞다.
+// ==========================================================================
+sessionShape = 'none';
+attendance = [
+  { member_id: 'u1', session_date: DATES[0], status: 'O' },
+  { member_id: 'u1', session_date: DATES[1], status: 'X' },
+];
+const before5 = attendance.length;
+sheetAtt = {};
+reset();
+const r6 = await run();
+ok('회차를 모르면 끝까지 돌되', r6.status === 0, `종료코드 ${r6.status}`);
+ok('아무것도 안 지운다', attendance.length === before5,
+   `${before5} → ${attendance.length}건`);
 
 gas.close();
 db.close();
