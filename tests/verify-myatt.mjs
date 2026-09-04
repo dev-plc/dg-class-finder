@@ -409,23 +409,50 @@ ok('기록이 아예 없으면 0건', blankTodo.chips.length === 0 && !/제출�
 await blank.context.close();
 
 // ==========================================================================
-// 3-3. 과제만 낸 회차 — '안 냄' 도 아니고 '냈음' 도 아니다
+// 3-3. 무엇을 요구하는가는 **그 주에 나왔는지**에 달렸다
 //
-// 인정은 '과제+소감문' 뿐이다. 그냥 빼 버리면 무엇을 더 내야 하는지 알 수 없고,
-// 그냥 '안 냄' 으로 두면 '냈는데 왜' 가 된다. 남기되 낸 것을 적는다.
+// 소감문은 결석을 메우는 것이다(공지 규칙 5). 나온 주에까지 요구하면,
+// 출석하고 예습과제까지 낸 사람에게 '안 냈다' 고 하게 된다 — 실제로 그랬다.
 // ==========================================================================
-const PART_ATT = SEVEN.map(s => ({ session_date: s.session_date, status: 'O' }));
+// 나온 주에 예습과제('과제')만 냈다 → 다 한 것이다.
+const PRESENT_ATT = SEVEN.map(s => ({ session_date: s.session_date, status: 'O' }));
+const done2 = await openApp(SEVEN, SEVEN.map(s => ({
+  member_id: 'u1', lecture: s.name, kind: '과제', content: '', submitted_at: null,
+})), PRESENT_ATT);
+await lookup(done2.page, '김조원', '1111');
+const doneTodo2 = await todoOf(done2.page);
+ok('나온 주에 예습과제만 내도 안내가 안 뜬다',
+   doneTodo2.chips.length === 0 && !/제출하지 않은/.test(doneTodo2.title), doneTodo2.title);
+await done2.context.close();
+
+// 나온 주에 **아무것도** 안 냈으면 그때는 묻는다.
+const noneSubmit = await openApp(SEVEN, [], PRESENT_ATT);
+await lookup(noneSubmit.page, '김조원', '1111');
+const noneTodo2 = await todoOf(noneSubmit.page);
+ok('나온 주라도 아무것도 안 냈으면 묻는다', noneTodo2.chips.length === 7,
+   `${noneTodo2.chips.length}개`);
+await noneSubmit.context.close();
+
+// 결석한 주는 '과제+소감문' 이라야 인정된다. 과제만 냈으면 남되 낸 것을 적는다.
+const ABSENT_ATT = SEVEN.map((s, i) => ({
+  session_date: s.session_date, status: i < 2 ? 'X' : 'O',
+}));
 const part = await openApp(SEVEN, [
   { member_id: 'u1', lecture: '1강', kind: '과제+소감문', content: '', submitted_at: null },
   { member_id: 'u1', lecture: '2강', kind: '과제', content: '', submitted_at: null },
-], PART_ATT);
+  ...SEVEN.slice(2).map(s => ({
+    member_id: 'u1', lecture: s.name, kind: '과제', content: '', submitted_at: null,
+  })),
+], ABSENT_ATT);
 await lookup(part.page, '김조원', '1111');
 const partTodo = await todoOf(part.page);
-ok('과제만 낸 회차는 목록에 남는다', partTodo.chips.some(c => c.startsWith('2강')),
+ok('결석한 주에 과제만 낸 것은 목록에 남는다', partTodo.chips.some(c => c.startsWith('2강')),
    partTodo.chips.join(' | '));
 ok('무엇을 냈는지 칩에 적는다', partTodo.chips.some(c => c === '2강과제'),
    partTodo.chips.join(' | '));
-ok('과제+소감문을 낸 회차는 빠진다', !partTodo.chips.some(c => c.startsWith('1강')),
+ok('결석했어도 과제+소감문을 냈으면 빠진다', !partTodo.chips.some(c => c.startsWith('1강')),
+   partTodo.chips.join(' | '));
+ok('나온 주는 예습과제만으로 빠진다', partTodo.chips.length === 1,
    partTodo.chips.join(' | '));
 await part.context.close();
 

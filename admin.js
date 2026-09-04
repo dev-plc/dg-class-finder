@@ -41,9 +41,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=115';
+} from './scripts/members-data.js?v=116';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=115';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=116';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -601,7 +601,6 @@ async function showMemberDetail(member) {
         const absent = attRows.filter(r => isAbsent(r.status)).length;
         const other = attRows.length - present - absent;
         const lunchCount = attRows.filter(r => r.lunch).length;
-        const hwInAtt = attRows.filter(r => r.homework).length;
 
         const attSummary = [
             `총 ${attRows.length}회차`,
@@ -623,9 +622,20 @@ async function showMemberDetail(member) {
                 const cls = isReplaced ? 'makeup' : st.cls;
                 const label = isReplaced ? '과제' : st.label;
                 const makeupCell = cls === 'makeup';
-                const badges = (r.lunch ? '🍙' : '') + (r.homework && !makeupCell ? '📝' : '');
+                // '과제+소감문' 이 아닌 제출(예습과제 등)도 낸 사실은 보여준다.
+                // ⚠️ 흐리게 그리는 것은 **결석한 칸에만** 뜻이 있다 — 소감문은
+                // 결석을 메우는 것이지 나온 주에 요구할 것이 아니다.
+                const partKinds = r.homework ? [] : (r.homeworkKinds || []);
+                const lacking = st.cls === 'absent' && partKinds.length > 0;
+                const hwIcon = makeupCell ? ''
+                             : lacking ? '<span class="hw-partial">📝</span>'
+                             : (r.homework || partKinds.length) ? '📝' : '';
+                const badges = (r.lunch ? '🍙' : '') + hwIcon;
                 const hiddenClass = idx >= 10 ? ' md-hidden md-att-hidden' : '';
-                const tip = isReplaced ? '결석 — 과제와 소감문으로 메움' : st.title;
+                const tip = isReplaced ? '결석 — 과제와 소감문으로 메움'
+                          : lacking ? `${st.title} — ${homeworkKindLabel(partKinds)} 제출 (메우려면 과제와 소감문)`
+                          : partKinds.length ? `${st.title} — ${homeworkKindLabel(partKinds)} 제출`
+                          : st.title;
                 return `<div class="att-chip ${cls}${hiddenClass}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${escapeHtml(tip)}">
                     <span class="att-date">${escapeHtml(r.key)}</span>
                     ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}

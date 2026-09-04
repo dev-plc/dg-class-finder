@@ -9,7 +9,7 @@
 // 노란 '과제' 칸은 두 갈래로 들어온다 — 시트가 적어 준 '과제' 와, 앱이 X + 과제제출을
 // 보고 스스로 칠하는 것. 둘 다 makeup 이라 모양이 같다. 뜻과 셈법은 docs/RULES.md.
 
-import { getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=115';
+import { getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=116';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -121,9 +121,8 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
             const lecKey = c.name ? normalizeLecture(c.name) : '';
             // homework = **인정 대상**. 종류가 '과제+소감문' 인 것만이다.
             const homework = !!(myHw && lecKey && myHw.has(lecKey));
-            // 냈지만 종류가 모자란 것. '안 냈다' 가 아니므로 표는 하되 인정은 안 한다.
+            // '과제+소감문' 이 아닌 제출 (예습과제 등).
             const partKinds = (!homework && lecKey && myHwKinds?.get(lecKey)) || [];
-            const partial = partKinds.length > 0;
 
             // 시트가 이미 '과제' 로 바꿔 둔 칸은 classifyStatus 가 makeup 으로
             // 돌려준다 — 다시 칠할 것이 없다.
@@ -149,15 +148,19 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
                 st.title = '아직 안 온 회차';
             }
 
-            // 인정 대상은 진한 📝, 종류가 모자란 것은 흐린 📝. 노란 칸은 안 된다 —
-            // 그 칸은 '출석으로 인정됐다' 는 뜻이라 결석을 지워 버린다.
+            // ⚠️ **소감문은 결석을 메우는 것**이다 (공지 규칙 5). 나온 주에는
+            // 요구할 것이 아니므로, '종류가 모자라다' 고 흐리게 그리는 것은
+            // **결석한 칸에만** 뜻이 있다. 출석한 주의 예습과제는 다 한 것이다.
+            const lacking = !c.isUpcoming && st.cls === 'absent' && partKinds.length > 0;
             const hwIcon = homework ? (makeupCell ? '<span class="hw-badge">📝</span>' : '📝')
-                         : partial ? '<span class="hw-partial">📝</span>' : '';
+                         : lacking ? '<span class="hw-partial">📝</span>'
+                         : partKinds.length ? '📝' : '';
             const badges = (lunch ? '🍙' : '') + hwIcon;
             const tip = [m.name, c.key, c.name, st.title,
                          lunch ? '🍙 김밥 신청' : '',
                          homework ? '📝 과제+소감문 제출'
-                         : partial ? `📝 ${homeworkKindLabel(partKinds)} 제출 (인정은 과제+소감문)` : '']
+                         : lacking ? `📝 ${homeworkKindLabel(partKinds)} 제출 (결석을 메우려면 과제+소감문)`
+                         : partKinds.length ? `📝 ${homeworkKindLabel(partKinds)} 제출` : '']
                         .filter(Boolean).join(' · ');
 
             const hideClass = i < foldedCount ? ' old-col' : '';

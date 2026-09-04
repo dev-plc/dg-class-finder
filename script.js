@@ -22,9 +22,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=115';
+} from './scripts/members-data.js?v=116';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=115';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=116';
 
 // 1-1. 내 정보 기억
 //
@@ -389,17 +389,22 @@ async function renderMyAttendance(member) {
         const cls = isReplaced ? 'makeup' : st.cls;
         const label = isReplaced ? '과제' : st.label;
         const makeupCell = cls === 'makeup';
-        // 종류가 모자란 제출(과제만 등)도 낸 사실은 보여준다. 다만 흐리게 —
-        // 출석 인정은 '과제+소감문' 뿐이다 (docs/RULES.md).
+        // '과제+소감문' 이 아닌 제출(예습과제 등).
         const partKinds = r.homework ? [] : (r.homeworkKinds || []);
-        const hwIcon = r.homework ? (makeupCell ? '' : '📝')
-                     : partKinds.length ? '<span class="hw-partial">📝</span>' : '';
+        // ⚠️ **소감문은 결석을 메우는 것**이다 (공지 규칙 5). 나온 주에는 요구할
+        // 것이 아니므로, 종류가 모자라다고 흐리게 그리는 것은 **결석한 주에만**
+        // 뜻이 있다. 출석한 주에 예습과제를 낸 것은 모자란 게 아니라 다 한 것이다.
+        const lacking = st.cls === 'absent' && partKinds.length > 0;
+        const hwIcon = makeupCell ? ''
+                     : lacking ? '<span class="hw-partial">📝</span>'
+                     : (r.homework || partKinds.length) ? '📝' : '';
         const badges = (r.lunch ? '🍙' : '') + hwIcon;
         const tip = [r.key, r.name,
                      isReplaced ? '결석 — 과제와 소감문으로 메움' : st.title,
                      r.lunch ? '🍙 김밥 신청' : '',
                      r.homework ? '📝 과제와 소감문 제출'
-                     : partKinds.length ? `📝 ${homeworkKindLabel(partKinds)} 제출 (인정은 과제와 소감문)` : '']
+                     : lacking ? `📝 ${homeworkKindLabel(partKinds)} 제출 (결석을 메우려면 과제와 소감문)`
+                     : partKinds.length ? `📝 ${homeworkKindLabel(partKinds)} 제출` : '']
                     .filter(Boolean).join(' · ');
 
         return `<div class="att-chip ${cls}${i < folded ? ' old' : ''}" title="${escapeAttr(tip)}">
@@ -500,10 +505,25 @@ async function renderMyHomework(member, attRows = []) {
     //    정렬을 바꾸면 이 계산이 조용히 틀어진다.
     const firstMark = attRows.findIndex(r => String(r.status || '').trim() !== '');
     const since = firstMark === -1 ? attRows.length : firstMark;
-    // 낸 종류를 같이 들고 간다 — '과제만 냈다' 를 칩에서 말해야 한다.
+    //
+    // **무엇을 요구하는가는 그 주에 나왔는지에 달렸다.**
+    //   나온 주  → 예습과제만 내면 끝. 종류를 안 가린다.
+    //   결석한 주 → '과제+소감문' 이라야 출석으로 인정된다 (공지 규칙 5).
+    // 소감문은 결석을 메우는 것이지 나온 주에까지 요구할 것이 아니다 —
+    // 출석하고 예습과제까지 낸 사람에게 '안 냈다' 고 하던 것이 그 탓이었다.
+    //
+    // 결석(X)일 때만 엄격하다. 돌봄·◎·− 이나 아직 안 찍힌 주는 그 사람에게
+    // 무엇을 요구할지 알 수 없으므로 나온 주와 같이 본다.
     const missing = attRows.slice(since)
-                           .filter(r => isClassSession(r.name) && !r.homework)
-                           .map(r => ({ name: r.name, kinds: r.homeworkKinds || [] }));
+                           .filter(r => isClassSession(r.name)
+                                     && (isAbsent(r.status)
+                                         ? !r.homework
+                                         : !(r.homework || (r.homeworkKinds || []).length)))
+                           .map(r => ({
+                               name: r.name,
+                               // 결석한 주에만 '무엇을 냈는데 모자라다' 가 뜻이 있다.
+                               kinds: isAbsent(r.status) ? (r.homeworkKinds || []) : [],
+                           }));
 
     // 출결을 못 받아 왔으면 안 낸 것이 없는 게 아니라 **모르는** 것이다.
     // 그때 '모두 냈어요' 라고 하면 거짓말이 된다.
