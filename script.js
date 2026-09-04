@@ -13,15 +13,17 @@ import {
     getSession,
     setSession,
     getTeamExtras,
+    isAbsent,
     isClassSession,
+    isPresent,
     refreshAttendance,
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=112';
+} from './scripts/members-data.js?v=113';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=112';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=113';
 
 // 1-1. 내 정보 기억
 //
@@ -354,8 +356,9 @@ async function renderMyAttendance(member) {
     // 화면이 다른 사람으로 넘어갔으면 늦게 온 응답은 버린다.
     if (!shownMember || shownMember.id !== member.id) return rows;
 
-    const present = rows.filter(r => r.status.toUpperCase() === 'O').length;
-    const absent = rows.filter(r => r.status.toUpperCase() === 'X').length;
+    // 시트가 '과제' 로 바꿔 둔 칸은 출석으로 센다 (docs/RULES.md).
+    const present = rows.filter(r => isPresent(r.status)).length;
+    const absent = rows.filter(r => isAbsent(r.status)).length;
     const other = rows.length - present - absent;
     const lunchCount = rows.filter(r => r.lunch).length;
     const hwCount = rows.filter(r => r.homework).length;
@@ -379,11 +382,13 @@ async function renderMyAttendance(member) {
         const st = classifyStatus(r.status);
         // 결석인데 과제+소감문을 냈으면 전체 출석표와 **같은 모양**으로 보여준다.
         // 한쪽은 X, 한쪽은 '과제' 면 조원과 조장이 같은 칸을 두고 다른 말을 한다.
-        // (월 1회 한도는 여기서 보지 않는다 — 그 판정은 하차 검토가 한다. docs/RULES.md)
+        // 시트가 이미 '과제' 로 바꾼 칸은 classifyStatus 가 makeup 으로 준다 —
+        // 여기서 칠하는 것은 시트가 아직 못 잡은 칸이다 (docs/RULES.md).
         const isReplaced = st.cls === 'absent' && r.homework;
         const cls = isReplaced ? 'makeup' : st.cls;
         const label = isReplaced ? '과제' : st.label;
-        const badges = (r.lunch ? '🍙' : '') + (r.homework && !isReplaced ? '📝' : '');
+        const makeupCell = cls === 'makeup';
+        const badges = (r.lunch ? '🍙' : '') + (r.homework && !makeupCell ? '📝' : '');
         const tip = [r.key, r.name,
                      isReplaced ? '결석 — 과제와 소감문으로 메움' : st.title,
                      r.lunch ? '🍙 김밥 신청' : '', r.homework ? '📝 과제와 소감문 제출' : '']
@@ -600,13 +605,14 @@ function setMyHwFold(hidden, open) {
 //
 // '돌봄' 같은 시트 표기는 출석도 결석도 아니라서 따로 센다.
 // 결석으로 묶으면 조장이 "왜 결석이 이렇게 많지" 하고 잘못 읽는다.
+// '과제'(과제+소감문으로 인정)는 출석에 든다 — docs/RULES.md.
 function renderTeamSummary(members) {
     const el = document.getElementById('teamSummaryCard');
     if (!el) return;
 
     const up = (v) => String(v || '').trim().toUpperCase();
-    const present = members.filter(m => up(m.attendance) === 'O').length;
-    const absent = members.filter(m => up(m.attendance) === 'X').length;
+    const present = members.filter(m => isPresent(m.attendance)).length;
+    const absent = members.filter(m => isAbsent(m.attendance)).length;
     const other = members.length - present - absent;
     const kimbap = members.filter(m => up(m.lunch) === 'O').length;
 

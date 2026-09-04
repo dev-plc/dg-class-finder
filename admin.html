@@ -12,8 +12,8 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=112">
-    <link rel="stylesheet" href="admin.css?v=112">
+    <link rel="stylesheet" href="style.css?v=113">
+    <link rel="stylesheet" href="admin.css?v=113">
 </head>
 <body class="dark-mode">
     <div class="admin-container">
@@ -218,10 +218,11 @@
                 <!-- 규칙을 모르면 숫자를 믿을 수 없다. 화면에 그대로 적어 둔다. -->
                 <div class="ab-rule">
                     <b>규칙</b> 특별한 이유 없이 <b>월 2회 이상</b> 결석하면 하차.
-                    출석이 어려울 때 예습과제와 소감문을 낸 결석은 <b>한 달에 1회까지</b>
-                    출석으로 인정합니다.
+                    예습과제와 소감문을 낸 결석은 시트에서 <b>'과제'</b> 로 바뀌며
+                    <b>출석으로 인정</b>되어 여기 세지 않습니다.
                     <span class="ab-rule-warn">⚠️ '특별한 이유'(격주 근무 · 출장 · 온라인 참여 등)는
-                    이 화면이 알지 못합니다. 하차 확정이 아니라 <b>검토할 사람</b>입니다.</span>
+                    이 화면이 알지 못합니다. 하차 확정이 아니라 <b>검토할 사람</b>입니다.
+                    교역자 원칙 5번의 완화 대상(남4조 이상 · 여10조 이상 · C1~C3)은 아래에 따로 묶어 둡니다.</span>
                 </div>
                 <div class="ab-note" id="abDropNote"></div>
                 <div class="ab-list" id="abDropList"></div>
@@ -329,7 +330,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=112"></script>
+    <script type="module" src="admin.js?v=113"></script>
 </body>
 </html>
 

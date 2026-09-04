@@ -383,6 +383,9 @@ for (const [col, sql, why] of [
   for (const m of members) delete m[col];
 }
 
+// 마지막에 dg_sync_log 에 남길 건수. 블록 안에서 세고 맨 끝에 한 줄로 쓴다.
+const counted = { lunch: 0, homework: 0, attendance: 0 };
+
 console.log('▶ dg_members');
 const saved = await upsert('dg_members', members, 'cohort_id,name,phone');
 console.log(`   ${saved.length}명 반영`);
@@ -448,6 +451,7 @@ if (sessionRows.length) {
     console.log('▶ dg_lunch');
     await upsert('dg_lunch', lunchRows, 'cohort_id,member_id,session_date');
     console.log(`   ${lunchRows.length}건 반영`);
+    counted.lunch = lunchRows.length;
   } else {
     console.log('▶ 김밥 건너뜀 — GAS 가 lunchByDate 를 주지 않았습니다 (v21 로 재배포 필요)');
   }
@@ -525,6 +529,7 @@ if (Array.isArray(gas.homework) && gas.homework.length) {
 
   await upsert('dg_homework', rows, 'cohort_id,member_id,lecture,kind');
   console.log(`   ${rows.length}건 반영`);
+  counted.homework = rows.length;
 }
 
 if (attendanceBySheetId.length) {
@@ -543,6 +548,33 @@ if (attendanceBySheetId.length) {
   }
   await upsert('dg_attendance', attRows, 'member_id,session_date');
   console.log(`   ${attRows.length}건 반영`);
+  counted.attendance = attRows.length;
+}
+
+// -------------------------------------------------------------- 끝 표시
+//
+// **반드시 맨 마지막이다.** 화면의 자동 새로고침이 이 줄 하나를 보고
+// '이제 읽어도 된다' 를 판단한다.
+//
+// dg_members.updated_at 을 보면 안 되는 이유: 그것은 위에서 **첫 번째**로
+// 튄다. 출석·과제·김밥이 아직 하나도 안 들어간 시점에 화면이 새로 읽고,
+// 폴링은 그 시각을 이미 본 것으로 올려 버려 두 번째 새로고침이 안 온다.
+//
+// 표가 아직 없으면(마이그레이션 전) 조용히 넘어간다 — 동기화가 이것 때문에
+// 죽으면 안 된다. 화면은 dg_attendance.updated_at 으로 물러난다.
+{
+  const { error } = await sb.from('dg_sync_log').insert({
+    cohort_id: COHORT_ID,
+    members: saved.length,
+    attendance: counted.attendance,
+    lunch: counted.lunch,
+    homework: counted.homework,
+  });
+  if (error) {
+    console.log(`⚠️ dg_sync_log 를 남기지 못했습니다 — ${error.message}`);
+    console.log('   supabase/dg_sync_log.sql 을 Supabase SQL Editor 에서 한 번 실행하세요.');
+    console.log('   (동기화 자체는 끝났습니다. 화면 자동 새로고침만 늦어집니다.)');
+  }
 }
 
 console.log('\n✅ 동기화 완료');

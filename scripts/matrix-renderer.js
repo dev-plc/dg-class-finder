@@ -6,9 +6,10 @@
 // 안 넘기면 값이 한 열만 차는데 오류가 안 나고, localStorage 캐시 때문에 개발 중엔
 // 되는 것처럼 보인다 — 확인은 시크릿 창에서. (자세히는 docs/HANDOVER.md)
 //
-// 노란 '과제' 칸이 월 1회 한도를 안 보는 이유는 docs/RULES.md 에 있다.
+// 노란 '과제' 칸은 두 갈래로 들어온다 — 시트가 적어 준 '과제' 와, 앱이 X + 과제제출을
+// 보고 스스로 칠하는 것. 둘 다 makeup 이라 모양이 같다. 뜻과 셈법은 docs/RULES.md.
 
-import { getSessions, getToday, isClassSession, normalizeLecture } from './members-data.js?v=112';
+import { getSessions, getToday, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=113';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -25,6 +26,10 @@ export function classifyStatus(raw) {
     const up = v.toUpperCase();
     if (up === 'O') return { label: 'O', cls: 'present', title: '출석' };
     if (up === 'X') return { label: 'X', cls: 'absent', title: '결석' };
+    // 시트가 '과제' 로 바꿔 둔 칸. 앱이 X + 과제제출을 보고 스스로 칠하는
+    // 칸(아래 isReplaced)과 **같은 모양**이어야 한다 — 뜻이 같기 때문이다.
+    // 여기가 아래(special)로 새면 파란 칸이 되어 두 모양이 갈린다.
+    if (isMakeup(v)) return { label: '과제', cls: 'makeup', title: '과제·소감문으로 인정 (시트 표기)' };
     // 시트의 '-' 는 그 주에 수업이 없었다는 뜻이다. '돌봄' 같은 표기와 같이
     // 묶어 눈에 띄게 칠하면, 빠진 것처럼 읽혀 조장이 헛걸음한다.
     if (v === '-' || v === '−') return { label: '−', cls: 'none', title: '수업 없음' };
@@ -103,7 +108,7 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
     }).join('');
 
     const bodyRows = sorted.map(m => {
-        const present = cols.filter(c => String(getStatus(m, c.date) || '').toUpperCase() === 'O').length;
+        const present = cols.filter(c => isPresent(getStatus(m, c.date))).length;
         const myLunch = lunchMap.get(m._uuid) || null;
         const myHw = hwMap.get(m._uuid) || null;
 
@@ -113,14 +118,21 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
             // 회차에 강의명이 없으면 과제를 붙일 근거가 없다. 순서로 짐작하지 않는다.
             const homework = !!(myHw && c.name && myHw.has(normalizeLecture(c.name)));
 
-            // 결석인데 과제+소감문을 냈다. (월 1회 한도는 여기서 보지 않는다 —
-            // 그 판정은 하차 검토가 한다. docs/RULES.md 참고)
+            // 시트가 이미 '과제' 로 바꿔 둔 칸은 classifyStatus 가 makeup 으로
+            // 돌려준다 — 다시 칠할 것이 없다.
+            const fromSheet = st.cls === 'makeup';
+
+            // 시트가 아직 못 잡은 칸: 결석인데 과제+소감문 기록이 있다.
+            // (아이디가 안 맞았거나 '전체 결석 일괄 동기화' 를 아직 안 돌렸다.)
             const isReplaced = !c.isUpcoming && st.cls === 'absent' && homework;
             if (isReplaced) {
                 st.label = '과제';
                 st.cls = 'makeup';
                 st.title = '결석 — 과제·소감문으로 메움';
             }
+
+            // 두 갈래를 한 모양으로 본다. 뜻이 같으므로 뱃지도 같아야 한다.
+            const makeupCell = fromSheet || isReplaced;
 
             // 아직 안 온 주. '·(기록 없음)' 으로 두면 전원이 빠진 것처럼 읽힌다.
             // 뱃지는 남긴다 — 김밥 신청과 과제 제출은 미리 받는다.
@@ -130,7 +142,7 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
                 st.title = '아직 안 온 회차';
             }
 
-            const hwIcon = homework ? (isReplaced ? '<span class="hw-badge">📝</span>' : '📝') : '';
+            const hwIcon = homework ? (makeupCell ? '<span class="hw-badge">📝</span>' : '📝') : '';
             const badges = (lunch ? '🍙' : '') + hwIcon;
             const tip = [m.name, c.key, c.name, st.title,
                          lunch ? '🍙 김밥 신청' : '', homework ? '📝 과제+소감문 제출' : '']

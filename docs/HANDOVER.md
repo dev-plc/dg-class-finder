@@ -65,6 +65,27 @@ npm run bump:check   # 어긋난 곳만 보고 (고치지 않음)
 **'새 배포' 를 누르면 URL 이 바뀌어** GitHub Secrets 의 옛 URL 이 404 가 된다.
 자세한 것은 `scripts/gas/README.md`.
 
+### 4. GAS 프로젝트가 **둘**이다
+
+| | 어디 | 무엇 |
+|---|---|---|
+| `scripts/gas/doGet.js` | dev 계정의 **독립 프로젝트** (`SHEET_ID` 로 시트를 연다) | 웹앱 `doGet`/`doPost`. 앱과 Actions 가 부른다. 배포 대상 |
+| `scripts/gas/sheet-bound/` | **출석부(DB) 시트에 직접 붙어 있다** | 메뉴 · `onEdit` · `onFormSubmit`. **배포 없음** |
+
+헷갈리면 엉뚱한 쪽을 고치고 아무 일도 안 일어난다.
+**시트 쪽이 출석 칸에 `'과제'` 를 쓴다** — `scripts/gas/sheet-bound/README.md` 와
+`docs/RULES.md`.
+
+### 5. 자동 새로고침은 `dg_sync_log` 하나만 본다
+
+`dg_members.updated_at` 을 보면 안 된다. 동기화는 `dg_members` 를 **맨 먼저** 쓰고
+`dg_attendance` 를 **맨 마지막**에 쓴다. 예전에는 첫 표가 끝나는 순간 새로고침이
+돌았고(출석·과제가 아직 안 들어온 시점), 폴링이 그 시각을 이미 본 것으로 올려 버려
+**두 번째 새로고침이 영영 오지 않았다.**
+
+→ `sync-sheet-to-db.mjs` 가 **맨 마지막에** `dg_sync_log` 에 한 줄을 넣는다.
+화면은 그 줄만 본다. 표가 없으면 `dg_attendance.updated_at` 으로 물러난다.
+
 ---
 
 ## 지금 버전과 검증
@@ -84,9 +105,9 @@ npm test    # 15개 스위트 (tests/README.md 에 목록)
 
 | # | 무엇 | 왜 멈춰 있나 |
 |---|---|---|
-| 1 | 자동 새로고침 범위 | 지금은 조회·관리자 **둘 다 30초 영구 폴링**(`startAutoRefresh`). 원 요청은 '시트에서 가져오기 뒤 최대 4분'. 멈추는 길·`document.hidden` 처리가 없다 |
-| 2 | 튜터에게 조원 연락처 | DB 에는 뒤 4자리만 있고 GAS 가 연락처를 일부러 안 내보낸다. anon 키 + `using(true)` 라 넣으면 사실상 공개. Supabase Auth 가 필요하다 |
-| 3 | 시트에도 '과제' 를 쓸지 | `docs/RULES.md` 마지막 절 참고. 쓰면 결석 계산이 바뀐다 |
+| 1 | 튜터에게 조원 연락처 | DB 에는 뒤 4자리만 있고 GAS 가 연락처를 일부러 안 내보낸다. anon 키 + `using(true)` 라 넣으면 사실상 공개. Supabase Auth 가 필요하다 |
+| 2 | 과제 제출 기한 (원칙 3) | '결석한 주의 디지일 전까지' 를 앱도 시트 GAS 도 안 본다. 하려면 **양쪽을 같이** 고쳐야 한다 |
+| 3 | 출석만 즉시 당겨오기 (GAS v30) | `DG_pushToDb` 를 `action:'pullAttendance'` 로 감싸는 설계까지 섰다. 반환값·짧은 락·연타 방지가 남았다 |
 
 ### 알려진 한계
 
@@ -98,6 +119,14 @@ npm test    # 15개 스위트 (tests/README.md 에 목록)
 
 ### 사용자 쪽 할 일
 
+- **`supabase/dg_sync_log.sql` 실행** (Supabase → SQL Editor). 안 돌리면 자동
+  새로고침이 `dg_attendance.updated_at` 으로 물러난다 — 동작은 하지만 출석이
+  하나도 안 바뀐 회차에는 안 뜬다.
+- **`scripts/gas/sheet-bound/과제제출.gs` 를 시트 GAS 에 붙여넣기.** `'◎'`(지난 기수
+  이수)를 `'과제'` 로 덮던 조건을 뺐다. **배포 없음** — 붙여넣기만 하면 된다.
+- 시트 프로젝트의 **`code.gs`(v18) 삭제 검토.** 연락처까지 내보내던 옛 `doGet` 이
+  들어 있다. 배포돼 있지 않은지 먼저 확인 (배포 → 배포 관리).
+- 이미 `'◎'` 가 `'과제'` 로 덮인 칸이 있는지 **시트 버전 기록**으로 확인.
 - `scripts/gas/doGet.js` 를 GAS 에 붙여넣기 (v29). **메뉴 기능이라 재배포는 불필요** —
   시트를 새로 열면 `DGfinder → 과제 아이디 점검` 이 뜬다.
 

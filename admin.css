@@ -1226,17 +1226,17 @@ body.dark-mode .ab-chip.credited { color: #6ee7b7; }
     color: var(--text-light);
 }
 
-/* 인정은 못 받았지만 과제는 낸 회차. 인정 한도(월 1회)에 걸렸을 뿐 공부는
-   이어간 사람과, 아무것도 안 낸 사람은 다른 이야기다. */
+/* 과제 기록은 있는데 시트에 아직 안 붙은 회차. 아이디가 어긋났거나 시트에서
+   '전체 결석 일괄 동기화' 를 안 돌린 것이다 — 진짜 결석과 구별해야 한다. */
 .ab-chip.hw {
     color: var(--midnight-blue);
     border-color: var(--midnight-blue);
 }
 body.dark-mode .ab-chip.hw { color: var(--text-dark); }
 
-/* 과제+소감문으로 대체된 결석. 목록에서 빼지 않고 표시만 다르게 한다 —
-   조용히 빼면 '두 번 빠졌는데 왜 안 보이지' 가 되고, 그냥 결석으로 두면
-   이미 낸 사람에게 '왜 안 내셨냐' 고 묻게 된다. */
+/* 과제+소감문으로 인정된 결석, 그리고 완화 대상(원칙 5). 목록에서 빼지 않고
+   표시만 다르게 한다 — 조용히 빼면 '두 번 빠졌는데 왜 안 보이지' 가 되고,
+   그냥 결석으로 두면 이미 낸 사람에게 '왜 안 내셨냐' 고 묻게 된다. */
 .ab-replaced {
     padding: 2px 8px;
     font-size: 11px;
@@ -1248,7 +1248,7 @@ body.dark-mode .ab-chip.hw { color: var(--text-dark); }
 }
 body.dark-mode .ab-replaced { color: #6ee7b7; }
 
-/* 냈지만 대체 한도(월 1회)에 걸린 회차 — 결석은 그대로 남는다 */
+/* 과제 기록만 있고 시트에는 안 붙은 회차 — 결석으로 남아 있다 */
 .ab-submitted {
     padding: 2px 8px;
     font-size: 11px;
@@ -1264,6 +1264,23 @@ body.dark-mode .ab-submitted { color: var(--text-dark); }
 /* 검토 대상이 아닌 줄. 지우지 않되 눈이 먼저 가지 않게. */
 .ab-row-quiet { opacity: 0.72; }
 .ab-row-quiet .ab-name { font-weight: 600; }
+
+/* 완화 대상(교역자 원칙 5) — 접어 둔다. 펴 두면 검토 대상이 그 안에 묻힌다.
+   지우지 않는 이유는 admin.js renderAbDropouts 주석에 있다. */
+.ab-lenient {
+    margin-top: 10px;
+    border-top: 1px dashed var(--warm-beige);
+    padding-top: 8px;
+}
+.ab-lenient > summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-light);
+    padding: 4px 2px;
+}
+.ab-lenient > summary:hover { color: var(--midnight-blue); }
+body.dark-mode .ab-lenient > summary:hover { color: var(--text-dark); }
 
 /* 과제 제출 현황 — 심방 전에 보는 값이라 그 줄에 둔다 (규칙 1번) */
 .ab-hw {

@@ -30,6 +30,9 @@ import {
     isAbsent,
     isClassSession,
     isEditableStatus,
+    isMakeup,
+    isMissing,
+    isPresent,
     loadAttendanceForSession,
     refresh,
     requestSheetSync,
@@ -37,9 +40,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=112';
+} from './scripts/members-data.js?v=113';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=112';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=113';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -209,8 +212,12 @@ syncBtn?.addEventListener('click', async () => {
     try {
         const res = await requestSheetSync();
         setSyncInfo(res.success
-            ? res.message + ' 끝나면 [화면 새로 고침] 을 눌러 주세요.'
+            ? res.message + ' 끝나면 저절로 새로 읽습니다.'
             : res.message, res.success ? 'ok' : 'fail');
+        // 요청이 들어갔으면 잠깐 촘촘하게 본다. 동기화가 dg_sync_log 에 끝 표시를
+        // 남기는 순간 화면이 저절로 다시 읽는다 — 사람이 버튼을 또 누를 일이 없다.
+        // (버튼은 그대로 둔다. 워크플로가 실패하면 끝 표시가 영영 안 온다.)
+        if (res.success) startAutoRefresh({ intervalMs: 10000, burstMs: 4 * 60 * 1000 });
     } catch (err) {
         console.log('동기화 요청 실패:', err);
         setSyncInfo('요청 실패: ' + err.message, 'fail');
@@ -588,8 +595,9 @@ async function showMemberDetail(member) {
         let html = '';
 
         // ── 출석 현황 ──
-        const present = attRows.filter(r => r.status.toUpperCase() === 'O').length;
-        const absent = attRows.filter(r => r.status.toUpperCase() === 'X').length;
+        // 시트가 '과제' 로 바꿔 둔 칸은 출석으로 센다 (docs/RULES.md).
+        const present = attRows.filter(r => isPresent(r.status)).length;
+        const absent = attRows.filter(r => isAbsent(r.status)).length;
         const other = attRows.length - present - absent;
         const lunchCount = attRows.filter(r => r.lunch).length;
         const hwInAtt = attRows.filter(r => r.homework).length;
@@ -608,11 +616,13 @@ async function showMemberDetail(member) {
             html += [...attRows].reverse().map((r, idx) => {
                 const st = classifyStatus(r.status);
                 // 결석인데 과제+소감문을 냈으면 전체 출석표·조원 화면과 같은 모양으로.
-                // (월 1회 한도는 하차 검토만 본다 — docs/RULES.md)
+                // 시트가 이미 '과제' 로 바꾼 칸은 classifyStatus 가 makeup 으로 주고,
+                // 아직 X 인 칸은 여기서 칠한다. 둘은 모양이 같다 (docs/RULES.md).
                 const isReplaced = st.cls === 'absent' && r.homework;
                 const cls = isReplaced ? 'makeup' : st.cls;
                 const label = isReplaced ? '과제' : st.label;
-                const badges = (r.lunch ? '🍙' : '') + (r.homework && !isReplaced ? '📝' : '');
+                const makeupCell = cls === 'makeup';
+                const badges = (r.lunch ? '🍙' : '') + (r.homework && !makeupCell ? '📝' : '');
                 const hiddenClass = idx >= 10 ? ' md-hidden md-att-hidden' : '';
                 const tip = isReplaced ? '결석 — 과제와 소감문으로 메움' : st.title;
                 return `<div class="att-chip ${cls}${hiddenClass}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${escapeHtml(tip)}">
@@ -1302,7 +1312,6 @@ async function loadAbsence() {
         ]);
         abHistory = hist;
         abHw = hw;
-        abCreditCache = null;
         abLoadedAtMs = Date.now();
     } catch (err) {
         console.log('결석 현황 조회 실패:', err);
@@ -1360,8 +1369,11 @@ function abCounts() {
         const byDate = abHistory?.get(m._uuid);
         if (!byDate) continue;
         const hit = sessions.filter(s => isAbsent(byDate.get(s.date)));
-        // 회차 객체도 함께 넘긴다 — 대체 여부를 보려면 날짜·강의명이 필요하다.
-        if (hit.length) out.push({ m, dates: hit.map(s => s.key), sessions: hit });
+        // 과제로 인정된 회차는 결석에 안 든다. 그래도 몇 번 있었는지는 보여준다 —
+        // 결석 3회인 사람이 과제를 네 번 낸 사람과 한 번도 안 낸 사람은 다르다.
+        const makeup = sessions.filter(s => isMakeup(byDate.get(s.date))).length;
+        // 회차 객체도 함께 넘긴다 — 표시를 붙이려면 날짜·강의명이 필요하다.
+        if (hit.length) out.push({ m, dates: hit.map(s => s.key), sessions: hit, makeup });
     }
     // 교역자별로 볼 때는 교역자가 먼저다. 그 안에서 결석 많은 순.
     return out.sort((a, b) => (abSort === 'pastor'
@@ -1374,81 +1386,77 @@ function abCounts() {
  *
  *   "특별한 이유없이 월 2회 이상 결석시 하차하게 되며 …"
  *
- * 그리고 규칙 5번이 결석 하나를 지워 준다.
+ * 세는 차례.
+ *   1. 그 달의 **지나간 강의 회차** 중 X 인 것을 모은다
+ *      (빈칸 · ◎ · − · 돌봄 · 과제 는 아니다)
+ *   2. 2회 이상이면 검토 대상
  *
- *   "출석이 불가능한 경우는 조장에게 미리 알려주시고 예습과제와 소감문을 낸
- *    경우 한달에 1회에 한하여 출석으로 인정합니다."
- *
- * 그래서 세는 차례가 이렇다.
- *   1. 그 달의 **지나간 강의 회차** 중 X 인 것을 모은다 (빈칸·◎·−·돌봄 은 아니다)
- *   2. 그중 과제를 낸 회차 하나를 출석으로 인정한다 — **한 달에 하나뿐이다**
- *   3. 남은 결석이 2회 이상이면 검토 대상
+ * ⚠️ **'과제' 는 여기서 아예 안 들어온다.** 시트에 붙은 GAS(`과제제출.gs`)가
+ * 과제+소감문을 낸 사람의 결석 칸을 '과제' 로 바꿔 두므로, isAbsent 가 그
+ * 칸을 결석으로 세지 않는다. 앱이 X + 과제제출 기록을 보고 스스로 '월 1회
+ * 대체' 를 계산하던 것은 없앴다 — 시트가 단일 출처다. 자세히는 docs/RULES.md.
  *
  * ⚠️ '특별한 이유' 는 이 화면이 알 수 없다. 격주 근무·출장·온라인 참여는
  * 오직교적과 행정방에 적히지 시트에는 없다. 그래서 이 목록은 하차 확정이
  * 아니라 **검토할 사람**이고, 화면에도 그렇게 적어 둔다.
- *
- * 과제를 못 받아 왔을 때(loaded=false)는 인정 계산을 하지 않고 그 사실을
- * 알린다. 모르는 것을 '안 냈다' 로 세면 없는 하차 대상을 만든다.
  */
 const AB_DROP_MIN = 2;          // 월 2회 이상
-const AB_HW_CREDIT_PER_MONTH = 1;   // 과제로 인정되는 결석은 한 달에 한 번
 
 /**
- * 과제+소감문으로 **대체된** 결석 회차 (사람별).
+ * 교역자 출석관리 원칙 5번 — 완화 대상.
  *
- * 세 목록이 같은 답을 써야 한다. 각자 따로 세면 이 주차에서는 대체라고 하고
- * 하차 검토에서는 아니라고 하는 일이 생긴다 — 그러면 아무도 안 믿는다.
+ *   "60대 이상 어르신들(남4조 이상, 여10조 이상)과 어린 아동의 부모(C1~C3)인
+ *    경우 위 규칙들을 엄격하게 적용하진 말고 … 시니어교구의 경우 장기결석자들을
+ *    출석부에 남겨두어 서로 돌볼수 있도록 합니다."
  *
- * 대체는 **달마다 한 번뿐**이라, 달별로 결석 회차를 훑어 과제를 낸 첫 회차
- * 하나만 고른다.
+ * 목록에서 **지우지 않는다.** 지우면 교역자가 그 조의 장기결석을 볼 길이
+ * 없어진다. 대신 따로 묶어 '검토 대상 아님' 을 줄에서 분명히 한다.
  *
- * @returns Map(uuid → Set(대체된 회차 날짜))
+ * ⚠️ 조 번호는 기수마다 바뀐다. 숫자의 단일 출처는 docs/RULES.md 다 —
+ * 거기를 먼저 고치고 여기를 고친다.
  */
-let abCreditCache = null;
+const AB_LENIENT_TEAMS = [
+    { prefix: '남', from: 4 },
+    { prefix: '여', from: 10 },
+    { prefix: 'C', from: 1, to: 3 },
+];
 
-function abCreditMap() {
-    if (abCreditCache) return abCreditCache;
-    abCreditCache = new Map();
-    if (!abHistory || !abHw?.loaded) return abCreditCache;
-
-    const byMonth = new Map();
-    for (const s of abClassSessions()) {
-        const mo = s.date.slice(0, 7);
-        if (!byMonth.has(mo)) byMonth.set(mo, []);
-        byMonth.get(mo).push(s);
-    }
-
-    for (const m of memberData) {
-        if (!m._uuid) continue;
-        const byDate = abHistory.get(m._uuid);
-        if (!byDate) continue;
-        const set = new Set();
-        for (const sessions of byMonth.values()) {
-            const credited = sessions
-                .filter(s => isAbsent(byDate.get(s.date)) && abHw.has(m._uuid, s.name))
-                .slice(0, AB_HW_CREDIT_PER_MONTH);
-            credited.forEach(s => set.add(s.date));
-        }
-        if (set.size) abCreditCache.set(m._uuid, set);
-    }
-    return abCreditCache;
+function abIsLenient(team) {
+    // 접두어·번호 가르기는 compareTeamName 이 쓰는 규칙과 같아야 한다.
+    const name = String(team || '').trim();
+    const prefix = name.match(/^[가-힣A-Za-z]+/)?.[0] || '';
+    const num = Number(name.match(/\d+/)?.[0] ?? NaN);
+    return AB_LENIENT_TEAMS.some(r => r.prefix === prefix
+        && Number.isFinite(num) && num >= r.from && (r.to === undefined || num <= r.to));
 }
 
-/** 그 회차가 이 사람에게 어떤 상태인가 — 대체됐나, 냈지만 한도에 걸렸나 */
+/**
+ * 그 회차가 이 사람에게 어떤 상태인가.
+ *
+ *   makeup    시트가 '과제' 로 바꿔 둔 칸 — 출석으로 인정된다
+ *   submitted X 인데 과제 기록만 있다 — **시트에 아직 안 붙었다**
+ *   ''        해당 없음
+ *
+ * 'submitted' 는 인정이 아니라 **경고**다. 아이디가 안 맞아 시트가 못 잡았거나,
+ * 시트 메뉴의 '전체 결석 일괄 동기화' 를 아직 안 돌린 것이다.
+ * (시트 메뉴 → DGfinder → 과제 아이디 점검 으로 어긋난 아이디를 찾는다.)
+ */
 function abHwMark(uuid, session) {
-    if (!abHw?.loaded || !session) return '';
-    if (abCreditMap().get(uuid)?.has(session.date)) return 'credited';
-    return abHw.has(uuid, session.name) ? 'over' : '';
+    if (!session) return '';
+    const status = abHistory?.get(uuid)?.get(session.date);
+    if (isMakeup(status)) return 'makeup';
+    if (!abHw?.loaded) return '';
+    return (isAbsent(status) && abHw.has(uuid, session.name)) ? 'submitted' : '';
 }
 
 const AB_HW_LABEL = {
-    credited: '과제+소감문 대체',
-    over: '과제+소감문 제출',
+    makeup: '과제+소감문 대체',
+    submitted: '과제+소감문 제출',
 };
 const AB_HW_TIP = {
-    credited: '결석했지만 과제+소감문을 내서 출석으로 인정된 회차입니다 (한 달에 1회).',
-    over: '과제+소감문은 냈지만 대체는 한 달에 1회뿐이라 이 회차는 결석으로 남습니다.',
+    makeup: '결석했지만 과제+소감문을 내서 출석으로 인정된 회차입니다 (시트 표기 \'과제\').',
+    submitted: '과제+소감문 기록은 있는데 시트에는 아직 안 붙었습니다 — 아이디가 어긋났거나 '
+             + '시트에서 \'전체 결석 일괄 동기화\' 를 아직 안 돌린 것입니다.',
 };
 
 function abDropoutRows(month) {
@@ -1461,36 +1469,31 @@ function abDropoutRows(month) {
         const byDate = abHistory?.get(m._uuid);
         if (!byDate) continue;
 
+        // '과제' 는 여기 안 들어온다 — isAbsent 는 X 만 결석으로 본다.
         const absent = inMonth.filter(s => isAbsent(byDate.get(s.date)));
-        if (absent.length < AB_DROP_MIN) continue;      // 대체가 없어도 못 미친다
+        if (absent.length < AB_DROP_MIN) continue;
 
-        const creditedDates = new Set(
-            absent.filter(s => abCreditMap().get(m._uuid)?.has(s.date)).map(s => s.date));
+        // 같은 달에 과제로 인정받은 회차. 검토 대상에서 빼지는 않지만,
+        // '아무것도 안 하고 두 번 빠진 사람' 과 구별해야 연락할 말이 달라진다.
+        const makeup = inMonth.filter(s => isMakeup(byDate.get(s.date)));
+        // 결석인데 과제 기록만 있는 회차 — 시트에 아직 안 붙은 것이다.
         const withHw = abHw?.loaded ? absent.filter(s => abHw.has(m._uuid, s.name)) : [];
-
-        const counted = absent.length - creditedDates.size;
-        // 대체로 문턱 아래로 내려간 사람도 목록에 남긴다. 조용히 빼면 '두 번
-        // 빠졌는데 왜 안 보이지' 가 되고, 교역자는 그 사람을 확인할 길이 없다.
-        // 대신 검토 대상이 아니라는 것을 줄에서 분명히 한다.
-        const replaced = counted < AB_DROP_MIN;
 
         out.push({
             m,
-            counted,
-            replaced,
+            counted: absent.length,
+            // 교역자 원칙 5 완화 대상. 목록에서 지우지 않고 따로 묶는다.
+            lenient: abIsLenient(m.team),
             dates: absent.map(s => s.key),
             absent,
-            creditedDates,
-            // 인정은 못 받았지만 과제는 낸 회차. 규칙 1번(심방 때 과제 제출을
-            // 반드시 확인)이 보려는 것이 이것이다 — 인정 한도에 걸렸을 뿐
-            // 공부는 이어간 사람과, 아무것도 안 낸 사람은 다른 이야기다.
+            makeupDates: new Set(makeup.map(s => s.date)),
             hwDates: new Set(withHw.map(s => s.date)),
             hw: abHw?.loaded ? abHw.stats(m._uuid) : null,
         });
     }
 
-    // 검토 대상이 먼저. 대체로 빠진 사람은 참고용이라 뒤로 보낸다.
-    return out.sort((a, b) => (Number(a.replaced) - Number(b.replaced))
+    // 검토 대상이 먼저. 완화 대상은 참고용이라 뒤로 보낸다.
+    return out.sort((a, b) => (Number(a.lenient) - Number(b.lenient))
         || (abSort === 'pastor'
             ? (abCompare(a.m, b.m) || b.counted - a.counted)
             : (b.counted - a.counted || abCompare(a.m, b.m))));
@@ -1498,7 +1501,7 @@ function abDropoutRows(month) {
 
 /** 결석 회차 칩. 대체된 회차인지 아닌지를 세 목록이 같은 모양으로 말한다. */
 function abChip(label, mark) {
-    const cls = mark === 'credited' ? ' credited' : mark === 'over' ? ' hw' : '';
+    const cls = mark === 'makeup' ? ' credited' : mark === 'submitted' ? ' hw' : '';
     const tip = AB_HW_TIP[mark] || '';
     return `<span class="ab-chip${cls}"${tip ? ` title="${attEsc(tip)}"` : ''}>` +
            `${attEsc(label)}${mark ? ' 📝' : ''}</span>`;
@@ -1516,10 +1519,6 @@ function abRow(m, extra = '', cls = '') {
 }
 
 function renderAbsence() {
-    // 그릴 때마다 한 번 다시 센다. 명단이 갱신됐는데 옛 계산이 남으면 새로 들어온
-    // 사람에게 대체 표시가 안 붙는다 (한 번 그리는 동안에는 그대로 쓴다).
-    abCreditCache = null;
-
     const weekList = document.getElementById('abWeekList');
     const weekCount = document.getElementById('abWeekCount');
     const weekNote = document.getElementById('abWeekNote');
@@ -1556,8 +1555,11 @@ function renderAbsence() {
     // ---- 이 주차 ----
     const roster = memberData.filter(m => m._uuid);
     const marked = roster.filter(m => String(abHistory.get(m._uuid)?.get(abSessionDate) ?? '').trim() !== '');
+    // 과제로 인정된 사람도 **명단에 남긴다** — 교역자 원칙 1·3.
+    // 결석자 심방 때 과제·소감문 제출을 확인해야 하므로, 인정됐다고 빠지면
+    // 확인할 대상 자체가 사라진다. 대신 줄에서 갈래를 분명히 한다.
     const absentees = roster
-        .filter(m => isAbsent(abHistory.get(m._uuid)?.get(abSessionDate)))
+        .filter(m => isMissing(abHistory.get(m._uuid)?.get(abSessionDate)))
         .sort(abCompare);
 
     if (weekCount) weekCount.textContent = cur ? `${cur.key} · ${absentees.length}명` : '';
@@ -1580,10 +1582,10 @@ function renderAbsence() {
             // 이미 낸 사람에게 '왜 안 내셨냐' 고 묻게 된다.
             const mark = abHwMark(m._uuid, cur);
             return abRow(m,
-                (mark ? `<b class="ab-${mark === 'credited' ? 'replaced' : 'submitted'}"` +
+                (mark ? `<b class="ab-${mark === 'makeup' ? 'replaced' : 'submitted'}"` +
                         ` title="${attEsc(AB_HW_TIP[mark])}">📝 ${AB_HW_LABEL[mark]}</b>` : '')
                 + (st > 1 ? `<b class="ab-streak">${st}주 연속</b>` : ''),
-                mark === 'credited' ? 'ab-row-quiet' : '');
+                mark === 'makeup' ? 'ab-row-quiet' : '');
         }).join('')
         : `<div class="att-empty">${marked.length ? '이 주차 결석자가 없습니다.' : ''}</div>`;
 
@@ -1593,7 +1595,7 @@ function renderAbsence() {
     if (totalCount) totalCount.textContent = `${hit.length}명`;
     if (totalNote) {
         totalNote.textContent = `강의 ${sessions.length}회차 기준 · 결석(X)만 셉니다`
-            + ` (빈칸 · ◎ · − · 돌봄 은 제외)`;
+            + ` (빈칸 · ◎ · − · 돌봄 · 과제 는 제외)`;
     }
 
     totalList.innerHTML = hit.length
@@ -1601,12 +1603,11 @@ function renderAbsence() {
             // 연속 태그는 두 목록에 다 붙인다. 같은 3회라도 띄엄띄엄 빠진 사람과
             // 내리 세 주 안 나온 사람은 다른 이야기다.
             const st = abStreak(r.m);
-            // 대체된 회차는 칩에 표시한다. 3회 중 하나가 대체면 '3회' 만 보고
-            // 판단할 수 없다 — 어느 회차가 대체인지까지 보여야 쓸 수 있다.
-            const credited = r.sessions.filter(sn => abHwMark(r.m._uuid, sn) === 'credited').length;
+            // 칩에는 '과제 기록은 있는데 시트에 아직 안 붙은' 회차를 표시한다.
+            // 그것이 진짜 결석인지 반영이 안 된 것인지 여기서 갈린다.
             return abRow(r.m,
                 `<b class="ab-n">${r.dates.length}회</b>`
-                + (credited ? `<span class="ab-credit">과제+소감문 대체 ${credited}회</span>` : '')
+                + (r.makeup ? `<span class="ab-credit">과제+소감문 대체 ${r.makeup}회</span>` : '')
                 + (st > 1 ? `<b class="ab-streak">${st}주 연속</b>` : '')
                 + `<span class="ab-dates">${r.sessions
                       .map(sn => abChip(sn.key, abHwMark(r.m._uuid, sn))).join('')}</span>`);
@@ -1637,8 +1638,12 @@ function abHwBadge(hw) {
 /**
  * 하차 검토 목록.
  *
- * 결석 칩에 과제로 인정된 회차를 따로 표시한다 — 몇 회 결석인지만 적으면
- * 왜 3회 결석인데 2회로 세는지 알 수 없고, 그러면 이 숫자를 못 믿는다.
+ * 두 묶음으로 나눠 그린다.
+ *   검토 대상        월 2회 이상 결석 (공지 규칙 6번)
+ *   완화 대상        같은 조건이지만 교역자 원칙 5번이 엄격 적용을 말린 조
+ *
+ * 완화 대상을 **지우지 않는 이유**: 지우면 그 조의 장기결석을 교역자가 볼 길이
+ * 없어진다. 원칙 5번도 '보지 말라' 가 아니라 '엄격하게 적용하지 말고 목양하라' 다.
  */
 function renderAbDropouts() {
     const list = document.getElementById('abDropList');
@@ -1648,48 +1653,57 @@ function renderAbDropouts() {
 
     const rows = abDropoutRows(abMonth);
     const inMonth = abClassSessions().filter(s => s.date.slice(0, 7) === abMonth);
-    const target = rows.filter(r => !r.replaced).length;
-    const replaced = rows.length - target;
+    const strict = rows.filter(r => !r.lenient);
+    const lenient = rows.filter(r => r.lenient);
 
-    // 머리말 수는 **검토 대상**만 센다. 대체된 사람까지 세면 '이 달에 8명
-    // 하차' 로 읽히는데, 그건 사실이 아니다.
-    if (count) count.textContent = target ? `${target}명` : '';
+    // 머리말 수는 **검토 대상**만 센다. 완화 대상까지 세면 '이 달에 8명 하차'
+    // 로 읽히는데, 그건 사실이 아니다.
+    if (count) count.textContent = strict.length ? `${strict.length}명` : '';
 
     if (note) {
         const parts = [`${Number((abMonth || '').slice(5))}월 강의 ${inMonth.length}회차 기준`];
-        if (replaced) {
-            parts.push(`아래 ${replaced}명은 과제+소감문 대체로 문턱 아래 — 검토 대상이 아닙니다`);
-        }
-        // 과제를 못 받아 왔으면 '안 냈다' 가 아니라 '모른다' 다. 그 상태로 센
-        // 숫자는 부풀어 있다 — 인정받을 사람이 인정을 못 받는다.
-        if (!abHw?.loaded) {
-            parts.push('⚠️ 과제 기록을 읽지 못해 인정(월 1회)을 계산하지 못했습니다');
+        parts.push("'과제'(과제+소감문 인정)는 결석으로 세지 않습니다");
+        if (lenient.length) {
+            parts.push(`아래 ${lenient.length}명은 완화 대상(원칙 5) — 검토 대상이 아닙니다`);
         }
         note.textContent = parts.join(' · ');
-        note.classList.toggle('warn', !abHw?.loaded);
+        note.classList.remove('warn');
     }
 
-    list.innerHTML = rows.length
-        ? rows.map(r => {
-            const chips = r.absent.map(sn =>
-                abChip(sn.key, r.creditedDates.has(sn.date) ? 'credited'
-                             : r.hwDates.has(sn.date) ? 'over' : '')).join('');
-            const credited = r.creditedDates.size;
-            return abRow(r.m,
-                (r.replaced
-                    // 대체로 문턱 아래로 내려간 사람. 검토 대상이 아니라는 것을
-                    // 줄에서 바로 알 수 있어야 한다 — 색도 글자도 다르게.
-                    ? `<b class="ab-replaced">📝 과제+소감문 대체</b>`
-                      + `<span class="ab-credit">결석 ${r.absent.length}회 중 ${credited}회 인정 → ${r.counted}회</span>`
-                    : `<b class="ab-n">결석 ${r.counted}회</b>`
-                      + (credited ? `<span class="ab-credit">과제+소감문 대체 ${credited}회</span>` : ''))
-                + abHwBadge(r.hw)
-                + `<span class="ab-dates">${chips}</span>`,
-                r.replaced ? 'ab-row-quiet' : '');
-          }).join('')
-        : `<div class="att-empty">${inMonth.length
+    const rowHtml = (r) => {
+        const chips = r.absent.map(sn =>
+            abChip(sn.key, r.hwDates.has(sn.date) ? 'submitted' : '')).join('');
+        return abRow(r.m,
+            (r.lenient
+                ? `<b class="ab-replaced" title="교역자 출석관리 원칙 5번 — 이 조는 규칙을 엄격하게 적용하지 않습니다.">완화 대상</b>`
+                  + `<span class="ab-credit">결석 ${r.counted}회</span>`
+                : `<b class="ab-n">결석 ${r.counted}회</b>`)
+            + (r.makeupDates.size
+                ? `<span class="ab-credit">과제+소감문 대체 ${r.makeupDates.size}회</span>` : '')
+            + abHwBadge(r.hw)
+            + `<span class="ab-dates">${chips}</span>`,
+            r.lenient ? 'ab-row-quiet' : '');
+    };
+
+    if (!rows.length) {
+        list.innerHTML = `<div class="att-empty">${inMonth.length
               ? '이 달에 하차 검토 대상이 없습니다.'
               : '이 달에는 강의 회차가 없습니다.'}</div>`;
+        return;
+    }
+
+    let html = strict.length
+        ? strict.map(rowHtml).join('')
+        : `<div class="att-empty">이 달에 하차 검토 대상이 없습니다.</div>`;
+
+    // 완화 대상은 접어 둔다. 펴 두면 검토 대상이 그 안에 묻힌다.
+    if (lenient.length) {
+        html += `<details class="ab-lenient">
+            <summary>완화 대상 (원칙 5) ${lenient.length}명 — 60대 이상 · 어린 아동의 부모</summary>
+            ${lenient.map(rowHtml).join('')}
+        </details>`;
+    }
+    list.innerHTML = html;
 }
 
 /**
@@ -1723,16 +1737,16 @@ async function abCopy(btn, rows, title) {
         const streak = abStreak(m);
         const parts = [];
         if (r.weekMark) parts.push(AB_HW_LABEL[r.weekMark]);
-        // 하차 검토는 '몇 회 결석' 이 대체(월 1회)를 뺀 수라 줄 수가 다르다.
-        // 화면과 다른 수를 복사해 보내면 그 자리에서 말이 어긋난다.
+        // 하차 검토 줄은 '몇 회 결석' 과 완화 여부까지 담는다. 화면과 다른 수를
+        // 복사해 보내면 그 자리에서 말이 어긋난다.
         if (r.note) parts.push(r.note);
         else if (r.sessions) {
-            // 대체된 회차에 📝 를 붙인다 — 이미 낸 사람에게 '왜 안 내셨냐' 고
-            // 묻게 되는 것이 이 명단으로 벌어지는 가장 잦은 사고다.
+            // 과제 기록은 있는데 시트에 아직 안 붙은 회차에 📝 를 붙인다 —
+            // 이미 낸 사람에게 '왜 안 내셨냐' 고 묻게 되는 것이 이 명단으로
+            // 벌어지는 가장 잦은 사고다.
             parts.push(`${r.dates.length}회: ` + r.sessions
-                .map(sn => sn.key + (abHwMark(m._uuid, sn) === 'credited' ? '📝' : '')).join(' '));
-            const c = r.sessions.filter(sn => abHwMark(m._uuid, sn) === 'credited').length;
-            if (c) parts.push(`과제+소감문 대체 ${c}회`);
+                .map(sn => sn.key + (abHwMark(m._uuid, sn) === 'submitted' ? '📝' : '')).join(' '));
+            if (r.makeup) parts.push(`과제+소감문 대체 ${r.makeup}회`);
         } else if (r.dates) parts.push(`${r.dates.length}회: ${r.dates.join(' ')}`);
         if (streak > 1) parts.push(`${streak}주 연속`);
         const tail = parts.length ? ` (${parts.join(' · ')})` : '';
@@ -1784,7 +1798,7 @@ document.getElementById('abWeekCopyBtn')?.addEventListener('click', (e) => {
     const roster = memberData.filter(m => m._uuid);
     const cur = abClassSessions().find(s => s.date === abSessionDate);
     const rows = roster
-        .filter(m => isAbsent(abHistory?.get(m._uuid)?.get(abSessionDate)))
+        .filter(m => isMissing(abHistory?.get(m._uuid)?.get(abSessionDate)))
         .sort(abCompare)
         .map(m => ({ m, weekMark: abHwMark(m._uuid, cur) }));
     abCopy(e.currentTarget, rows, `${cur ? cur.key + ' ' : ''}결석자 ${rows.length}명`);
@@ -1797,22 +1811,23 @@ document.getElementById('abTotalCopyBtn')?.addEventListener('click', (e) => {
 
 document.getElementById('abDropCopyBtn')?.addEventListener('click', (e) => {
     const rows = abHistory ? abDropoutRows(abMonth) : [];
-    // 인정받은 회차에는 📝 를 붙인다 — 명단을 받은 교역자가 '왜 이 사람이
-    // 3회 빠졌는데 2회인가' 를 되묻지 않아도 되게.
+    // 📝 는 '과제 기록은 있는데 시트에 아직 안 붙은 회차' 다. 명단을 받은
+    // 교역자가 그 회차를 진짜 결석으로 읽지 않도록 표시해 보낸다.
     const withNote = rows.map(r => ({
         ...r,
-        note: (r.replaced ? '과제+소감문 대체 · ' : '')
+        note: (r.lenient ? '완화 대상(원칙 5) · ' : '')
             + `결석 ${r.counted}회: ` + r.absent
             .map(sn => sn.key + (r.hwDates.has(sn.date) ? '📝' : '')).join(' ')
-            // 심방 전에 확인할 값이라 명단에도 같이 보낸다 (규칙 1번)
+            + (r.makeupDates.size ? ` · 과제+소감문 대체 ${r.makeupDates.size}회` : '')
+            // 심방 전에 확인할 값이라 명단에도 같이 보낸다 (원칙 1번)
             + (r.hw ? ` · 과제 ${r.hw.total}건${r.hw.latest ? ` 최근 ${r.hw.latest}` : ''}` : ''),
     }));
     const mo = Number((abMonth || '').slice(5));
-    const drop = rows.filter(r => !r.replaced).length;
-    const rep = rows.length - drop;
+    const drop = rows.filter(r => !r.lenient).length;
+    const len = rows.length - drop;
     abCopy(e.currentTarget, withNote,
-        `${mo}월 하차 검토 ${drop}명` + (rep ? ` · 과제+소감문 대체 ${rep}명` : '')
-        + ` (📝 = 대체된 회차)`);
+        `${mo}월 하차 검토 ${drop}명` + (len ? ` · 완화 대상 ${len}명` : '')
+        + ` (📝 = 과제 기록은 있으나 시트 미반영)`);
 });
 
 // ==================== 출석부 출력 ====================

@@ -19,14 +19,14 @@ node tests/verify-print.mjs       # 하나만
 | `verify-print.mjs` | 출석부 출력 — A4 한 장 안에 드는가, 집계표, 장 고르기, 김밥·과제 붙기 |
 | `verify-admin.mjs` | 관리자 화면 — 검색·조별·개인별, 조 차례(YF · YM · C · 남 · 여) |
 | `verify-admin-att.mjs` | 출석 관리 — 스냅숏·일괄 버튼·보호값(◎ − 돌봄)·빈칸→결석 |
-| `verify-absence.mjs` | 결석 현황 — 이 주차 결석자, 2회 이상 결석자, 세는 규칙, 교역자별 정렬 |
-| `verify-attendance.mjs` | 회차 선택과 출결 저장 (바뀐 사람만 보내는가) |
-| `verify-matrix.mjs` | 전체 출석표 — 조원 × 회차, 🍙 · 📝 |
+| `verify-absence.mjs` | 결석 현황 — 이 주차 결석자(`과제` 포함), 2회 이상, 하차 검토와 완화 대상(원칙 5), 교역자별 정렬 |
+| `verify-attendance.mjs` | 회차 선택과 출결 저장 (바뀐 사람만 보내는가) · `과제`·`돌봄` 은 읽기 전용 |
+| `verify-matrix.mjs` | 전체 출석표 — 조원 × 회차, 🍙 · 📝, 시트발/앱발 `과제` 가 같은 모양인가 |
 | `verify-myatt.mjs` | 내 출석 현황 — 최근 10회차만 펴 두는가 |
 | `verify-login.mjs` | 관리자 로그인 — 맞으면 바로, 틀렸을 때만 알림 |
 | `verify-links.mjs` | 안내방 버튼 — 조 방·부서 방, 대소문자가 어긋난 링크 키 |
 | `verify-mobile.mjs` | 폰 크기에서 버튼·표가 깨지지 않는가 |
-| `verify-sync-btn.mjs` | 시트 동기화 버튼 |
+| `verify-sync-btn.mjs` | 시트 동기화 버튼 · 자동 새로고침(`dg_sync_log` 끝 표시) |
 | `verify-sync-retry.mjs` | 동기화 — GAS 가 한 번 삐끗해도 그날 일이 날아가지 않는가 |
 | `verify-sync-report.mjs` | 동기화 기록 — 공개 로그에 실명이 새지 않는가 · 안 맞는 아이디 갈래 |
 | `verify-sw.mjs` | Service Worker 자동 갱신 (배포 → 재배포 → 탭 복귀) |

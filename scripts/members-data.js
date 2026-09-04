@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=112';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=112';
+import { matches as hangulMatches } from './hangul.js?v=113';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=113';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -814,6 +814,40 @@ export function isAbsent(status) {
 }
 
 /**
+ * 시트가 '과제' 로 인정해 준 칸.
+ *
+ * 출석부(DB) 시트에 붙은 GAS(`과제제출.gs`)가, 과제+소감문을 낸 사람의
+ * 결석 칸(X)을 '과제' 로 바꿔 놓는다. 사람이 확인하고 찍은 값이므로 앱이
+ * 다시 따지지 않는다. 자세한 것은 docs/RULES.md.
+ */
+export const MAKEUP_STATUS = '과제';
+
+export function isMakeup(status) {
+  return String(status ?? '').trim() === MAKEUP_STATUS;
+}
+
+/**
+ * 출석으로 세는가. O 와 '과제'.
+ *
+ * 화면 네 곳이 저마다 `=== 'O'` 를 쓰고 있었다. 한 곳만 고치면 같은 사람의
+ * 출석 수가 화면마다 달라진다 — 여기 하나만 본다.
+ */
+export function isPresent(status) {
+  return String(status ?? '').trim().toUpperCase() === 'O' || isMakeup(status);
+}
+
+/**
+ * 현장에 안 왔는가. 결석(X) + 과제 인정.
+ *
+ * 결석자 명단이 보는 것이 이것이다. 교역자 출석관리 원칙 1·3 — 결석자
+ * 심방 때 과제·소감문 제출을 확인해야 하므로, **과제를 냈어도 명단에서
+ * 빠지면 안 된다.** 출석 인정(isPresent)과 현장 참석은 다른 물음이다.
+ */
+export function isMissing(status) {
+  return isAbsent(status) || isMakeup(status);
+}
+
+/**
  * 앱이 쓸 수 있는 출결 값인가.
  *
  * '◎'(지난 기수 이수) · '−'(집계 제외) · '돌봄' 같은 표기는 사람이 시트에
@@ -934,41 +968,126 @@ export function clearCache() {
 
 // ============================================================================
 // 자동 새로고침 (Polling)
+//
+// 무엇을 보는가가 전부다.
+//
+// 예전에는 dg_members.updated_at 을 봤다. 그런데 동기화는 dg_members 를
+// **맨 먼저** 쓰고 dg_attendance 를 **맨 마지막**에 쓴다. 게다가 dg_members
+// 에는 BEFORE UPDATE 트리거가 있어 값이 안 바뀌어도 시각이 튄다. 그래서
+//
+//   1. 첫 표가 끝나는 순간 "바뀌었다" 고 보고 새로 읽었고
+//   2. 그때 출석·과제·김밥은 아직 하나도 안 들어와 있었으며
+//   3. 폴링이 그 시각을 이미 본 것으로 올려 버려 **두 번째 새로고침이
+//      영영 오지 않았다.** 다음 동기화(2시간 뒤)까지 옛 값을 붙들었다.
+//
+// 그래서 지금은 동기화가 **다 끝나고** 남기는 dg_sync_log 한 줄만 본다.
+// 그 표가 아직 없으면(마이그레이션 전) dg_attendance.updated_at 으로
+// 물러난다 — 그것도 맨 마지막에 쓰이고 트리거가 있어 upsert 마다 튄다.
 // ============================================================================
-let lastUpdatedAt = null;
+const POLL_INTERVAL_MS = 120000;   // 평상시 2분
+let lastSyncMark = null;           // 마지막으로 '읽었다' 고 확인한 표시
 let pollTimer = null;
+let pollBusy = false;              // 새로고침 중에 또 들어오지 않게
+let pollGen = 0;                   // 다시 걸 때마다 올린다 (옛 루프가 살아남지 않게)
+let pollUnloadHooked = false;
 
 /**
- * dg_members 테이블의 가장 최근 updated_at 값을 폴링하여
- * 변경이 감지되면 자동으로 백그라운드 갱신을 수행합니다.
+ * 동기화가 끝났다는 표시. 없으면 null 을 돌려주고 폴링은 조용히 쉰다.
+ *
+ * 표가 아직 없을 수 있으므로(supabase/dg_sync_log.sql 미실행) 실패하면
+ * dg_attendance 로 물러난다. dg_attendance 에는 cohort_id 열이 없어서
+ * getAttendanceHistory() 가 이미 쓰는 dg_members!inner 조인을 그대로 쓴다.
  */
-export function startAutoRefresh(intervalMs = 30000) {
-  if (pollTimer) clearInterval(pollTimer);
-  
-  pollTimer = setInterval(async () => {
+async function fetchSyncMark(cohortId) {
+  const enc = encodeURIComponent(cohortId);
+  try {
+    const rows = await sbSelect(
+      `dg_sync_log?select=finished_at&cohort_id=eq.${enc}` +
+      '&order=finished_at.desc&limit=1');
+    if (rows && rows.length) return rows[0].finished_at || null;
+    // 줄이 하나도 없다 = 표는 있는데 아직 동기화가 안 돌았다. 물러난다.
+  } catch {
+    // 표가 없다(404). 아래로.
+  }
+  try {
+    const rows = await sbSelect(
+      'dg_attendance?select=updated_at,dg_members!inner(cohort_id)' +
+      `&dg_members.cohort_id=eq.${enc}&order=updated_at.desc&limit=1`);
+    if (rows && rows.length) return rows[0].updated_at || null;
+  } catch {
+    // 둘 다 못 읽으면 폴링은 아무것도 하지 않는다.
+  }
+  return null;
+}
+
+/**
+ * 데이터가 바뀌면 저절로 다시 읽는다.
+ *
+ * @param {object|number} opts  숫자를 주면 intervalMs 로 본다 (옛 호출부 호환).
+ * @param {number} opts.intervalMs  폴링 간격. 기본 2분.
+ * @param {number} opts.burstMs     이 시간 동안만 intervalMs 로 촘촘히 보고,
+ *                                  지나면 평상시 간격으로 돌아온다.
+ *                                  '시트에서 가져오기' 직후에 쓴다.
+ */
+export function startAutoRefresh(opts = {}) {
+  const { intervalMs = POLL_INTERVAL_MS, burstMs = 0 } =
+    (typeof opts === 'number') ? { intervalMs: opts } : (opts || {});
+
+  stopAutoRefresh();
+  // 돌고 있던 tick 이 await 중이면 그 finally 가 타이머를 다시 건다.
+  // 세대를 올려 두면 옛 루프는 거기서 스스로 멈춘다 (안 그러면 둘이 같이 돈다).
+  const gen = ++pollGen;
+
+  const burstUntil = burstMs > 0 ? Date.now() + burstMs : 0;
+
+  // setInterval 이 아니라 타이머를 다시 거는 방식이다. 한 번의 새로고침이
+  // 간격보다 오래 걸려도 겹쳐 들어오지 않는다.
+  const tick = async () => {
+    pollTimer = null;
+    if (gen !== pollGen) return;
     try {
+      // 배경 탭에서는 쉰다. 돌아오면 다음 차례에 알아서 따라잡는다.
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (pollBusy) return;
+
       const cohortId = state.cohortId || await getActiveCohortId();
       if (!cohortId) return;
-      
-      const enc = encodeURIComponent(cohortId);
-      // 가장 최근 수정된 1건의 updated_at 조회
-      const rows = await sbSelect(`dg_members?select=updated_at&cohort_id=eq.${enc}&order=updated_at.desc.nullslast&limit=1`);
-      
-      if (rows && rows.length > 0 && rows[0].updated_at) {
-        const latest = rows[0].updated_at;
-        
-        if (!lastUpdatedAt) {
-          lastUpdatedAt = latest;
-        } else if (latest !== lastUpdatedAt) {
-          console.log(`데이터 변경 감지 (${lastUpdatedAt} -> ${latest}), 자동 갱신 시작...`);
-          lastUpdatedAt = latest;
-          
-          // forceRefresh 로 최신 데이터를 불러오고 화면에 notify
-          ensureLoaded({ forceRefresh: true }).catch(err => console.log('자동 갱신 실패:', err));
-        }
+
+      const mark = await fetchSyncMark(cohortId);
+      if (!mark) return;
+
+      if (lastSyncMark === null) { lastSyncMark = mark; return; }
+      if (mark === lastSyncMark) return;
+
+      // ⚠️ 깃발은 **새로고침이 성공한 뒤에** 올린다. 먼저 올리면 한 번
+      // 실패했을 때 다시 시도할 근거가 사라진다 (예전 버그가 그랬다).
+      pollBusy = true;
+      try {
+        await ensureLoaded({ forceRefresh: true });
+        lastSyncMark = mark;
+      } finally {
+        pollBusy = false;
       }
     } catch (err) {
-      console.log('자동 새로고침 폴링 실패:', err);
+      console.log('자동 새로고침 실패 — 다음 차례에 다시 시도합니다:', err);
+    } finally {
+      if (gen === pollGen) {
+        const next = (burstUntil && Date.now() < burstUntil) ? intervalMs : POLL_INTERVAL_MS;
+        pollTimer = setTimeout(tick, next);
+      }
     }
-  }, intervalMs);
+  };
+
+  pollTimer = setTimeout(tick, intervalMs);
+
+  if (!pollUnloadHooked && typeof window !== 'undefined') {
+    pollUnloadHooked = true;
+    window.addEventListener('beforeunload', stopAutoRefresh);
+  }
+}
+
+/** 폴링을 멈춘다. 다시 부르려면 startAutoRefresh(). */
+export function stopAutoRefresh() {
+  pollGen++;
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
 }

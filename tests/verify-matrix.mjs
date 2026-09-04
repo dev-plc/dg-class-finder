@@ -57,6 +57,11 @@ const ATT_BY_DATE = Object.fromEntries(MEMBERS.map((m, i) => [
   ])),
 ]));
 
+// 시트에 붙은 GAS 가 과제+소감문을 낸 결석 칸을 '과제' 로 바꿔 둔다.
+// 앱이 X + 과제제출 기록을 보고 스스로 칠하는 칸과 **같은 모양**이어야 한다.
+const MAKEUP_ID = `${MEMBERS[0].name}${MEMBERS[0].phone}`;
+ATT_BY_DATE[MAKEUP_ID][D[4]] = '과제';
+
 const { ok, done } = makeReporter('전체 출석표');
 
 const browser = await launch();
@@ -208,6 +213,13 @@ ok('신청·제출한 주차에 🍙📝 둘 다', r1[0].badges === '🍙📝', 
 ok('다른 주차엔 뱃지 없음', r1.slice(1).every(c => c.badges === ''),
    JSON.stringify(r1.slice(1, 4)));
 
+// 시트가 '과제' 로 바꿔 둔 칸 (D[4]) 과, 앱이 X+과제제출로 칠하는 칸(u3 의 D[2]).
+// 둘은 뜻이 같으므로 **같은 class** 여야 한다 — 다르면 같은 상황이 두 모양이 된다.
+ok("시트의 '과제' 는 노란 칸이 된다",
+   /\bmakeup\b/.test(r1[4].cls) && r1[4].status === '과제',
+   `${r1[4].cls} / ${r1[4].status}`);
+ok("파란 '그 밖의 표기'(special) 로 새지 않는다", !/special/.test(r1[4].cls), r1[4].cls);
+
 const r2 = await cellsOf(rowOf('조원02'));   // u2 — D[2] 김밥만
 ok('김밥만 신청한 주차엔 🍙 만', r2[2].badges === '🍙' && r2[0].badges === '',
    JSON.stringify(r2.slice(0, 3)));
@@ -215,6 +227,10 @@ ok('돌봄 표기가 그대로 보임', r2[2].status === '돌봄', r2[2].status)
 
 const r3 = await cellsOf(rowOf('조원03'));   // u3 — '제2강' 과제
 ok("폼 표기 '제2강' 도 2강 칸에 📝", r3[2].badges === '📝', JSON.stringify(r3.slice(0, 3)));
+// u3 의 D[2] 는 시트에 X 인데 과제 기록이 있다 → 화면이 칠한다.
+ok('시트발 과제와 앱이 칠한 과제가 같은 모양',
+   r3[2].status === '과제' && /\bmakeup\b/.test(r3[2].cls),
+   `${r3[2].cls} / ${r3[2].status}`);
 
 const r4 = await cellsOf(rowOf('조원04'));   // u4 — 김밥 취소 + '자유교재' 과제
 ok('applied=false 는 🍙 안 뜸', !r4.some(c => c.badges.includes('🍙')),

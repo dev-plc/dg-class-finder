@@ -29,6 +29,7 @@ await page.route('**/rest/v1/**', route => {
     if (url.searchParams.get('select') === 'cohort_id') body = [{ cohort_id: COHORT }];
     else { memberFetches++; body = MEMBERS; }
   } else if (table === 'dg_sessions') body = SESSIONS;
+  else if (table === 'dg_sync_log') body = [{ finished_at: '2026-08-22T04:20:00Z' }];
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 });
 
@@ -75,7 +76,8 @@ ok('토큰을 앱에서 보내지 않는다',
    JSON.stringify(posts[0]?.body));
 
 const info1 = await page.$eval('#syncInfo', el => el.textContent.trim());
-ok('결과 메시지를 보여준다', /1~2분/.test(info1) && /새로 고침/.test(info1), info1);
+// '눌러 주세요' 가 아니라 '저절로' 다 — 끝 표시(dg_sync_log)를 보고 화면이 스스로 읽는다.
+ok('결과 메시지를 보여준다', /1~2분/.test(info1) && /저절로 새로 읽습니다/.test(info1), info1);
 
 ok('연타 방지 — 버튼이 잠긴다', await page.$eval('#syncBtn', el => el.disabled));
 
@@ -163,6 +165,134 @@ ok('2시간마다라고 알린다', /2시간마다/.test(at0400), at0400);
 ok("'무렵' 이라고 적는다 — 예약 실행은 밀린다", /무렵/.test(at0400), at0400);
 
 await page.screenshot({ path: '/dg-sync-btn.png' });
+
+// --- 자동 새로고침 ----------------------------------------------------------
+//
+// 이 절이 겨누는 버그: 폴링이 dg_members.updated_at 을 보고 있었다. 그런데
+// 동기화는 dg_members 를 **맨 먼저** 쓴다. 출석·과제가 아직 안 들어온 시점에
+// 새로고침이 돌았고, 깃발을 먼저 올려 버려 **두 번째 새로고침이 영영 안 왔다.**
+//
+// 그래서 화면은 동기화가 **다 끝나고** 남기는 dg_sync_log 한 줄만 봐야 한다.
+
+/**
+ * 폴링만 보는 창을 따로 연다. 시계를 가짜로 세워 두고 앞으로 감는다 —
+ * 진짜로 2분을 기다리면 검증이 못 쓸 만큼 느려진다.
+ */
+async function pollCase({ syncLogStatus = 200, hidden = false } = {}) {
+  const ctx = await browser.newContext();
+  await ctx.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+  if (hidden) {
+    await ctx.addInitScript(() =>
+      Object.defineProperty(document, 'hidden', { get: () => true, configurable: true }));
+  }
+  const p2 = await ctx.newPage();
+  await p2.clock.install({ time: new Date('2026-08-22T04:00:00Z') });
+
+  const state = {
+    members: [...MEMBERS],
+    syncMark: '2026-08-22T04:20:00Z',
+    attMark: '2026-08-22T04:20:00Z',
+    memberFetches: 0,
+    syncLogHits: 0,
+    attHits: 0,
+  };
+
+  await p2.route('**/rest/v1/**', route => {
+    const url = new URL(route.request().url());
+    const table = url.pathname.split('/').pop();
+    if (table === 'dg_sync_log') {
+      state.syncLogHits++;
+      if (syncLogStatus !== 200) {
+        return route.fulfill({ status: syncLogStatus, contentType: 'application/json',
+                               body: JSON.stringify({ message: 'relation does not exist' }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json',
+                             body: JSON.stringify([{ finished_at: state.syncMark }]) });
+    }
+    if (table === 'dg_attendance') {
+      state.attHits++;
+      return route.fulfill({ status: 200, contentType: 'application/json',
+                             body: JSON.stringify([{ updated_at: state.attMark }]) });
+    }
+    let body = [];
+    if (table === 'dg_members') {
+      if (url.searchParams.get('select') === 'cohort_id') body = [{ cohort_id: COHORT }];
+      else { state.memberFetches++; body = state.members; }
+    } else if (table === 'dg_sessions') body = SESSIONS;
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await p2.route('**/script.google.com/**', route =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+                    body: JSON.stringify({ success: true, version: 24, message: '요청했습니다.' }) }));
+
+  await p2.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
+  await p2.waitForFunction(() => document.querySelectorAll('.team-card').length > 0,
+                           null, { timeout: 20000 });
+  // 가져오기를 눌러 촘촘한 폴링(10초)을 켠다.
+  await p2.click('#syncBtn');
+  await p2.waitForTimeout(300);
+
+  state.tick = async (ms = 11000) => { await p2.clock.runFor(ms); await p2.waitForTimeout(400); };
+  state.close = () => ctx.close();
+  state.page = p2;
+  return state;
+}
+
+{
+  const c = await pollCase();
+
+  // (1) dg_members 만 바뀐 상태 — 동기화가 아직 안 끝났다. 읽으면 안 된다.
+  const before = c.memberFetches;
+  c.members = [...c.members, {
+    id: 'u9', cohort_id: COHORT, name: '아직안끝남', phone: '1009', team: 'Y1', team_no: 9,
+    role: '조원', location: '웨슬리홀', lunch: 'X', status: 'active', age: 33,
+  }];
+  await c.tick();
+  ok('끝 표시가 그대로면 다시 읽지 않는다', c.memberFetches === before,
+     `${c.memberFetches - before}회 더 읽음`);
+  ok('끝 표시를 실제로 보고 있다', c.syncLogHits > 0, `${c.syncLogHits}회 조회`);
+
+  // (2) 끝 표시가 바뀌었다 — 이제 읽는다.
+  c.syncMark = '2026-08-22T04:31:00Z';
+  await c.tick();
+  ok('끝 표시가 바뀌면 다시 읽는다', c.memberFetches > before,
+     `${c.memberFetches - before}회 더 읽음`);
+  const names = await c.page.$$eval('.member-card-id', els => els.map(e => e.textContent.trim()));
+  ok('새 인원이 화면에 나온다', names.some(n => n.includes('아직안끝남')), names.join(', '));
+
+  // (3) 같은 표시로는 또 읽지 않는다 (헛 새로고침 없음)
+  const after = c.memberFetches;
+  await c.tick();
+  ok('같은 끝 표시로는 또 읽지 않는다', c.memberFetches === after,
+     `${c.memberFetches - after}회 더 읽음`);
+
+  await c.close();
+}
+
+{
+  // 표가 아직 없으면(마이그레이션 전) dg_attendance.updated_at 으로 물러난다.
+  const c = await pollCase({ syncLogStatus: 404 });
+  await c.tick();
+  ok('끝 표시 표가 없으면 dg_attendance 로 물러난다', c.attHits > 0, `${c.attHits}회 조회`);
+
+  const before = c.memberFetches;
+  c.attMark = '2026-08-22T04:33:00Z';
+  await c.tick();
+  ok('물러난 뒤에도 바뀌면 다시 읽는다', c.memberFetches > before,
+     `${c.memberFetches - before}회 더 읽음`);
+  await c.close();
+}
+
+{
+  // 배경 탭에서는 쉰다. 켜 둔 창이 여럿이면 그만큼 헛 요청이 나간다.
+  const c = await pollCase({ hidden: true });
+  const before = c.syncLogHits;
+  await c.tick();
+  await c.tick();
+  ok('배경 탭이면 요청이 안 나간다', c.syncLogHits === before,
+     `${c.syncLogHits - before}회 더 조회`);
+  await c.close();
+}
 
 await browser.close();
 server.close();

@@ -15,6 +15,9 @@ const MEMBERS = [
     location: '웨슬리홀', role: '조장', lunch: 'O', status: 'active' },
   { id: 'u2', cohort_id: COHORT, name: '이조원', phone: '2222', team: 'Y1', team_no: 2,
     location: '웨슬리홀', role: '조원', lunch: 'X', status: 'active' },
+  // 시트에 붙은 GAS 가 과제+소감문을 낸 결석 칸을 '과제' 로 바꿔 둔다.
+  { id: 'u3', cohort_id: COHORT, name: '박과제', phone: '3333', team: 'Y1', team_no: 3,
+    location: '웨슬리홀', role: '조원', lunch: 'X', status: 'active' },
 ];
 const SESSIONS = [
   { key: '11/02', date: '2025-11-02' },
@@ -24,6 +27,7 @@ const SESSIONS = [
 const ATT_BY_DATE = {
   '김조장1111': { '2025-11-02': 'O', '2025-11-09': 'O' },
   '이조원2222': { '2025-11-02': 'O', '2025-11-09': '돌봄' },
+  '박과제3333': { '2025-11-02': 'O', '2025-11-09': '과제' },
 };
 
 const posted = [];
@@ -114,28 +118,38 @@ const at1109 = await checkedOn();
 ok('11/09 — 조장만 체크박스, 체크됨', JSON.stringify(at1109) === '[true]', JSON.stringify(at1109));
 
 const badges = await page.$$eval('.attendance-badge', els => els.map(e => e.textContent.trim()));
-ok('돌봄은 체크박스 대신 배지로', JSON.stringify(badges) === '["돌봄"]', JSON.stringify(badges));
+// 체크박스로 두면 '체크 안 됨' 으로 보여서 조장이 무심코 눌러 시트 기록을 덮는다.
+// '과제' 도 앱이 만든 값이 아니므로 같은 규칙이다 (GAS 도 kept 로 거부한다).
+ok('돌봄 · 과제는 체크박스 대신 배지로',
+   JSON.stringify([...badges].sort()) === '["과제","돌봄"]', JSON.stringify(badges));
+
+// '과제' 는 출석으로 센다 (docs/RULES.md). 조 요약이 그 규칙을 따라야 한다 —
+// 여기만 'O' 를 직접 세면 화면마다 숫자가 어긋난다.
+const summary1109 = await page.$eval('#teamSummaryCard', el => el.textContent.replace(/\s+/g, ' '));
+ok("'과제' 를 출석으로 센다 (출석 2 · 결석 0)",
+   /2 ✅ 출석/.test(summary1109) && /0 ❌ 결석/.test(summary1109), summary1109.trim());
 
 await page.selectOption('#sessionPicker', '2025-11-02');
 await page.waitForTimeout(300);
 const at1102 = await checkedOn();
-ok('11/02 로 바꾸면 둘 다 체크', JSON.stringify(at1102) === '[true,true]', JSON.stringify(at1102));
+ok('11/02 로 바꾸면 셋 다 체크', JSON.stringify(at1102) === '[true,true,true]',
+   JSON.stringify(at1102));
 const badges2 = await page.$$eval('.attendance-badge', els => els.length);
 ok('11/02 에는 배지 없음', badges2 === 0, `배지 ${badges2}개`);
 
 // --- 일괄 저장: 체크만으로는 보내지 않는다 --------------------------------
 posted.length = 0;
-await page.uncheck('.attendance-check >> nth=1');
+await page.uncheck('.attendance-check[data-name="이조원"]');
 await page.waitForTimeout(800);
 ok('체크만으로는 저장하지 않음', posted.length === 0, `요청 ${posted.length}건`);
 
 // 버튼은 '실제로 쓸 인원' 을 보여준다 (명단 전체를 O/X 로 쓴다).
 // 변경 건수는 그 옆 정보 줄이 말한다.
 const btnText = await page.$eval('#saveAttendanceBtn', el => el.textContent.trim());
-ok('저장 버튼이 쓸 인원을 보여줌', btnText.includes('2명'), btnText);
+ok('저장 버튼이 쓸 인원을 보여줌', btnText.includes('3명'), btnText);
 const infoText = await page.$eval('#attendanceSaveInfo', el => el.textContent.trim());
 ok('정보 줄이 변경 건수와 출결 수를 보여줌',
-   /변경 1건/.test(infoText) && /출석 1/.test(infoText) && /결석 1/.test(infoText), infoText);
+   /변경 1건/.test(infoText) && /출석 2/.test(infoText) && /결석 1/.test(infoText), infoText);
 
 await page.click('#saveAttendanceBtn');
 await page.waitForTimeout(1200);
@@ -147,7 +161,7 @@ ok('저장 요청에 session 포함', !!body && body.session === '2025-11-02',
 // 빈칸(기록 없음)으로 남았다 — 출석도 결석도 아닌 칸이 되어 수료를 따질 때
 // 한 명씩 되짚어야 했다.
 const st = Object.fromEntries((body?.batch || []).map(b => [b.name, b.status]));
-ok('명단 전체를 보낸다 (2명)', !!body && body.batch.length === 2,
+ok('명단 전체를 보낸다 (3명)', !!body && body.batch.length === 3,
    body ? JSON.stringify(body.batch) : '(요청 없음)');
 ok('체크를 푼 사람은 X', st['이조원'] === 'X', JSON.stringify(st));
 ok('체크한 사람은 O 그대로', st['김조장'] === 'O', JSON.stringify(st));
@@ -167,11 +181,25 @@ const cols = await page.$$eval('.matrix-table thead th', els => els.length);
 ok('출석표 헤더 = 이름칸 + 회차수', cols === 1 + 2, `${cols}칸`);
 
 const rows = await page.$$eval('.matrix-table tbody tr', els => els.length);
-ok('출석표 행 = 조원수', rows === 2, `${rows}행`);
+ok('출석표 행 = 조원수', rows === 3, `${rows}행`);
 
-const cells = await page.$$eval('.matrix-table tbody tr:nth-child(2) .mx-status',
-    els => els.map(e => e.textContent.trim()));
+// 줄 차례는 명단 정렬에 따라 흔들린다. 이름으로 찾는다.
+const rowCells = (name) => page.evaluate((n) => {
+  const tr = [...document.querySelectorAll('.matrix-table tbody tr')]
+    .find(r => r.querySelector('.mx-name')?.textContent.trim() === n);
+  return [...(tr?.querySelectorAll('td') || [])].map(e => ({
+    st: e.querySelector('.mx-status')?.textContent.trim() || '',
+    cls: e.className,
+  }));
+}, name);
+
+const cells = (await rowCells('이조원')).map(c => c.st);
 ok('돌봄이 출석표에 그대로 보임', cells.includes('돌봄'), cells.join(','));
+
+const hwCells = await rowCells('박과제');
+const 과제칸 = hwCells.find(c => c.st === '과제');
+ok("'과제' 는 노란 칸으로 보인다", !!과제칸 && /\bmakeup\b/.test(과제칸.cls),
+   JSON.stringify(hwCells));
 
 await page.click('#matrixCloseBtn');
 await page.waitForTimeout(300);
