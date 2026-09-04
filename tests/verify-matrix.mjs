@@ -43,10 +43,13 @@ const LUNCH = [
   { member_id: 'u2', session_date: D[2], applied: true },
   { member_id: 'u4', session_date: D[1], applied: false },  // 취소분은 안 떠야 한다
 ];
+// ⚠️ kind 가 인정 여부를 가른다 — '과제+소감문' 이 든 것만 인정이다.
 const HOMEWORK = [
-  { member_id: 'u1', lecture: '1강' },
-  { member_id: 'u3', lecture: '제2강' },       // 폼 표기가 달라도 붙어야 한다
-  { member_id: 'u4', lecture: '자유교재' },     // '교재' → '교제' 정규화
+  { member_id: 'u1', lecture: '1강', kind: '과제+소감문' },
+  { member_id: 'u3', lecture: '제2강', kind: '과제+소감문' },   // 폼 표기가 달라도 붙어야 한다
+  { member_id: 'u4', lecture: '자유교재', kind: '과제+소감문' }, // '교재' → '교제' 정규화
+  // 냈지만 종류가 모자란 것. 노란 칸이 되면 안 된다.
+  { member_id: 'u2', lecture: '1강', kind: '과제' },
 ];
 
 const ATT_BY_DATE = Object.fromEntries(MEMBERS.map((m, i) => [
@@ -220,9 +223,13 @@ ok("시트의 '과제' 는 노란 칸이 된다",
    `${r1[4].cls} / ${r1[4].status}`);
 ok("파란 '그 밖의 표기'(special) 로 새지 않는다", !/special/.test(r1[4].cls), r1[4].cls);
 
-const r2 = await cellsOf(rowOf('조원02'));   // u2 — D[2] 김밥만
-ok('김밥만 신청한 주차엔 🍙 만', r2[2].badges === '🍙' && r2[0].badges === '',
+const r2 = await cellsOf(rowOf('조원02'));   // u2 — D[2] 김밥만 · 1강은 과제만 냈다
+ok('김밥만 신청한 주차엔 🍙 만', r2[2].badges === '🍙',
    JSON.stringify(r2.slice(0, 3)));
+// 과제만 낸 회차. 냈다는 사실은 보이되 **노란 칸이 되면 안 된다** —
+// 노란 칸은 '출석으로 인정됐다' 는 뜻이라 결석을 지워 버린다.
+ok('종류가 모자란 제출도 📝 는 붙는다', r2[0].badges.includes('📝'), r2[0].badges);
+ok('다만 인정은 아니다 (노란 칸이 아니다)', !/\bmakeup\b/.test(r2[0].cls), r2[0].cls);
 ok('돌봄 표기가 그대로 보임', r2[2].status === '돌봄', r2[2].status);
 
 const r3 = await cellsOf(rowOf('조원03'));   // u3 — '제2강' 과제

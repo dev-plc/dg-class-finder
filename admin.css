@@ -1234,6 +1234,14 @@ body.dark-mode .ab-chip.credited { color: #6ee7b7; }
 }
 body.dark-mode .ab-chip.hw { color: var(--text-dark); }
 
+/* 냈지만 종류가 '과제+소감문' 이 아니라 인정되지 않는 회차.
+   .ab-chip.hw(시트 미반영 경고)와 색이 달라야 심방 때 물을 말이 갈린다 —
+   하나는 '시트에 반영해 달라', 하나는 '소감문을 마저 내 달라' 다. */
+.ab-chip.partial {
+    color: var(--text-light);
+    border-style: dashed;
+}
+
 /* 과제+소감문으로 인정된 결석, 그리고 완화 대상(원칙 5). 목록에서 빼지 않고
    표시만 다르게 한다 — 조용히 빼면 '두 번 빠졌는데 왜 안 보이지' 가 되고,
    그냥 결석으로 두면 이미 낸 사람에게 '왜 안 내셨냐' 고 묻게 된다. */

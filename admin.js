@@ -27,6 +27,7 @@ import {
     getHomeworkChecker,
     getSessionExtras,
     getToday,
+    homeworkKindLabel,
     isAbsent,
     isClassSession,
     isEditableStatus,
@@ -40,9 +41,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=113';
+} from './scripts/members-data.js?v=114';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=113';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=114';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1434,29 +1435,43 @@ function abIsLenient(team) {
  * 그 회차가 이 사람에게 어떤 상태인가.
  *
  *   makeup    시트가 '과제' 로 바꿔 둔 칸 — 출석으로 인정된다
- *   submitted X 인데 과제 기록만 있다 — **시트에 아직 안 붙었다**
+ *   submitted X 인데 **인정 기준을 채운** 과제 기록이 있다 — 시트에 아직 안 붙었다
+ *   partial   X 인데 **종류가 모자란** 제출만 있다 (과제만 냈다든지)
  *   ''        해당 없음
  *
  * 'submitted' 는 인정이 아니라 **경고**다. 아이디가 안 맞아 시트가 못 잡았거나,
  * 시트 메뉴의 '전체 결석 일괄 동기화' 를 아직 안 돌린 것이다.
  * (시트 메뉴 → DGfinder → 과제 아이디 점검 으로 어긋난 아이디를 찾는다.)
+ *
+ * 'partial' 은 **낸 것은 맞지만 인정 기준에 못 미치는** 것이다. 둘을 섞으면
+ * 심방 때 물을 말이 달라진다 — 하나는 '시트에 반영해 달라', 하나는
+ * '소감문을 마저 내 달라' 다.
  */
 function abHwMark(uuid, session) {
     if (!session) return '';
     const status = abHistory?.get(uuid)?.get(session.date);
     if (isMakeup(status)) return 'makeup';
-    if (!abHw?.loaded) return '';
-    return (isAbsent(status) && abHw.has(uuid, session.name)) ? 'submitted' : '';
+    if (!abHw?.loaded || !isAbsent(status)) return '';
+    if (abHw.has(uuid, session.name)) return 'submitted';
+    return abHw.kinds(uuid, session.name).length ? 'partial' : '';
+}
+
+/** 그 회차에 실제로 낸 종류. 화면은 이것을 그대로 찍는다. */
+function abHwKinds(uuid, session) {
+    return session && abHw?.loaded ? abHw.kinds(uuid, session.name) : [];
 }
 
 const AB_HW_LABEL = {
     makeup: '과제+소감문 대체',
     submitted: '과제+소감문 제출',
+    partial: '인정 기준 미달',
 };
 const AB_HW_TIP = {
     makeup: '결석했지만 과제+소감문을 내서 출석으로 인정된 회차입니다 (시트 표기 \'과제\').',
     submitted: '과제+소감문 기록은 있는데 시트에는 아직 안 붙었습니다 — 아이디가 어긋났거나 '
              + '시트에서 \'전체 결석 일괄 동기화\' 를 아직 안 돌린 것입니다.',
+    partial: '제출은 있지만 종류가 \'과제+소감문\' 이 아니라 출석으로 인정되지 않습니다. '
+           + '무엇을 냈는지는 줄에 적혀 있습니다.',
 };
 
 function abDropoutRows(month) {
@@ -1501,7 +1516,9 @@ function abDropoutRows(month) {
 
 /** 결석 회차 칩. 대체된 회차인지 아닌지를 세 목록이 같은 모양으로 말한다. */
 function abChip(label, mark) {
-    const cls = mark === 'makeup' ? ' credited' : mark === 'submitted' ? ' hw' : '';
+    const cls = mark === 'makeup' ? ' credited'
+              : mark === 'submitted' ? ' hw'
+              : mark === 'partial' ? ' partial' : '';
     const tip = AB_HW_TIP[mark] || '';
     return `<span class="ab-chip${cls}"${tip ? ` title="${attEsc(tip)}"` : ''}>` +
            `${attEsc(label)}${mark ? ' 📝' : ''}</span>`;
@@ -1583,7 +1600,11 @@ function renderAbsence() {
             const mark = abHwMark(m._uuid, cur);
             return abRow(m,
                 (mark ? `<b class="ab-${mark === 'makeup' ? 'replaced' : 'submitted'}"` +
-                        ` title="${attEsc(AB_HW_TIP[mark])}">📝 ${AB_HW_LABEL[mark]}</b>` : '')
+                        ` title="${attEsc(AB_HW_TIP[mark])}">📝 ` +
+                        // 기준 미달일 때는 무엇을 냈는지가 핵심이다 — 그걸 적는다.
+                        (mark === 'partial'
+                            ? `${attEsc(homeworkKindLabel(abHwKinds(m._uuid, cur)))} 제출 · ${AB_HW_LABEL[mark]}`
+                            : AB_HW_LABEL[mark]) + `</b>` : '')
                 + (st > 1 ? `<b class="ab-streak">${st}주 연속</b>` : ''),
                 mark === 'makeup' ? 'ab-row-quiet' : '');
         }).join('')
@@ -1671,6 +1692,9 @@ function renderAbDropouts() {
     }
 
     const rowHtml = (r) => {
+        // 하차 검토 칩은 '시트에 아직 안 붙은 인정 제출' 만 표시한다.
+        // 종류 미달까지 여기 섞으면 📝 가 두 뜻을 갖게 되고, 이 목록에서 📝 는
+        // '반영만 하면 결석이 아니게 된다' 는 뜻이라야 쓸모가 있다.
         const chips = r.absent.map(sn =>
             abChip(sn.key, r.hwDates.has(sn.date) ? 'submitted' : '')).join('');
         return abRow(r.m,

@@ -1376,6 +1376,20 @@ body.dark-mode .hw-todo-title b { color: #FBBF24; }
     background: rgba(245, 158, 11, 0.18);
     color: var(--text-dark);
 }
+/* 냈지만 종류가 모자란 회차 (과제만 냈다든지). 안 낸 것과 섞으면
+   '냈는데 왜 안 냈다고 하지' 가 되고, 빼 버리면 무엇을 더 내야 하는지
+   알 길이 없다. 그래서 남기되 낸 것을 옆에 적는다. */
+.hw-todo-chip.part {
+    background: rgba(245, 158, 11, 0.10);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+}
+.hw-todo-chip.part > b {
+    font-size: 10px;
+    font-weight: 700;
+    opacity: 0.75;
+}
 .hw-todo-rest {
     padding: 3px 4px;
     font-size: 11px;
@@ -1450,6 +1464,12 @@ body.dark-mode .hw-todo-title b { color: #FBBF24; }
     border: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 999px;
     background: var(--milk-beige);
+}
+/* 종류가 모자란 제출의 📝. 인정된 것(.hw-badge)과 **눈으로 갈려야** 한다 —
+   같은 모양이면 '냈다' 는 사실만 남고 인정 여부가 사라진다. */
+.hw-partial {
+    opacity: 0.45;
+    filter: grayscale(1);
 }
 .hw-legend, .hw-badge {
     background-color: #fef08a;

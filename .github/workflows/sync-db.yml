@@ -16,6 +16,11 @@ on:
         type: boolean
         required: false
         default: false
+      allow_purge:
+        description: '시트에서 사라진 출석이 많아도 지운다 (평소엔 끄고 둘 것)'
+        type: boolean
+        required: false
+        default: false
   schedule:
     # 2시간마다 (:20 UTC). Supabase 7일 pause 방지 겸용.
     #
@@ -56,6 +61,11 @@ jobs:
           FLAGS=""
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             FLAGS="$FLAGS --dry-run"
+          fi
+          # 시트에서 여러 회차를 한꺼번에 비웠을 때만 켠다. 평소에는 안전장치가
+          # 막아 주는 편이 낫다 — GAS 가 부분 응답을 주면 출석이 통째로 지워진다.
+          if [ "${{ github.event.inputs.allow_purge }}" = "true" ]; then
+            FLAGS="$FLAGS --allow-purge"
           fi
           echo "flags:${FLAGS:-(없음)}"
           node scripts/sync-sheet-to-db.mjs $FLAGS

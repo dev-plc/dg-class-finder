@@ -9,7 +9,7 @@
 // 노란 '과제' 칸은 두 갈래로 들어온다 — 시트가 적어 준 '과제' 와, 앱이 X + 과제제출을
 // 보고 스스로 칠하는 것. 둘 다 makeup 이라 모양이 같다. 뜻과 셈법은 docs/RULES.md.
 
-import { getSessions, getToday, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=113';
+import { getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=114';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -84,7 +84,8 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
     const titleText = `👥 ${teamName} 전체 출석표 (${members.length}명 · ${cols.length}회차)`;
 
     const lunchMap = extras?.lunch || new Map();
-    const hwMap = extras?.homework || new Map();
+    const hwMap = extras?.homework || new Map();          // 인정 대상 (과제+소감문)
+    const hwKindMap = extras?.homeworkKinds || new Map();  // 실제로 낸 종류 그대로
 
     const sorted = [...members].sort((a, b) => {
         const pa = rolePriority[a.role] || 4;
@@ -111,12 +112,18 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
         const present = cols.filter(c => isPresent(getStatus(m, c.date))).length;
         const myLunch = lunchMap.get(m._uuid) || null;
         const myHw = hwMap.get(m._uuid) || null;
+        const myHwKinds = hwKindMap.get(m._uuid) || null;
 
         const cells = cols.map((c, i) => {
             const st = classifyStatus(getStatus(m, c.date));
             const lunch = !!(myLunch && myLunch.has(c.date));
             // 회차에 강의명이 없으면 과제를 붙일 근거가 없다. 순서로 짐작하지 않는다.
-            const homework = !!(myHw && c.name && myHw.has(normalizeLecture(c.name)));
+            const lecKey = c.name ? normalizeLecture(c.name) : '';
+            // homework = **인정 대상**. 종류가 '과제+소감문' 인 것만이다.
+            const homework = !!(myHw && lecKey && myHw.has(lecKey));
+            // 냈지만 종류가 모자란 것. '안 냈다' 가 아니므로 표는 하되 인정은 안 한다.
+            const partKinds = (!homework && lecKey && myHwKinds?.get(lecKey)) || [];
+            const partial = partKinds.length > 0;
 
             // 시트가 이미 '과제' 로 바꿔 둔 칸은 classifyStatus 가 makeup 으로
             // 돌려준다 — 다시 칠할 것이 없다.
@@ -142,10 +149,15 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
                 st.title = '아직 안 온 회차';
             }
 
-            const hwIcon = homework ? (makeupCell ? '<span class="hw-badge">📝</span>' : '📝') : '';
+            // 인정 대상은 진한 📝, 종류가 모자란 것은 흐린 📝. 노란 칸은 안 된다 —
+            // 그 칸은 '출석으로 인정됐다' 는 뜻이라 결석을 지워 버린다.
+            const hwIcon = homework ? (makeupCell ? '<span class="hw-badge">📝</span>' : '📝')
+                         : partial ? '<span class="hw-partial">📝</span>' : '';
             const badges = (lunch ? '🍙' : '') + hwIcon;
             const tip = [m.name, c.key, c.name, st.title,
-                         lunch ? '🍙 김밥 신청' : '', homework ? '📝 과제+소감문 제출' : '']
+                         lunch ? '🍙 김밥 신청' : '',
+                         homework ? '📝 과제+소감문 제출'
+                         : partial ? `📝 ${homeworkKindLabel(partKinds)} 제출 (인정은 과제+소감문)` : '']
                         .filter(Boolean).join(' · ');
 
             const hideClass = i < foldedCount ? ' old-col' : '';

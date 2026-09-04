@@ -49,13 +49,13 @@ const FOUR = [
 ];
 
 const HOMEWORK = [
-  { member_id: 'u1', lecture: '2강',   kind: '독후감', content: '', submitted_at: '2026-04-20T10:00:00' },
-  { member_id: 'u1', lecture: '9강',   kind: '독후감', content: '', submitted_at: null },
-  { member_id: 'u1', lecture: '18강',  kind: '독후감', content: FOUR.join(', '), submitted_at: '2026-08-10T10:00:00' },
-  { member_id: 'u1', lecture: '제17강', kind: '독후감', content: 'https://ex.com/a', submitted_at: null },
-  { member_id: 'u1', lecture: '16강',  kind: '독후감', content: '손으로 적어 냈습니다', submitted_at: '2026-07-20T10:00:00' },
-  { member_id: 'u1', lecture: '15강',  kind: '독후감', content: '', submitted_at: null },
-  { member_id: 'u1', lecture: '3강',   kind: '독후감', content: '', submitted_at: '2026-04-27T10:00:00' },
+  { member_id: 'u1', lecture: '2강',   kind: '과제+소감문', content: '', submitted_at: '2026-04-20T10:00:00' },
+  { member_id: 'u1', lecture: '9강',   kind: '과제+소감문', content: '', submitted_at: null },
+  { member_id: 'u1', lecture: '18강',  kind: '과제+소감문', content: FOUR.join(', '), submitted_at: '2026-08-10T10:00:00' },
+  { member_id: 'u1', lecture: '제17강', kind: '과제+소감문', content: 'https://ex.com/a', submitted_at: null },
+  { member_id: 'u1', lecture: '16강',  kind: '과제+소감문', content: '손으로 적어 냈습니다', submitted_at: '2026-07-20T10:00:00' },
+  { member_id: 'u1', lecture: '15강',  kind: '과제+소감문', content: '', submitted_at: null },
+  { member_id: 'u1', lecture: '3강',   kind: '과제+소감문', content: '', submitted_at: '2026-04-27T10:00:00' },
 ];
 
 const { ok, done } = makeReporter('내 출석 현황');
@@ -63,7 +63,7 @@ const { ok, done } = makeReporter('내 출석 현황');
 const browser = await launch();
 
 // 폰 크기로 본다 — 이 격자가 화면을 먹는 게 문제였던 곳이다.
-async function openApp(sessions, homework = HOMEWORK) {
+async function openApp(sessions, homework = HOMEWORK, att = null) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   await page.clock.setFixedTime(new Date(`${TODAY}T09:00:00Z`));
@@ -83,7 +83,7 @@ async function openApp(sessions, homework = HOMEWORK) {
       // 첫 로드는 '오늘 회차' 만 묻는다 (조원 명단 체크박스용) — 그건 빈 값.
       // 본인 이력 조회만 회차별 행을 돌려준다.
       body = select.includes('dg_members!inner') ? []
-           : url.search.includes('member_id=eq.u1') ? ATT : [];
+           : url.search.includes('member_id=eq.u1') ? (att || ATT) : [];
     } else if (table === 'dg_lunch') {
       body = LUNCH;
     } else if (table === 'dg_homework') {
@@ -352,7 +352,7 @@ await small.context.close();
 // 다 냈다고 링크까지 없애면 다시 낼 일이 있을 때 찾을 곳이 없다.
 // ==========================================================================
 const ALL_DONE = mkSessions(7).map(s => ({
-  member_id: 'u1', lecture: s.name, kind: '독후감', content: '', submitted_at: null,
+  member_id: 'u1', lecture: s.name, kind: '과제+소감문', content: '', submitted_at: null,
 }));
 const full = await openApp(mkSessions(7), ALL_DONE);
 await lookup(full.page, '김조원', '1111');
@@ -372,6 +372,62 @@ ok('그래도 제출 링크는 남는다',
 ok('밀린 강의 목록은 없다', fullTodo.chips === 0, `${fullTodo.chips}개`);
 await full.page.locator('#myHomeworkSection').screenshot({ path: `${SHOT}/dg-hw-done.png` });
 await full.context.close();
+
+// ==========================================================================
+// 3-2. 명단에 갓 올라온 사람 — 지난 회차 과제를 요구하면 안 된다
+//
+// 20강에 들어온 사람에게 '안 낸 과제 19건' 이 뜨던 것이 실제 사고였다.
+// 그때는 명단에 없었다. 합류 시점을 담는 열이 없어서 **첫 기록**을 그 대신 쓴다.
+// ==========================================================================
+const SEVEN = mkSessions(7);
+const todoOf = (page) => page.evaluate(() => {
+  const box = document.getElementById('myHomeworkTodo');
+  return {
+    cls: box.className,
+    title: box.querySelector('.hw-todo-title')?.textContent.trim() || '',
+    chips: [...box.querySelectorAll('.hw-todo-chip')].map(c => c.textContent.trim()),
+  };
+});
+
+// 앞의 넷은 기록이 없고(아직 명단에 없었다) 5·6·7강만 찍혔다.
+const LATE_ATT = SEVEN.slice(4).map(s => ({ session_date: s.session_date, status: 'O' }));
+const late = await openApp(SEVEN, [], LATE_ATT);
+await lookup(late.page, '김조원', '1111');
+const lateTodo = await todoOf(late.page);
+ok('첫 기록 이전 회차는 안 묻는다 (7회차인데 3건)',
+   /3건/.test(lateTodo.title), lateTodo.title);
+ok('묻는 것은 첫 기록 이후뿐', lateTodo.chips.join(',') === '5강,6강,7강',
+   lateTodo.chips.join(','));
+await late.context.close();
+
+// 기록이 하나도 없으면 요구할 것도 없다 (이번 주에 막 올라온 사람).
+const blank = await openApp(SEVEN, [], []);
+await lookup(blank.page, '김조원', '1111');
+const blankTodo = await todoOf(blank.page);
+ok('기록이 아예 없으면 0건', blankTodo.chips.length === 0 && !/제출하지 않은/.test(blankTodo.title),
+   blankTodo.title);
+await blank.context.close();
+
+// ==========================================================================
+// 3-3. 과제만 낸 회차 — '안 냄' 도 아니고 '냈음' 도 아니다
+//
+// 인정은 '과제+소감문' 뿐이다. 그냥 빼 버리면 무엇을 더 내야 하는지 알 수 없고,
+// 그냥 '안 냄' 으로 두면 '냈는데 왜' 가 된다. 남기되 낸 것을 적는다.
+// ==========================================================================
+const PART_ATT = SEVEN.map(s => ({ session_date: s.session_date, status: 'O' }));
+const part = await openApp(SEVEN, [
+  { member_id: 'u1', lecture: '1강', kind: '과제+소감문', content: '', submitted_at: null },
+  { member_id: 'u1', lecture: '2강', kind: '과제', content: '', submitted_at: null },
+], PART_ATT);
+await lookup(part.page, '김조원', '1111');
+const partTodo = await todoOf(part.page);
+ok('과제만 낸 회차는 목록에 남는다', partTodo.chips.some(c => c.startsWith('2강')),
+   partTodo.chips.join(' | '));
+ok('무엇을 냈는지 칩에 적는다', partTodo.chips.some(c => c === '2강과제'),
+   partTodo.chips.join(' | '));
+ok('과제+소감문을 낸 회차는 빠진다', !partTodo.chips.some(c => c.startsWith('1강')),
+   partTodo.chips.join(' | '));
+await part.context.close();
 
 // ==========================================================================
 // 4. 회차를 못 받아 왔을 때 — '모두 냈어요' 는 거짓말이 된다

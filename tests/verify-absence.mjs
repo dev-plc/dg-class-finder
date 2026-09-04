@@ -104,10 +104,15 @@ const ATT = [
 //
 // ⚠️ 이제 이것만으로는 **인정이 아니다.** 인정은 시트가 칸을 '과제' 로 바꿔야
 // 이뤄진다. 기록만 있고 시트가 X 면 '시트에 아직 안 붙었다' 는 경고다.
+//
+// ⚠️ kind 가 인정 여부를 가른다. '과제+소감문' 이 든 것만 인정이다 —
+//    과제만 낸 것은 '냈지만 기준 미달' 이라 결석으로 남는다.
 const HOMEWORK = [
-  { member_id: 'u2', lecture: '14강' },   // 05/03 — 시트는 아직 X (경고)
-  { member_id: 'u9', lecture: '14강' },   // 05/03 — 시트는 아직 X (경고)
-  { member_id: 'u9', lecture: '제15강' }, // 05/10 — 폼에는 '제' 가 붙기도 한다
+  { member_id: 'u2', lecture: '14강', kind: '과제+소감문' },   // 05/03 — 시트는 아직 X (경고)
+  { member_id: 'u9', lecture: '14강', kind: '과제+소감문' },   // 05/03 — 시트는 아직 X (경고)
+  { member_id: 'u9', lecture: '제15강', kind: '과제+소감문' }, // 05/10 — 폼에 '제' 가 붙기도 한다
+  // 종류가 모자란 제출. 인정도 아니고 '안 냄' 도 아니다.
+  { member_id: 'u11', lecture: '14강', kind: '과제' },          // 05/03 — 과제만 냈다
 ];
 
 const { ok, done } = makeReporter('결석 현황');
@@ -235,6 +240,19 @@ ok("'제' 가 붙은 강의명도 같은 회차로 본다 (제15강 = 15강)",
    over.submitted === '📝 과제+소감문 제출' && !over.replaced,
    `${over.submitted} / ${over.replaced}`);
 ok('그 줄은 결석으로 남는다 (흐리게 두지 않는다)', !over.quiet);
+
+// 05/03(14강) — 완화남이 **과제만** 냈다. 인정이 아니라 기준 미달이다.
+// 이걸 '과제+소감문 제출' 로 적으면 심방 때 물을 말이 틀어진다 —
+// 하나는 '시트에 반영해 달라', 하나는 '소감문을 마저 내 달라' 다.
+await page.selectOption('#abSessionPicker', D['05/03']);
+await page.waitForTimeout(300);
+const part = (await week()).find(x => x.name === '완화남');
+ok('과제만 낸 것은 인정이 아니라 기준 미달로 적는다',
+   /인정 기준 미달/.test(part.submitted) && !part.replaced, part.submitted);
+ok('무엇을 냈는지 그대로 보여준다', /과제/.test(part.submitted), part.submitted);
+ok('그 줄은 결석으로 남는다', !part.quiet);
+await page.selectOption('#abSessionPicker', D['08/09']);
+await page.waitForTimeout(300);
 
 await page.selectOption('#abSessionPicker', D['08/09']);
 await page.waitForTimeout(300);

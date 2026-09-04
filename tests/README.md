@@ -22,12 +22,13 @@ node tests/verify-print.mjs       # 하나만
 | `verify-absence.mjs` | 결석 현황 — 이 주차 결석자(`과제` 포함), 2회 이상, 하차 검토와 완화 대상(원칙 5), 교역자별 정렬 |
 | `verify-attendance.mjs` | 회차 선택과 출결 저장 (바뀐 사람만 보내는가) · `과제`·`돌봄` 은 읽기 전용 |
 | `verify-matrix.mjs` | 전체 출석표 — 조원 × 회차, 🍙 · 📝, 시트발/앱발 `과제` 가 같은 모양인가 |
-| `verify-myatt.mjs` | 내 출석 현황 — 최근 10회차만 펴 두는가 |
+| `verify-myatt.mjs` | 내 출석 현황 · 안 낸 과제(첫 기록 이후만) · 종류가 모자란 제출 |
 | `verify-login.mjs` | 관리자 로그인 — 맞으면 바로, 틀렸을 때만 알림 |
 | `verify-links.mjs` | 안내방 버튼 — 조 방·부서 방, 대소문자가 어긋난 링크 키 |
 | `verify-mobile.mjs` | 폰 크기에서 버튼·표가 깨지지 않는가 |
 | `verify-sync-btn.mjs` | 시트 동기화 버튼 · 자동 새로고침(`dg_sync_log` 끝 표시) |
 | `verify-sync-retry.mjs` | 동기화 — GAS 가 한 번 삐끗해도 그날 일이 날아가지 않는가 |
+| `verify-sync-purge.mjs` | 시트에서 지운 출석이 DB 에서도 지워지는가 · **함부로 안 지우는가**(안전장치) |
 | `verify-sync-report.mjs` | 동기화 기록 — 공개 로그에 실명이 새지 않는가 · 안 맞는 아이디 갈래 |
 | `verify-sw.mjs` | Service Worker 자동 갱신 (배포 → 재배포 → 탭 복귀) |
 | `verify-gas-lunch.mjs` | GAS 김밥 읽기 — X 를 신청으로 세지 않는가 |

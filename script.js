@@ -13,6 +13,7 @@ import {
     getSession,
     setSession,
     getTeamExtras,
+    homeworkKindLabel,
     isAbsent,
     isClassSession,
     isPresent,
@@ -21,9 +22,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=113';
+} from './scripts/members-data.js?v=114';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=113';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=114';
 
 // 1-1. 내 정보 기억
 //
@@ -388,10 +389,17 @@ async function renderMyAttendance(member) {
         const cls = isReplaced ? 'makeup' : st.cls;
         const label = isReplaced ? '과제' : st.label;
         const makeupCell = cls === 'makeup';
-        const badges = (r.lunch ? '🍙' : '') + (r.homework && !makeupCell ? '📝' : '');
+        // 종류가 모자란 제출(과제만 등)도 낸 사실은 보여준다. 다만 흐리게 —
+        // 출석 인정은 '과제+소감문' 뿐이다 (docs/RULES.md).
+        const partKinds = r.homework ? [] : (r.homeworkKinds || []);
+        const hwIcon = r.homework ? (makeupCell ? '' : '📝')
+                     : partKinds.length ? '<span class="hw-partial">📝</span>' : '';
+        const badges = (r.lunch ? '🍙' : '') + hwIcon;
         const tip = [r.key, r.name,
                      isReplaced ? '결석 — 과제와 소감문으로 메움' : st.title,
-                     r.lunch ? '🍙 김밥 신청' : '', r.homework ? '📝 과제와 소감문 제출' : '']
+                     r.lunch ? '🍙 김밥 신청' : '',
+                     r.homework ? '📝 과제와 소감문 제출'
+                     : partKinds.length ? `📝 ${homeworkKindLabel(partKinds)} 제출 (인정은 과제와 소감문)` : '']
                     .filter(Boolean).join(' · ');
 
         return `<div class="att-chip ${cls}${i < folded ? ' old' : ''}" title="${escapeAttr(tip)}">
@@ -480,8 +488,22 @@ async function renderMyHomework(member, attRows = []) {
 
     // 아직 안 낸 강의. 지나간 회차 중 '강' 이 붙은 것만 센다 —
     // 자유교제·수련회에는 낼 과제가 없다.
-    const missing = attRows.filter(r => isClassSession(r.name) && !r.homework)
-                           .map(r => r.name);
+    //
+    // **언제부터 세는가**: 그 사람의 출결 기록이 처음 찍힌 회차부터.
+    // 명단에 갓 올라온 사람에게 지난 21회차 과제를 요구하면 안 된다 — 그때는
+    // 아직 명단에 없었다. 합류 시점을 담는 열이 스키마에 없어서(dg_members 에
+    // created_at 이 없고 updated_at 은 동기화마다 덮인다) '첫 기록' 을 그 대신
+    // 쓴다. 기록이 아예 없으면 요구할 것도 없다. (docs/RULES.md)
+    //
+    // ⚠️ attRows 가 **날짜 오름차순**이라는 데 기대고 있다
+    //    (dg_sessions … order=session_date → getMyAttendance 가 순서를 그대로 넘긴다).
+    //    정렬을 바꾸면 이 계산이 조용히 틀어진다.
+    const firstMark = attRows.findIndex(r => String(r.status || '').trim() !== '');
+    const since = firstMark === -1 ? attRows.length : firstMark;
+    // 낸 종류를 같이 들고 간다 — '과제만 냈다' 를 칩에서 말해야 한다.
+    const missing = attRows.slice(since)
+                           .filter(r => isClassSession(r.name) && !r.homework)
+                           .map(r => ({ name: r.name, kinds: r.homeworkKinds || [] }));
 
     // 출결을 못 받아 왔으면 안 낸 것이 없는 게 아니라 **모르는** 것이다.
     // 그때 '모두 냈어요' 라고 하면 거짓말이 된다.
@@ -541,8 +563,15 @@ function renderHomeworkTodo(missing, known = true) {
 
     // 회차가 많으면 앞의 여덟 개만. 스무 줄짜리 목록은 아무도 안 읽는다.
     const SHOW = 8;
-    const chips = missing.slice(0, SHOW)
-        .map(n => `<span class="hw-todo-chip">${escapeHtml(n)}</span>`).join('');
+    // 아예 안 낸 회차와, 냈지만 종류가 모자란 회차를 갈라 보여준다.
+    // 뒤엣것을 그냥 '안 냄' 으로 두면 '냈는데 왜' 가 되고, 빼 버리면 무엇을
+    // 더 내야 하는지 알 길이 없다.
+    const chips = missing.slice(0, SHOW).map(m => {
+        if (!m.kinds.length) return `<span class="hw-todo-chip">${escapeHtml(m.name)}</span>`;
+        const kinds = homeworkKindLabel(m.kinds);
+        return `<span class="hw-todo-chip part" title="${escapeAttr(`낸 것: ${kinds} · 출석 인정은 과제와 소감문입니다`)}">`
+             + `${escapeHtml(m.name)}<b>${escapeHtml(kinds)}</b></span>`;
+    }).join('');
     const rest = missing.length > SHOW ? `<span class="hw-todo-rest">외 ${missing.length - SHOW}건</span>` : '';
 
     box.className = 'hw-todo';

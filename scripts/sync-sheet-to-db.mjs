@@ -24,6 +24,8 @@ const getArg = (name) => {
 };
 
 const DRY_RUN = args.includes('--dry-run');
+// 안전장치를 넘긴다. 시트에서 정말 여러 회차를 한꺼번에 비웠을 때만 쓴다.
+const ALLOW_PURGE = args.includes('--allow-purge');
 const COHORT_ARG = (getArg('cohort') || process.env.COHORT_ID || '').trim();
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -532,6 +534,9 @@ if (Array.isArray(gas.homework) && gas.homework.length) {
   counted.homework = rows.length;
 }
 
+// 정리 단계가 이것을 본다 — 시트가 값을 준 칸이 무엇인지.
+let attendanceUpserted = [];
+
 if (attendanceBySheetId.length) {
   console.log('▶ dg_attendance');
   const uuidById = new Map(saved.map(m => [normId(`${m.name}${m.phone || ''}`), m.id]));
@@ -549,6 +554,88 @@ if (attendanceBySheetId.length) {
   await upsert('dg_attendance', attRows, 'member_id,session_date');
   console.log(`   ${attRows.length}건 반영`);
   counted.attendance = attRows.length;
+  attendanceUpserted = attRows;
+}
+
+// ---- 시트에서 지운 출석은 DB 에서도 지운다 -----------------------------
+//
+// upsert 만 하면 한 번 들어간 X 가 영영 남는다. 시트를 비워도 앱은 계속
+// 결석이라고 말한다 — 명단에 갓 올라온 사람이 지난 회차 결석으로 뜨던 것이
+// 이것이다. 원본은 시트이므로 **시트에 없으면 없는 것**이다.
+//
+// 김밥(위)과 같은 규칙이다.
+//   · **지금 명단에 있는 사람**만 건드린다. 시트에서 내려간 사람(inactive)의
+//     옛 기록까지 지우면 이력이 사라진다 — 시트가 '없다' 고 말한 적이 없다.
+//   · **시트가 아는 회차**만 본다. 시트에 열이 없는 날짜는 판단할 근거가 없다.
+const rosterUuids = new Set(saved.map(m => m.id));
+// ⚠️ **시트가 아는 회차 목록**에서 뽑는다. 값이 있는 칸에서 뽑으면
+// 전원이 빈칸인 회차가 빠져 나가고, 그 회차는 영영 정리되지 않는다.
+// 회차를 못 받아 왔으면(GAS 가 이상하면) 목록이 비고 아무것도 안 지운다.
+const sheetDates = [...new Set(sessionRows.map(r => r.session_date))].sort();
+// 시트가 값을 준 (회차 → uuid) 집합. 여기 없는 것이 '시트에서 지워진 칸' 이다.
+const keepByDate = new Map();
+for (const a of attendanceUpserted) {
+  if (!keepByDate.has(a.session_date)) keepByDate.set(a.session_date, new Set());
+  keepByDate.get(a.session_date).add(a.member_id);
+}
+
+if (sheetDates.length) {
+  // 회차마다 왕복하면 39번이다. 범위로 한 번에 받고 여기서 가른다.
+  // dg_attendance 에는 cohort_id 열이 없다 — 명단 uuid 로 좁힌다.
+  const dbRows = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await sb.from('dg_attendance')
+      .select('member_id,session_date')
+      .gte('session_date', sheetDates[0])
+      .lte('session_date', sheetDates[sheetDates.length - 1])
+      .order('member_id').order('session_date')
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`dg_attendance 조회 실패: ${error.message}`);
+    dbRows.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+
+  const staleByDate = new Map();
+  let removed = 0;
+  for (const r of dbRows) {
+    if (!rosterUuids.has(r.member_id)) continue;          // 내려간 사람은 그대로 둔다
+    if (!sheetDates.includes(r.session_date)) continue;   // 시트가 모르는 회차
+    if (keepByDate.get(r.session_date)?.has(r.member_id)) continue;
+    if (!staleByDate.has(r.session_date)) staleByDate.set(r.session_date, []);
+    staleByDate.get(r.session_date).push(r.member_id);
+    removed++;
+  }
+
+  // ⚠️ 안전장치. GAS 가 부분 응답을 주면 전 회차가 빈칸으로 보여 출석이
+  // 통째로 지워진다. 수상하면 **아무것도 안 하고 멈춘다.**
+  //
+  // 두 가지를 본다.
+  //   · 시트가 출석을 **한 칸도** 안 줬는데 지울 것이 있다 → 거의 틀림없이 잘못 읽었다
+  //   · 지우려는 양이 전체의 20% 를 넘는다 (최소 20건은 봐준다 — 한 회차를
+  //     통째로 지우는 일은 실제로 있다)
+  const sheetEmpty = attendanceUpserted.length === 0;
+  const limit = Math.max(20, Math.floor((attendanceUpserted.length + removed) * 0.2));
+  if (removed > 0 && (sheetEmpty || removed > limit) && !ALLOW_PURGE) {
+    console.log(`⛔ 시트에서 사라진 출석이 ${removed}건입니다 — 너무 많아 멈춥니다.`);
+    console.log(sheetEmpty
+      ? '   시트가 출석을 한 칸도 주지 않았습니다. GAS 응답을 먼저 확인하세요.'
+      : `   기준은 ${limit}건입니다 (읽어 온 ${attendanceUpserted.length}건의 20%).`);
+    console.log('   시트를 제대로 읽었는지 확인하고, 정말 지운 것이 맞다면');
+    console.log('   워크플로를 --allow-purge 로 한 번 돌리면 됩니다.');
+    process.exit(1);
+  }
+
+  for (const [date, ids] of staleByDate) {
+    // 한 번에 다 싣지 않는다. uuid 250개면 주소가 9KB 를 넘는다.
+    for (let i = 0; i < ids.length; i += 100) {
+      const { error: delErr } = await sb.from('dg_attendance').delete()
+        .eq('session_date', date).in('member_id', ids.slice(i, i + 100));
+      if (delErr) throw new Error(`dg_attendance 정리 실패(${date}): ${delErr.message}`);
+    }
+  }
+  // 실명은 안 찍는다 — 공개 저장소라 Actions 로그를 누구나 읽는다.
+  if (removed) console.log(`   🧹 시트에서 지워진 출석 ${removed}건 삭제`);
 }
 
 // -------------------------------------------------------------- 끝 표시

@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=113';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=113';
+import { matches as hangulMatches } from './hangul.js?v=114';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=114';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -368,7 +368,8 @@ export async function getMyAttendance(member) {
     sbSelect(`dg_attendance?select=session_date,status&member_id=eq.${member._uuid}&order=session_date`),
     sbSelect(`dg_lunch?select=session_date,applied&member_id=eq.${member._uuid}&order=session_date`)
       .catch(() => []),
-    sbSelect(`dg_homework?select=lecture&member_id=eq.${member._uuid}&order=lecture`)
+    // kind 까지 받는다. 과제만 낸 것과 과제+소감문을 낸 것은 다른 이야기다.
+    sbSelect(`dg_homework?select=lecture,kind&member_id=eq.${member._uuid}&order=lecture`)
       .catch(() => []),
   ]);
 
@@ -377,7 +378,18 @@ export async function getMyAttendance(member) {
 
   // 과제는 '몇 강' 이라 날짜가 없다. 회차에 이름이 적혀 있을 때만 붙인다.
   // 이름이 없으면 순서로 짐작해야 하는데, 그러면 엉뚱한 회차에 붙는다.
-  const hwNames = new Set(hwRows.map(r => normalizeLecture(r.lecture)).filter(Boolean));
+  //
+  // 두 갈래로 나눈다 — 인정 대상(과제+소감문)과, 냈지만 종류가 모자란 것.
+  // 뒤엣것도 '안 냈다' 가 아니므로 화면에 그대로 보여 준다.
+  const hwNames = new Set();
+  const hwKinds = new Map();
+  for (const r of hwRows) {
+    const k = normalizeLecture(r.lecture);
+    if (!k) continue;
+    if (isFullHomework(r.kind)) hwNames.add(k);
+    if (!hwKinds.has(k)) hwKinds.set(k, []);
+    hwKinds.get(k).push(r.kind || '');
+  }
   const today = state.today || todayISO();
 
   return state.sessions
@@ -388,7 +400,9 @@ export async function getMyAttendance(member) {
       name: s.name || '',
       status: byDate.get(s.date) || '',
       lunch: lunchSet.has(s.date),
+      // homework = **인정 대상**. 종류가 모자란 제출은 kinds 로만 넘긴다.
       homework: !!(s.name && hwNames.has(normalizeLecture(s.name))),
+      homeworkKinds: (s.name && hwKinds.get(normalizeLecture(s.name))) || [],
     }));
 }
 
@@ -429,7 +443,7 @@ export async function getTeamExtras(members) {
   const [lunchRows, hwRows] = await Promise.all([
     sbSelect(`dg_lunch?select=member_id,session_date&member_id=in.${list}` +
              `&applied=is.true&order=member_id,session_date`).catch(() => []),
-    sbSelect(`dg_homework?select=member_id,lecture&member_id=in.${list}` +
+    sbSelect(`dg_homework?select=member_id,lecture,kind&member_id=in.${list}` +
              `&order=member_id,lecture`).catch(() => []),
   ]);
 
@@ -439,15 +453,24 @@ export async function getTeamExtras(members) {
     lunch.get(r.member_id).add(r.session_date);
   }
 
+  // homework = **인정 대상만**(과제+소감문). homeworkKinds = 실제로 낸 종류 그대로.
+  // 화면이 '과제만 냈다' 를 말할 수 있어야 해서 둘 다 넘긴다.
   const homework = new Map();
+  const homeworkKinds = new Map();
   for (const r of hwRows) {
     const key = normalizeLecture(r.lecture);
     if (!key) continue;
-    if (!homework.has(r.member_id)) homework.set(r.member_id, new Set());
-    homework.get(r.member_id).add(key);
+    if (isFullHomework(r.kind)) {
+      if (!homework.has(r.member_id)) homework.set(r.member_id, new Set());
+      homework.get(r.member_id).add(key);
+    }
+    if (!homeworkKinds.has(r.member_id)) homeworkKinds.set(r.member_id, new Map());
+    const byLec = homeworkKinds.get(r.member_id);
+    if (!byLec.has(key)) byLec.set(key, []);
+    byLec.get(key).push(r.kind || '');   // 종류가 비어도 '냈다' 는 사실은 남긴다
   }
 
-  return { lunch, homework };
+  return { lunch, homework, homeworkKinds };
 }
 
 /**
@@ -502,7 +525,7 @@ let homeworkAllCache = null;
  *            hwNear: [{lecture, n}] }    // 숫자는 같은데 표기가 다른 것
  */
 export async function getSessionExtras(sessionDate, lectureName) {
-  const empty = { lunch: new Set(), homework: new Set(),
+  const empty = { lunch: new Set(), homework: new Set(), homeworkKinds: new Map(),
                   hwLoaded: false, hwTotal: 0, hwNear: [] };
   if (!sessionDate) return empty;
 
@@ -515,7 +538,7 @@ export async function getSessionExtras(sessionDate, lectureName) {
   if (!homeworkAllCache) {
     try {
       homeworkAllCache = await sbSelect(
-        'dg_homework?select=member_id,lecture&order=member_id,lecture'
+        'dg_homework?select=member_id,lecture,kind&order=member_id,lecture'
       );
     } catch (err) {
       console.log('과제 조회 실패:', err);
@@ -526,16 +549,27 @@ export async function getSessionExtras(sessionDate, lectureName) {
 
   // 강의명은 시트와 폼에 따로 적혀 글자가 어긋난다. 정규화한 뒤에 견준다.
   const key = normalizeLecture(lectureName);
-  const homework = new Set(
-    key ? hwRows.filter(r => normalizeLecture(r.lecture) === key).map(r => r.member_id) : []
-  );
+  const mine = key ? hwRows.filter(r => normalizeLecture(r.lecture) === key) : [];
+  // **인정 대상만** homework 다. 종이 출석부에 '냈음' 이 찍히면 현장에서
+  // 되돌릴 길이 없으므로 여기서는 종류를 반드시 본다.
+  const homework = new Set(mine.filter(r => isFullHomework(r.kind)).map(r => r.member_id));
+  // 종류가 모자란 제출. '안 냈다' 와는 다른 이야기라 따로 넘긴다.
+  const homeworkKinds = new Map();
+  for (const r of mine) {
+    if (!homeworkKinds.has(r.member_id)) homeworkKinds.set(r.member_id, []);
+    homeworkKinds.get(r.member_id).push(r.kind || '');
+  }
 
   return {
     lunch: new Set(lunchRows.map(r => r.member_id)),
     homework,
+    homeworkKinds,
     hwLoaded,
     hwTotal: hwRows.length,
-    hwNear: homework.size ? [] : nearbyLectures(hwRows, lectureName),
+    // '이 강의로 낸 사람이 아무도 없다' 일 때만 강의명 힌트를 준다.
+    // homework(인정 대상)로 재면 안 된다 — 전원이 과제만 냈을 때 엉뚱하게
+    // '강의명이 어긋났나' 를 묻게 된다. 그건 종류 문제이지 이름 문제가 아니다.
+    hwNear: mine.length ? [] : nearbyLectures(hwRows, lectureName),
   };
 }
 
@@ -558,19 +592,28 @@ export async function getHomeworkChecker() {
   if (!homeworkAllCache) {
     try {
       homeworkAllCache = await sbSelect(
-        'dg_homework?select=member_id,lecture&order=member_id,lecture');
+        'dg_homework?select=member_id,lecture,kind&order=member_id,lecture');
     } catch (err) {
       console.log('과제 조회 실패:', err);
       loaded = false;      // 실패는 캐시하지 않는다 — 다음에 다시 받는다
     }
   }
 
+  // byMember  = **인정 대상**(과제+소감문)을 낸 강의
+  // kindMember = 종류에 상관없이 낸 것 — 강의별 실제 종류 목록
   const byMember = new Map();
+  const kindMember = new Map();
   for (const r of homeworkAllCache || []) {
     const key = normalizeLecture(r.lecture);
     if (!key) continue;
-    if (!byMember.has(r.member_id)) byMember.set(r.member_id, new Set());
-    byMember.get(r.member_id).add(key);
+    if (isFullHomework(r.kind)) {
+      if (!byMember.has(r.member_id)) byMember.set(r.member_id, new Set());
+      byMember.get(r.member_id).add(key);
+    }
+    if (!kindMember.has(r.member_id)) kindMember.set(r.member_id, new Map());
+    const byLec = kindMember.get(r.member_id);
+    if (!byLec.has(key)) byLec.set(key, []);
+    byLec.get(key).push(r.kind || '');   // 종류가 비어도 '냈다' 는 사실은 남긴다
   }
 
   const count = new Map();
@@ -580,9 +623,25 @@ export async function getHomeworkChecker() {
 
   return {
     loaded,
+    /**
+     * 그 강의를 **출석으로 인정받을 수 있게** 냈는가.
+     *
+     * 종류가 '과제+소감문' 인 것만이다. 예전에는 제출 기록이 하나라도 있으면
+     * true 였고, 그래서 과제만 낸 사람이 '과제+소감문 제출' 로 읽혔다.
+     */
     has(uuid, lectureName) {
       const key = normalizeLecture(lectureName);
       return !!key && !!byMember.get(uuid)?.has(key);
+    },
+    /**
+     * 그 강의에 실제로 낸 종류. 화면은 이것을 **그대로** 찍는다.
+     *
+     * '소감문이 빠졌다' 처럼 적으려면 폼 선택지가 정확히 무엇인지 알아야 하는데
+     * 코드는 모른다. 낸 것을 그대로 보여 주고 기준은 따로 알린다.
+     */
+    kinds(uuid, lectureName) {
+      const key = normalizeLecture(lectureName);
+      return (key && kindMember.get(uuid)?.get(key)) || [];
     },
     /**
      * 그 사람이 지금까지 낸 과제 현황.
@@ -596,10 +655,11 @@ export async function getHomeworkChecker() {
      * 9강이 뒤로 간다.
      */
     stats(uuid) {
-      const lectures = byMember.get(uuid);
+      // latest 는 종류를 안 가린다 — '몇 강까지 냈나' 를 보는 값이다.
+      const lectures = kindMember.get(uuid);
       if (!lectures) return { total: 0, latest: '' };
       let latest = '', latestNo = -1;
-      for (const key of lectures) {
+      for (const key of lectures.keys()) {
         const no = Number(key.match(/^(\d+)강$/)?.[1] ?? -1);
         if (no > latestNo) { latestNo = no; latest = key; }
       }
@@ -845,6 +905,31 @@ export function isPresent(status) {
  */
 export function isMissing(status) {
   return isAbsent(status) || isMakeup(status);
+}
+
+/**
+ * 출석 인정 대상인 제출인가 — 과제 **종류**를 본다.
+ *
+ * 폼의 '어떤 과제인가요?' 값이 `dg_homework.kind` 로 들어온다. 과제만 낸 것과
+ * 과제+소감문을 낸 것은 다른 이야기인데, 앱은 오랫동안 `select=lecture` 만 해서
+ * **그 강의에 제출이 하나라도 있으면** 인정으로 쳤다. 과제만 낸 사람이 화면에서
+ * '과제+소감문 제출' 로 읽히던 것이 그것이다.
+ *
+ * ⚠️ 시트에 붙은 GAS(`scripts/gas/sheet-bound/과제제출.gs`)와 **같은 규칙**이다.
+ *      if (String(assignment).indexOf('과제+소감문') === -1) return;
+ * 공백을 지우거나 대소문자를 맞추지 않는다 — GAS 가 안 하기 때문이다.
+ * **한쪽만 바꾸면** 시트는 '과제' 로 안 바꿨는데 화면은 인정하는 어긋남이 난다.
+ */
+export const HOMEWORK_FULL = '과제+소감문';
+
+export function isFullHomework(kind) {
+  return String(kind ?? '').indexOf(HOMEWORK_FULL) !== -1;
+}
+
+/** 낸 종류를 화면에 적을 글자로. 종류가 비어 있는 옛 기록도 있다. */
+export function homeworkKindLabel(kinds) {
+  const named = (kinds || []).filter(Boolean);
+  return named.length ? named.join(' · ') : '종류 미기재';
 }
 
 /**

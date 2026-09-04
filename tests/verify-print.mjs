@@ -49,9 +49,11 @@ const SESSIONS = [
 // 08/16 김밥 신청자 3명 · 19강 과제 제출자 2명 (폼 표기는 '제19강')
 const LUNCH = { '2026-08-16': ['u1', 'u2', 'u13'] };
 const HOMEWORK = [
-  { member_id: 'u1', lecture: '제19강' },
-  { member_id: 'u3', lecture: '19 강' },
-  { member_id: 'u5', lecture: '18강' },
+  // ⚠️ 종이에 '냈음' 이 찍히면 현장에서 되돌릴 길이 없다 —
+  //    인정 대상('과제+소감문')만 찍혀야 한다.
+  { member_id: 'u1', lecture: '제19강', kind: '과제+소감문' },
+  { member_id: 'u3', lecture: '19 강', kind: '과제+소감문' },
+  { member_id: 'u5', lecture: '18강', kind: '과제+소감문' },
 ];
 
 const { ok, done } = makeReporter('출석부 출력');
@@ -963,7 +965,8 @@ await page.screenshot({ path: `${SHOT}/dg-picklist.png` });
 // 과제는 회차마다 다시 받을 이유가 없어 한 번 받아 캐시한다. 그 캐시를 시트
 // 동기화 뒤에 버리지 않으면 새로 낸 과제가 영영 안 붙는데, 화면에는 그냥
 // 빈 칸이라 아무도 못 알아챈다.
-let hwRows = [{ member_id: 'u1', lecture: '19강' }, { member_id: 'u3', lecture: '20과' }];
+let hwRows = [{ member_id: 'u1', lecture: '19강', kind: '과제+소감문' },
+              { member_id: 'u3', lecture: '20과', kind: '과제+소감문' }];
 let hwFail = false;
 
 // 지금 명단에 없는 사람의 신청. 하차한 사람 것이 DB 에 남아 있으면 이렇게 된다.
@@ -1036,7 +1039,7 @@ await page.uncheck('#prColSummary');
 await page.waitForTimeout(400);
 
 // 시트에서 새로 가져왔다 → 화면 새로 고침
-hwRows.push({ member_id: 'u2', lecture: '제19강' });
+hwRows.push({ member_id: 'u2', lecture: '제19강', kind: '과제+소감문' });
 await page.click('#syncReloadBtn');
 await page.waitForTimeout(1500);
 ok('동기화한 과제가 새로 고침으로 붙는다', await hwTicks() === 2, `${await hwTicks()}명`);
