@@ -1,36 +1,39 @@
-name: Sync markdown to Obsidian vault
+name: Sync markdown to knowledge-base
+
+# 옵시디언 볼트는 이 워크플로가 미러링하는 dev-plc/knowledge-base 를 데스크톱이
+# fetch + reset 해서 받아갑니다 (그 아래 Drive desktop → FolderSync → 폰 경로는
+# 그대로입니다).
+#
+# 예전에는 여기서 Google Drive API 로 볼트에 직접 올렸습니다. 그런데 그 경로가
+# 요구하는 auth/drive 는 Google 이 '제한된(restricted) 스코프' 로 분류해서, 앱을
+# 프로덕션으로 게시하려면 제3자 보안 평가(CASA)를 통과해야 합니다. 테스트 상태에
+# 머무는 한 리프레시 토큰이 7일마다 강제 만료됩니다 — 설정 문제가 아니라 구조라
+# 고칠 수가 없습니다. 그래서 Drive API 단계를 걷어내고 git 경로로 일원화했습니다.
+# 이제 이 워크플로에 Google 자격증명은 하나도 필요 없습니다.
 
 on:
   push:
+    # main 만 봅니다. 예전에는 브랜치 푸시로도 돌아서, 같은 커밋이 main 과 작업
+    # 브랜치에 함께 올라가면 워크플로가 1~2초 차이로 두 번 뜨고, 둘이 같은 파일을
+    # 동시에 PUT 하다 HTTP 409 로 죽었습니다. 볼트는 main 을 비추는 것이 맞습니다.
+    branches: [main]
     paths:
       - "**/*.md"
   workflow_dispatch: {}  # 수동 실행 버튼도 사용 가능하도록
 
+concurrency:
+  group: sync-obsidian
+  cancel-in-progress: true  # 미러는 최신 것만 이기면 됩니다
+
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install google-api-python-client google-auth
-
-      - name: Sync markdown files to Google Drive
-        env:
-          GDRIVE_OAUTH_CLIENT_ID: ${{ secrets.GDRIVE_OAUTH_CLIENT_ID }}
-          GDRIVE_OAUTH_CLIENT_SECRET: ${{ secrets.GDRIVE_OAUTH_CLIENT_SECRET }}
-          GDRIVE_OAUTH_REFRESH_TOKEN: ${{ secrets.GDRIVE_OAUTH_REFRESH_TOKEN }}
-          GDRIVE_VAULT_FOLDER_ID: ${{ secrets.GDRIVE_VAULT_FOLDER_ID }}
-          # 필요시 저장소별로 다른 하위 폴더명을 쓰고 싶으면 아래 값을 수정하세요.
-          SYNC_SUBFOLDER: "dev-notes"
-        run: python scripts/sync_repo_md_to_drive.py
-
+      # setup-python 을 두지 않습니다. 미러 스크립트가 부르는 헬퍼는 표준
+      # 라이브러리만 써서 러너 기본 python3 로 충분하고, pip 설치 단계도 없앴습니다.
       - name: Mirror markdown files to knowledge-base repo
         env:
           GH_TOKEN: ${{ secrets.KB_GITHUB_TOKEN }}
