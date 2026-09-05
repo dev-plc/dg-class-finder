@@ -28,7 +28,7 @@ G:\내 드라이브\EleaZar\dev-notes\dg-class-finder\
 먼저 위 경로를 확인하세요. 각 노트에는 원본 GitHub 파일 경로와 링크가
 프론트매터에 포함되어 있습니다.
 
-그 폴더를 채우는 것은 `dev-plc/knowledge-base` 저장소입니다. main 에 .md 가
+그 폴더를 채우는 것은 `dev-plc/knowledge-base` 저장소입니다. 기본 브랜치에 .md 가
 푸시되면 `.github/workflows/sync-obsidian.yml` 이 그리로 미러링하고, 데스크톱이
 그 저장소를 위 경로로 `fetch` + `reset --hard` 해서 받아갑니다. **볼트에서 직접
 고친 것은 다음 동기화 때 덮어쓰입니다** — 손으로 쓰는 메모는 `dev-notes` 바깥에
