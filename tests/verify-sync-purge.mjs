@@ -29,6 +29,9 @@ const PEOPLE = [
 // ---- 가짜 GAS ------------------------------------------------------------
 // sheetAtt 를 바꿔 가며 '시트가 무엇을 말하는가' 를 흉내 낸다.
 let sheetAtt = {};
+// 과제 응답. 아이디만 있고 내용이 없는 줄이 섞여 들어오는 것을 흉내 낸다 —
+// 시트를 읽는 GAS 가 거르는 것은 아이디뿐이다.
+let sheetHw = [];
 // 회차를 어떤 꼴로 주는지 — GAS 판마다 다르다. 정리가 셋 다 견뎌야 한다.
 //   'sessions'     v19+ (연도까지 확정)
 //   'sessionDates' v18 이하 (MM/DD 만)
@@ -43,6 +46,7 @@ const gas = createServer((req, res) => {
   const body = {
     success: true, version: 29, data,
     cohortHint: COHORT, locationMap: {}, teamLinkMap: {},
+    homework: sheetHw,
   };
   if (sessionShape === 'sessions') {
     body.sessions = DATES.map((d, i) => ({
@@ -60,6 +64,9 @@ await new Promise(r => gas.listen(GAS_PORT, r));
 // ---- 가짜 Supabase (PostgREST 흉내) --------------------------------------
 // 표에 담긴 행과, 삭제 요청이 무엇을 지웠는지를 그대로 들고 있는다.
 let attendance = [];          // { member_id, session_date, status }
+let homework = [];            // { member_id, lecture, kind, content }
+let hwUpserted = [];          // 이번 실행에서 실제로 밀어넣은 것 (검증용)
+let hwDeleted = 0;            // 정리가 지운 건수
 let deleted = [];             // 지운 것 (검증용)
 let purgeReads = 0;
 
@@ -110,6 +117,28 @@ const db = createServer(async (req, res) => {
     }
     purgeReads++;
     return send(attendance.map(a => ({ member_id: a.member_id, session_date: a.session_date })));
+  }
+
+  if (table === 'dg_homework') {
+    if (req.method === 'POST') {
+      const rows = JSON.parse(await body(req));
+      hwUpserted.push(...rows);
+      for (const r of rows) {
+        const i = homework.findIndex(h =>
+          h.member_id === r.member_id && h.lecture === r.lecture && h.kind === r.kind);
+        if (i === -1) homework.push({ ...r }); else homework[i] = { ...r };
+      }
+      return send(rows);
+    }
+    // 정리는 lecture='' · kind='' · content is null 로만 지운다.
+    const isBlank = (h) => h.lecture === '' && h.kind === '' && h.content == null;
+    if (req.method === 'DELETE') {
+      const before = homework.length;
+      homework = homework.filter(h => !isBlank(h));
+      hwDeleted += before - homework.length;
+      return send([]);
+    }
+    return send(homework.filter(isBlank).map(h => ({ member_id: h.member_id })));
   }
 
   if (req.method === 'POST' || req.method === 'PATCH') { await body(req); return send([]); }
@@ -249,6 +278,49 @@ const r6 = await run();
 ok('회차를 모르면 끝까지 돌되', r6.status === 0, `종료코드 ${r6.status}`);
 ok('아무것도 안 지운다', attendance.length === before5,
    `${before5} → ${attendance.length}건`);
+
+// --- 7. 내용이 빈 과제 응답 ------------------------------------------------
+//
+// 시트를 읽는 GAS(DG_readHomework)가 거르는 것은 아이디뿐이라, 폼에서 문항을
+// 안 고르고 낸 응답이 그대로 넘어온다. 기본키가 (…, lecture, kind) 라
+// ('','') 짜리 행이 사람마다 하나씩 자리 잡고, 화면에 '(미기재)' 로 남아
+// 제출 건수를 부풀렸다. dg_homework 는 정리 단계가 없어 저절로 안 사라진다.
+sessionShape = 'sessions';
+sheetAtt = {};
+attendance = [];
+
+// 이미 DB 에 들어가 있던 빈 행 하나 + 지우면 안 되는 것 둘.
+homework = [
+  { cohort_id: COHORT, member_id: 'u1', lecture: '', kind: '', content: null },
+  { cohort_id: COHORT, member_id: 'u1', lecture: '18강', kind: '과제', content: null },
+  // 몇 강만 안 적었을 뿐 **진짜로 낸 것** — 지워선 안 된다.
+  { cohort_id: COHORT, member_id: 'u2', lecture: '', kind: '', content: 'https://ex.com/z' },
+];
+hwUpserted = [];
+hwDeleted = 0;
+
+sheetHw = [
+  { id: '김조장1001', lecture: '19강', kind: '과제', content: 'https://ex.com/a', submittedAt: '' },
+  // 아이디만 있고 내용이 하나도 없다 — 제출이 아니다.
+  { id: '김조장1001', lecture: '', kind: '', content: '', submittedAt: '2026-08-20T10:00:00' },
+  // 시각조차 없는 빈 줄도 마찬가지.
+  { id: '이조원2002', lecture: '', kind: '', content: '', submittedAt: '' },
+];
+
+const r7 = await run();
+ok('7. 빈 과제가 섞여도 끝까지 돈다', r7.status === 0, `종료코드 ${r7.status}`);
+ok('7. 내용이 빈 응답은 밀어넣지 않는다',
+   hwUpserted.length === 1 && hwUpserted[0].lecture === '19강',
+   JSON.stringify(hwUpserted.map(h => `${h.lecture}/${h.kind}`)));
+ok('7. 몇 건을 건너뛰었는지 알린다', /빈 응답 2건/.test(r7.out),
+   (r7.out.match(/.*빈 응답.*/) || [''])[0].trim());
+ok('7. 로그에 실명을 안 적는다', !/김조장|이조원/.test(r7.out));
+ok('7. 이미 들어가 있던 빈 행을 지운다', hwDeleted === 1, `${hwDeleted}건 삭제`);
+ok('7. 지웠다고 알린다', /🧹 내용이 빈 과제 1건 삭제/.test(r7.out),
+   (r7.out.match(/.*빈 과제.*/) || [''])[0].trim());
+ok('7. 몇 강만 안 적은 진짜 제출은 안 지운다',
+   homework.some(h => h.member_id === 'u2' && h.content === 'https://ex.com/z'),
+   JSON.stringify(homework.map(h => `${h.member_id}:${h.lecture || '(빈)'}`)));
 
 gas.close();
 db.close();

@@ -384,6 +384,47 @@ await full.page.locator('#myHomeworkSection').screenshot({ path: `${SHOT}/dg-hw-
 await full.context.close();
 
 // ==========================================================================
+// 3-1-2. 아이디만 있고 내용이 없는 응답은 제출이 아니다
+//
+// 시트를 읽는 GAS 가 거르는 것은 아이디뿐이라, 폼에서 문항을 안 고르고 낸
+// 응답이 그대로 들어온다. 기본키가 (…, lecture, kind) 라 ('','') 짜리 행이
+// 사람마다 하나씩 자리 잡고, 화면에 '(미기재)' 한 줄로 남아 제출 건수를
+// 부풀렸다 — 넷을 낸 사람이 '총 5건 제출' 로 보였다.
+// ==========================================================================
+const junk = await openApp(SESSIONS, [
+  { member_id: 'u1', lecture: '18강', kind: '과제', content: '', submitted_at: '2026-08-10T10:00:00' },
+  { member_id: 'u1', lecture: '19강', kind: '과제', content: '', submitted_at: '2026-08-17T10:00:00' },
+  // 셋 다 빈 행 — 제출이 아니다. 시각만 있는 것도 제출이 아니다.
+  { member_id: 'u1', lecture: '', kind: '', content: '', submitted_at: '2026-08-20T10:00:00' },
+]);
+await lookup(junk.page, '김조원', '1111');
+const junkHw = await junk.page.evaluate(() => ({
+  lectures: [...document.querySelectorAll('#myHomeworkList .hw-row .hw-lecture')]
+    .map(e => e.textContent.trim()),
+  summary: document.getElementById('myHomeworkSummary').textContent.trim(),
+}));
+ok('내용이 빈 응답은 목록에 없다', !junkHw.lectures.includes('(미기재)'),
+   junkHw.lectures.join(' | '));
+ok('제출 건수에도 안 센다', /총 2건 제출/.test(junkHw.summary), junkHw.summary);
+await junk.context.close();
+
+// ⚠️ '몇 강' 을 안 적었을 뿐 **진짜로 낸 것**은 지워선 안 된다.
+//    사람이 확인해서 고칠 거리이므로 (미기재) 로 그대로 보여준다.
+const noLec = await openApp(SESSIONS, [
+  { member_id: 'u1', lecture: '', kind: '', content: 'https://ex.com/z', submitted_at: null },
+]);
+await lookup(noLec.page, '김조원', '1111');
+const noLecHw = await noLec.page.evaluate(() => ({
+  lectures: [...document.querySelectorAll('#myHomeworkList .hw-row .hw-lecture')]
+    .map(e => e.textContent.trim()),
+  summary: document.getElementById('myHomeworkSummary').textContent.trim(),
+}));
+ok('몇 강만 안 적은 진짜 제출은 (미기재) 로 남는다',
+   noLecHw.lectures.join(',') === '(미기재)' && /총 1건 제출/.test(noLecHw.summary),
+   `${noLecHw.lectures.join(',')} · ${noLecHw.summary}`);
+await noLec.context.close();
+
+// ==========================================================================
 // 3-2. **빈칸은 묻지 않는다**
 //
 // 빈칸은 셋 중 하나인데 앱은 구별할 수 없고, 셋 다 요구할 근거가 없다 —

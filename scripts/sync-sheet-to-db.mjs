@@ -515,19 +515,39 @@ if (Array.isArray(gas.homework) && gas.homework.length) {
 
   const rows = [];
   const unknown = [];
+  let blank = 0;
   for (const h of gas.homework) {
     const uuid = uuidById.get(normId(h.id));
     if (!uuid) { unknown.push(trim(h.id)); continue; }
+
+    const lecture = trim(h.lecture);
+    const kind = trim(h.kind);
+    const content = trim(h.content);
+
+    // **아이디만 있고 몇 강·종류·제출이 모두 빈 행은 제출이 아니다.**
+    //
+    // 시트를 읽는 GAS(DG_readHomework)가 거르는 것은 아이디뿐이라, 폼에서
+    // 문항을 안 고르고 낸 응답이 그대로 넘어온다. 기본키가
+    // (cohort_id, member_id, lecture, kind) 라 ('','') 짜리 행이 사람마다
+    // 하나씩 자리 잡고, 화면에 '(미기재)' 로 남아 제출 건수를 부풀렸다.
+    //
+    // ⚠️ 셋 중 하나라도 있으면 넣는다 — '몇 강' 을 안 적고 낸 진짜 제출은
+    //    지워선 안 된다. 제출 시각은 기준에 넣지 않는다.
+    if (!lecture && !kind && !content) { blank++; continue; }
+
     rows.push({
       cohort_id: COHORT_ID,
       member_id: uuid,
-      lecture: trim(h.lecture),
-      kind: trim(h.kind),
-      content: trim(h.content) || null,
+      lecture,
+      kind,
+      content: content || null,
       // 형태를 확인하고 넣는다. 날짜가 아니면 비워 둔다.
       submitted_at: Date.parse(trim(h.submittedAt)) ? trim(h.submittedAt) : null,
     });
   }
+
+  // 실명은 안 적는다 — 공개 저장소이고 Actions 로그도 공개다 (CLAUDE.md 6).
+  if (blank) console.log(`   ℹ️ 내용이 빈 응답 ${blank}건은 제출로 세지 않았습니다.`);
 
   if (unknown.length) {
     const uniq = [...new Set(unknown)];
@@ -544,6 +564,29 @@ if (Array.isArray(gas.homework) && gas.homework.length) {
   await upsert('dg_homework', rows, 'cohort_id,member_id,lecture,kind');
   console.log(`   ${rows.length}건 반영`);
   counted.homework = rows.length;
+
+  // 이미 들어간 빈 행을 지운다.
+  //
+  // dg_homework 는 upsert 만 하는 표라(정리 단계가 없다) 시트에서 그 줄을
+  // 지워도 DB 에 영영 남는다. 위에서 안 넣기 시작해도 옛것은 그대로다.
+  //
+  // 안전장치를 두지 않는 까닭: 이 조건에 걸리는 행은 **애초에 있어선 안 되는
+  // 것**이다. content 는 위에서 빈 값이면 null 로 넣으므로 is.null 로 견준다 —
+  // 링크가 있는 '(미기재)' 행(몇 강을 안 적고 낸 진짜 제출)은 여기 안 걸린다.
+  {
+    const { data: junk, error } = await sb.from('dg_homework')
+      .select('member_id').eq('cohort_id', COHORT_ID)
+      .eq('lecture', '').eq('kind', '').is('content', null);
+    if (error) {
+      console.log(`   ⚠️ 빈 과제 조회 실패 — ${error.message}`);
+    } else if (junk && junk.length) {
+      const { error: delErr } = await sb.from('dg_homework').delete()
+        .eq('cohort_id', COHORT_ID)
+        .eq('lecture', '').eq('kind', '').is('content', null);
+      if (delErr) throw new Error(`dg_homework 정리 실패: ${delErr.message}`);
+      console.log(`   🧹 내용이 빈 과제 ${junk.length}건 삭제`);
+    }
+  }
 }
 
 // 정리 단계가 이것을 본다 — 시트가 값을 준 칸이 무엇인지.

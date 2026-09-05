@@ -43,9 +43,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=119';
+} from './scripts/members-data.js?v=120';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=119';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=120';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {

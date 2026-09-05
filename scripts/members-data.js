@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=119';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=119';
+import { matches as hangulMatches } from './hangul.js?v=120';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=120';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -769,6 +769,18 @@ export async function getMyHomework(member) {
       content: r.content || '',
       submittedAt: r.submitted_at || '',
     }))
+    // **아이디만 있고 몇 강·종류·제출이 모두 빈 행은 제출이 아니다.**
+    //
+    // 시트를 읽는 GAS(DG_readHomework)가 거르는 것은 아이디뿐이라, 폼에서
+    // 문항을 안 고르고 낸 응답이 그대로 들어온다. dg_homework 의 기본키가
+    // (cohort_id, member_id, lecture, kind) 라 ('','') 짜리 한 행이 사람마다
+    // 하나씩 자리 잡고, 화면에 '(미기재)' 한 줄로 남아 '총 N건 제출' 까지
+    // 부풀렸다 — 넷을 낸 사람이 다섯 건으로 보였다.
+    //
+    // ⚠️ 셋 중 하나라도 있으면 남긴다. '몇 강' 을 안 적고 낸 **진짜 제출**은
+    //    지금처럼 '(미기재)' 로 보여주는 것이 맞다 — 사람이 고칠 거리다.
+    //    제출 시각은 기준에 넣지 않는다. 타임스탬프만 있는 것은 제출이 아니다.
+    .filter(r => r.lecture.trim() || r.kind.trim() || r.content.trim())
     .sort((a, b) =>
       lectureNo(b.lecture) - lectureNo(a.lecture)
       // 같은 강이면 늦게 낸 것부터 (재제출이 위로)

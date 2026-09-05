@@ -25,9 +25,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=119';
+} from './scripts/members-data.js?v=120';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=119';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=120';
 
 // 1-1. 내 정보 기억
 //
