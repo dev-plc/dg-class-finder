@@ -41,7 +41,14 @@ const { ok, done } = makeReporter('회차·출결 저장');
 const browser = await launch();
 const context = await browser.newContext();
 const page = await context.newPage();
-page.on('dialog', d => { console.log('   [dialog] ' + d.message()); d.dismiss().catch(() => {}); });
+// '지난 회차' 확인을 검증하려면 수락/취소를 골라야 한다.
+let dialogAction = 'accept';
+const dialogs = [];
+page.on('dialog', d => {
+  dialogs.push(d.message());
+  console.log('   [dialog] ' + d.message());
+  (dialogAction === 'accept' ? d.accept() : d.dismiss()).catch(() => {});
+});
 page.on('console', m => { if (m.type() === 'error') console.log('   [console.error] ' + m.text()); });
 
 await page.route('**/rest/v1/**', route => {
@@ -153,11 +160,25 @@ ok('체크만으로는 저장하지 않음', posted.length === 0, `요청 ${post
 // 버튼은 '실제로 쓸 인원' 을 보여준다 (명단 전체를 O/X 로 쓴다).
 // 변경 건수는 그 옆 정보 줄이 말한다.
 const btnText = await page.$eval('#saveAttendanceBtn', el => el.textContent.trim());
-ok('저장 버튼이 쓸 인원을 보여줌', btnText.includes('3명'), btnText);
+ok('저장 버튼이 쓸 인원을 보여줌', btnText.includes('4명'), btnText);
 const infoText = await page.$eval('#attendanceSaveInfo', el => el.textContent.trim());
 ok('정보 줄이 변경 건수와 출결 수를 보여줌',
-   /변경 1건/.test(infoText) && /출석 2/.test(infoText) && /결석 1/.test(infoText), infoText);
+   /변경 1건/.test(infoText) && /출석 2/.test(infoText) && /결석 2/.test(infoText), infoText);
 
+// --- 지난 회차는 한 번 묻는다 ---------------------------------------------
+//
+// 명단은 늘 오늘의 것이다. 그것으로 지난 회차를 채우면 그때 명단에 없던
+// 사람에게까지 X 가 나간다 — 이번에 처음 합류한 사람이 지난 회차 결석으로
+// 찍힌 것이 이 경로였다. 막지는 않고 묻는다.
+dialogs.length = 0;
+dialogAction = 'dismiss';
+await page.click('#saveAttendanceBtn');
+await page.waitForTimeout(600);
+ok('지난 회차를 저장할 땐 확인을 묻는다',
+   dialogs.some(m => /지난 회차/.test(m)), JSON.stringify(dialogs));
+ok('취소하면 아무것도 안 보낸다', posted.length === 0, `요청 ${posted.length}건`);
+
+dialogAction = 'accept';
 await page.click('#saveAttendanceBtn');
 await page.waitForTimeout(1200);
 
@@ -168,12 +189,12 @@ ok('저장 요청에 session 포함', !!body && body.session === '2025-11-02',
 // 빈칸(기록 없음)으로 남았다 — 출석도 결석도 아닌 칸이 되어 수료를 따질 때
 // 한 명씩 되짚어야 했다.
 const st = Object.fromEntries((body?.batch || []).map(b => [b.name, b.status]));
-ok('명단 전체를 보낸다 (3명)', !!body && body.batch.length === 3,
+ok('명단 전체를 보낸다 (4명)', !!body && body.batch.length === 4,
    body ? JSON.stringify(body.batch) : '(요청 없음)');
-// 어느 회차에도 기록이 없는 사람은 '안 왔다' 인지 '아직 명단에 없었다' 인지
-// 앱이 모른다. 모르는 쪽은 안 쓴다 — 명단에 갓 올라온 사람이 지난 회차
-// 결석으로 찍히던 것이 이 경로였다.
-ok('기록이 아예 없는 사람은 X 로 안 보낸다', !('새로온이' in st), JSON.stringify(st));
+// 기록이 하나도 없는 사람도 결석으로 나간다. 명단에 있으면 결석자 명단에 떠야
+// 교역자가 원인을 확인하고 조치할 수 있다 — 안 찍으면 아예 안 보인다.
+// (그때 명단에 없었을 위험은 위 '지난 회차 확인' 이 맡는다.)
+ok('기록이 없는 사람도 X 로 보낸다', st['새로온이'] === 'X', JSON.stringify(st));
 ok('체크를 푼 사람은 X', st['이조원'] === 'X', JSON.stringify(st));
 ok('체크한 사람은 O 그대로', st['김조장'] === 'O', JSON.stringify(st));
 

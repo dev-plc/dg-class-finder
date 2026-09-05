@@ -33,6 +33,7 @@ import {
     isEditableStatus,
     isMakeup,
     isMissing,
+    isPastSession,
     isPresent,
     loadAttendanceForSession,
     refresh,
@@ -41,9 +42,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=116';
+} from './scripts/members-data.js?v=117';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=116';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=117';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -820,33 +821,15 @@ function attBlanks() {
     // 회차 결석으로 찍힌 것이 그 경로다. 빈칸을 채우려면 조를 고른다.
     if (!attTeam) return [];
 
+    // 기록이 하나도 없는 사람도 빼지 않는다. 명단에 있으면 결석으로 찍혀야
+    // 결석자 명단에 떠서 교역자가 원인을 확인하고 조치할 수 있다.
+    // (그때 명단에 없었을 위험은 '지난 회차 확인' 으로 따로 막는다 — attSave)
     const out = [];
     for (const [uuid, status] of attDraft) {
         if (status !== '' || (attBaseline.get(uuid) ?? '') !== '') continue;
-        // 어느 회차에도 기록이 없는 사람은 '안 왔다' 가 아니라 **아직 명단에
-        // 들어온 지 얼마 안 됐다** 일 수 있다. 앱은 둘을 구별할 수 없으므로
-        // (합류 시점을 담는 열이 없다) 모르는 쪽은 쓰지 않는다.
-        // 손으로 O/X 를 고른 것은 attChanges 로 나가므로 여기 안 걸린다.
-        if (!attHasAnyRecord(uuid)) continue;
         out.push({ uuid, status: 'X' });
     }
     return out;
-}
-
-/**
- * 그 사람에게 **어느 회차든** 기록이 있는가.
- *
- * 출석 관리 탭은 한 회차만 스냅숏으로 들고 있어 다른 회차를 모른다.
- * 결석 현황이 이미 쓰는 getAttendanceHistory() 를 함께 쓴다 (한 번만 받는다).
- * 못 받아 왔으면 **예전대로 동작한다** — 모른다고 빈칸을 통째로 빼면
- * 결석자가 다시 '기록 없음' 으로 쌓인다.
- */
-function attHasAnyRecord(uuid) {
-    if (!abHistory) return true;
-    const byDate = abHistory.get(uuid);
-    if (!byDate) return false;
-    for (const v of byDate.values()) if (String(v || '').trim() !== '') return true;
-    return false;
 }
 
 function attReadOnly() {
@@ -1133,8 +1116,20 @@ async function saveAttChanges() {
     if (demoted.length && !confirm(
         `지난 기수 이수(◎) ${demoted.length}명을 결석으로 바꿉니다. 계속할까요?`)) return;
 
+    const blanks = attBlanks();
+
+    // **지난 회차**에 빈칸→X 를 쓰려 하면 한 번 묻는다.
+    //
+    // 명단은 늘 오늘의 것이다. 그것으로 지난 회차를 채우면 그때 명단에 없던
+    // 사람에게까지 X 가 나간다 — 이번에 처음 합류한 사람들이 18·19강 결석으로
+    // 찍힌 것이 이 경로다. 막지는 않는다. 지난 주차 정정이 이 탭의 주 업무다.
+    if (blanks.length && isPastSession(attSessionDate) && !confirm(
+        `${attSessionDate} 은 지난 회차입니다.\n\n`
+        + `지금 명단을 기준으로 비어 있는 ${blanks.length}명이 결석으로 저장됩니다.\n`
+        + `그때 명단에 없던 사람도 함께 저장됩니다.\n\n계속할까요?`)) return;
+
     const payload = [];
-    for (const c of [...changes, ...attBlanks()]) {
+    for (const c of [...changes, ...blanks]) {
         const m = byUuid.get(c.uuid);
         if (!m) continue;
         payload.push({ name: m.name, phone: m.phone, status: c.status });
@@ -1214,13 +1209,6 @@ async function loadSessionAttendance() {
     renderAttList();
     try {
         await loadAttendanceForSession(attSessionDate);
-        // 빈칸→X 를 가리려면 '이 사람에게 기록이 아예 없나' 를 알아야 하는데
-        // 위 조회는 한 회차만 준다. 결석 현황이 이미 읽어 둔 것이 있으면
-        // 그것을 쓰고, 없을 때만 한 번 받는다. 실패해도 저장은 막지 않는다.
-        if (!abHistory) {
-            try { abHistory = await getAttendanceHistory(); }
-            catch (err) { console.log('출결 이력 조회 실패(빈칸 판정은 예전대로):', err); }
-        }
         memberData = getMembers();
         attReady = true;
         attLoadedAtMs = Date.now();

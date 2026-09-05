@@ -14,17 +14,19 @@ import {
     setSession,
     getTeamExtras,
     homeworkKindLabel,
+    homeworkRule,
     isAbsent,
     isClassSession,
+    isPastSession,
     isPresent,
     refreshAttendance,
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=116';
+} from './scripts/members-data.js?v=117';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=116';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=117';
 
 // 1-1. 내 정보 기억
 //
@@ -494,36 +496,27 @@ async function renderMyHomework(member, attRows = []) {
     // 아직 안 낸 강의. 지나간 회차 중 '강' 이 붙은 것만 센다 —
     // 자유교제·수련회에는 낼 과제가 없다.
     //
-    // **언제부터 세는가**: 그 사람의 출결 기록이 처음 찍힌 회차부터.
-    // 명단에 갓 올라온 사람에게 지난 21회차 과제를 요구하면 안 된다 — 그때는
-    // 아직 명단에 없었다. 합류 시점을 담는 열이 스키마에 없어서(dg_members 에
-    // created_at 이 없고 updated_at 은 동기화마다 덮인다) '첫 기록' 을 그 대신
-    // 쓴다. 기록이 아예 없으면 요구할 것도 없다. (docs/RULES.md)
+    // **무엇을 요구하는지는 그 칸의 표기가 정한다** — homeworkRule() 한 곳에서.
+    //   'full' 결석(X) → '과제+소감문' 이라야 인정된다 (공지 규칙 5)
+    //   'any'  나온 주(O·과제) → 예습과제만 내면 끝. 종류를 안 가린다
+    //   'none' 빈칸 · − · 돌봄 · ◎ → 묻지 않는다
     //
-    // ⚠️ attRows 가 **날짜 오름차순**이라는 데 기대고 있다
-    //    (dg_sessions … order=session_date → getMyAttendance 가 순서를 그대로 넘긴다).
-    //    정렬을 바꾸면 이 계산이 조용히 틀어진다.
-    const firstMark = attRows.findIndex(r => String(r.status || '').trim() !== '');
-    const since = firstMark === -1 ? attRows.length : firstMark;
-    //
-    // **무엇을 요구하는가는 그 주에 나왔는지에 달렸다.**
-    //   나온 주  → 예습과제만 내면 끝. 종류를 안 가린다.
-    //   결석한 주 → '과제+소감문' 이라야 출석으로 인정된다 (공지 규칙 5).
-    // 소감문은 결석을 메우는 것이지 나온 주에까지 요구할 것이 아니다 —
-    // 출석하고 예습과제까지 낸 사람에게 '안 냈다' 고 하던 것이 그 탓이었다.
-    //
-    // 결석(X)일 때만 엄격하다. 돌봄·◎·− 이나 아직 안 찍힌 주는 그 사람에게
-    // 무엇을 요구할지 알 수 없으므로 나온 주와 같이 본다.
-    const missing = attRows.slice(since)
-                           .filter(r => isClassSession(r.name)
-                                     && (isAbsent(r.status)
-                                         ? !r.homework
-                                         : !(r.homework || (r.homeworkKinds || []).length)))
-                           .map(r => ({
-                               name: r.name,
-                               // 결석한 주에만 '무엇을 냈는데 모자라다' 가 뜻이 있다.
-                               kinds: isAbsent(r.status) ? (r.homeworkKinds || []) : [],
-                           }));
+    // 빈칸을 안 묻는 것이 핵심이다. 빈칸은 '합류 전' 이거나 '하차 기간' 이거나
+    // '아직 저장 전' 인데 앱은 셋을 구별할 수 없고 셋 다 요구할 근거가 없다.
+    // DG 는 재합류가 있어서 — 7월 합류 → 8월 하차 → 10월 재합류 — 첫 기록만
+    // 보면 8~9월치가 딸려 나온다. 그 사이는 시트에서도 비어 있다.
+    const missing = attRows
+        .filter(r => isClassSession(r.name))
+        .map(r => ({ r, rule: homeworkRule(r.status) }))
+        .filter(({ r, rule }) =>
+            rule === 'full' ? !r.homework
+          : rule === 'any'  ? !(r.homework || (r.homeworkKinds || []).length)
+          : false)
+        .map(({ r, rule }) => ({
+            name: r.name,
+            // 결석한 주에만 '무엇을 냈는데 모자라다' 가 뜻이 있다.
+            kinds: rule === 'full' ? (r.homeworkKinds || []) : [],
+        }));
 
     // 출결을 못 받아 왔으면 안 낸 것이 없는 게 아니라 **모르는** 것이다.
     // 그때 '모두 냈어요' 라고 하면 거짓말이 된다.
@@ -728,36 +721,20 @@ function renderTeamMembers(members, teamName, role) {
         // O 로 덮어 버린다. 바꿔야 한다면 시트에서 직접 고치는 게 맞다.
         const isPlain = status === '' || status.toUpperCase() === 'O' || status.toUpperCase() === 'X';
 
-        // 어느 회차에도 O/X 가 없는 사람. '안 왔다' 가 아니라 **명단에 갓
-        // 올라왔을 수 있다** — 앱은 둘을 구별할 수 없다(합류 시점을 담는 열이
-        // 없다). 체크를 안 한 채 저장하면 지금까지 X 가 나갔고, 그래서 이번 주
-        // 처음 온 사람이 지난 회차 결석으로 찍혔다.
-        //
-        // 그래서 이 사람은 **빈칸→X 에서 뺀다.** 체크를 켜면 그대로 O 로 나가고
-        // (그 순간 기록이 생긴다) 그다음부터는 여느 조원과 똑같이 동작한다.
-        const noRecord = !Object.values(m.attendanceByDate || {})
-                              .some(v => String(v || '').trim() !== '');
-
         const checked = status.toUpperCase() === 'O';
         const control = isPlain
             ? `<input type="checkbox" ${checked ? 'checked' : ''}
-                    class="attendance-check${noRecord ? ' no-record' : ''}"
+                    class="attendance-check"
                     data-name="${escapeAttr(m.name)}" data-phone="${escapeAttr(m.phone)}"
-                    data-no-record="${noRecord ? '1' : '0'}"
                     data-initial="${checked ? '1' : '0'}">`
             : `<span class="attendance-badge" title="시트에 적힌 표기입니다. 바꾸려면 시트에서 고치세요.">${escapeHtml(status)}</span>`;
-
-        // 왜 이 사람만 결석으로 안 나가는지 보이게 한다.
-        const noRecordTag = (isPlain && noRecord)
-            ? `<span class="member-newtag" title="아직 어느 회차에도 기록이 없습니다. 체크하지 않으면 결석으로 저장하지 않습니다.">기록 없음</span>`
-            : '';
 
         return `
             <div class="team-member-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     ${control}
                     <span class="member-name">
-                        ${escapeHtml(m.name)}(${escapeHtml(m.phone)}) ${lunchIcon}${noRecordTag}
+                        ${escapeHtml(m.name)}(${escapeHtml(m.phone)}) ${lunchIcon}
                     </span>
                 </div>
                 <span class="member-role-tag">
@@ -803,18 +780,12 @@ function refreshSaveBar() {
     const present = checks.filter(cb => cb.checked).length;
     const changes = changedChecks().length;
 
-    // 실제로 나가는 사람만 센다. 기록이 한 번도 없는 사람은 체크를 안 하면
-    // 보내지 않는다 (renderTeamMembers 의 '기록 없음' 참고).
-    const sending = checks.filter(cb => cb.checked || cb.dataset.noRecord !== '1');
-    const skipped = checks.length - sending.length;
-
     // 저장은 명단 전체를 O/X 로 쓴다. 버튼의 수도 **실제로 쓰는 수**여야 한다 —
     // '변경 1건' 이라 적고 12명을 쓰면 나중에 결석이 왜 늘었는지 알 수 없다.
-    info.textContent = `출석 ${present} · 결석 ${sending.length - present}`
-        + (changes ? ` · 변경 ${changes}건` : '')
-        + (skipped ? ` · 기록 없는 ${skipped}명은 그대로 둡니다` : '');
+    info.textContent = `출석 ${present} · 결석 ${checks.length - present}`
+        + (changes ? ` · 변경 ${changes}건` : '');
     btn.disabled = changes === 0;
-    btn.textContent = changes === 0 ? '변경 사항 없음' : `출석 반영 (${sending.length}명)`;
+    btn.textContent = changes === 0 ? '변경 사항 없음' : `출석 반영 (${checks.length}명)`;
     bar.classList.toggle('has-changes', changes > 0);
 }
 
@@ -848,17 +819,26 @@ async function saveAttendanceChanges() {
     // 그래도 전원을 보내는 것이지 전원을 덮는 것은 아니다. ◎ · − · 돌봄 처럼
     // 사람이 시트에 직접 넣은 표기는 체크박스가 아니라 배지로 그려서 여기
     // 목록에 아예 들어오지 않는다 (위 renderTeamMembers 참고).
-    //
-    // 다만 **어느 회차에도 기록이 없는 사람**은 뺀다. 체크를 안 했다는 것이
-    // '안 왔다' 인지 '아직 명단에 없었다' 인지 앱이 모르기 때문이다 —
-    // 모르는 쪽은 안 쓴다. 체크를 켠 사람은 기록이 없어도 O 로 나간다.
     const changes = attendanceChecks()
-        .filter(cb => cb.checked || cb.dataset.noRecord !== '1')
         .map(cb => ({
             name: cb.dataset.name,
             phone: cb.dataset.phone,
             status: cb.checked ? 'O' : 'X',
         }));
+
+    // **지난 회차**를 저장하려 하면 한 번 묻는다.
+    //
+    // 화면이 들고 있는 명단은 늘 오늘의 명단이다. 그것으로 지난 회차를 덮으면
+    // 그때 명단에 없던 사람에게까지 X 가 나간다 — 이번에 처음 합류한 사람들이
+    // 18·19강 결석으로 찍힌 것이 이 경로다. 막지는 않는다. 그 주에 저장을
+    // 깜빡하고 다음 주에 채우는 일이 실제로 있기 때문이다.
+    const willAbsent = changes.filter(c => c.status === 'X').length;
+    if (willAbsent && isPastSession(session)
+        && !confirm(`${session} 은 지난 회차입니다.\n\n`
+                  + `지금 명단을 기준으로 체크하지 않은 ${willAbsent}명이 결석으로 저장됩니다.\n`
+                  + `그때 명단에 없던 사람도 함께 저장됩니다.\n\n계속할까요?`)) {
+        return;
+    }
 
     const prevText = btn.textContent;
     btn.disabled = true;

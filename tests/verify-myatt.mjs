@@ -219,10 +219,11 @@ const todo = () => page.evaluate(() => {
 });
 
 const td = await todo();
-ok('안 낸 건수를 센다 (18회차 - 7건 제출)', /11건/.test(td.title), td.title);
+// 18회차 중 6회차는 '돌봄' 이라 안 묻는다(예외 표기). 남는 17 − 제출 7 = 10.
+ok('안 낸 건수를 센다 (돌봄 뺀 17회차 - 7건 제출)', /10건/.test(td.title), td.title);
 ok("문구는 '과제와 소감문'", /과제와 소감문/.test(td.title) && !/[^와] 과제 /.test(td.title), td.title);
 ok('안 낸 강의를 여덟 개까지만 늘어놓는다', td.chips.length === 8, td.chips.join(' · '));
-ok('나머지는 건수로', td.rest === '외 3건', td.rest);
+ok('나머지는 건수로', td.rest === '외 2건', td.rest);
 ok('낸 강의는 목록에 없다', !td.chips.includes('18강') && !td.chips.includes('16강'),
    td.chips.join(' · '));
 ok('제출 폼으로 이어진다', td.href === 'https://forms.gle/cnhxuonpz2tmMu2y9', td.href);
@@ -374,10 +375,11 @@ await full.page.locator('#myHomeworkSection').screenshot({ path: `${SHOT}/dg-hw-
 await full.context.close();
 
 // ==========================================================================
-// 3-2. 명단에 갓 올라온 사람 — 지난 회차 과제를 요구하면 안 된다
+// 3-2. **빈칸은 묻지 않는다**
 //
-// 20강에 들어온 사람에게 '안 낸 과제 19건' 이 뜨던 것이 실제 사고였다.
-// 그때는 명단에 없었다. 합류 시점을 담는 열이 없어서 **첫 기록**을 그 대신 쓴다.
+// 빈칸은 셋 중 하나인데 앱은 구별할 수 없고, 셋 다 요구할 근거가 없다 —
+// 합류 전 · 하차 기간 · 아직 저장 전. 20강에 들어온 사람에게 '안 낸 과제
+// 19건' 이 뜨던 것이 실제 사고였다.
 // ==========================================================================
 const SEVEN = mkSessions(7);
 const todoOf = (page) => page.evaluate(() => {
@@ -394,9 +396,9 @@ const LATE_ATT = SEVEN.slice(4).map(s => ({ session_date: s.session_date, status
 const late = await openApp(SEVEN, [], LATE_ATT);
 await lookup(late.page, '김조원', '1111');
 const lateTodo = await todoOf(late.page);
-ok('첫 기록 이전 회차는 안 묻는다 (7회차인데 3건)',
+ok('합류 전 빈칸은 안 묻는다 (7회차인데 3건)',
    /3건/.test(lateTodo.title), lateTodo.title);
-ok('묻는 것은 첫 기록 이후뿐', lateTodo.chips.join(',') === '5강,6강,7강',
+ok('묻는 것은 찍힌 회차뿐', lateTodo.chips.join(',') === '5강,6강,7강',
    lateTodo.chips.join(','));
 await late.context.close();
 
@@ -407,6 +409,41 @@ const blankTodo = await todoOf(blank.page);
 ok('기록이 아예 없으면 0건', blankTodo.chips.length === 0 && !/제출하지 않은/.test(blankTodo.title),
    blankTodo.title);
 await blank.context.close();
+
+// **하차했다 돌아온 사람.** DG 는 재합류가 있다 — 7월에 하다가 8월에 하차하고
+// 10월에 다시 오면 그 사이는 시트에서도 비어 있다. '첫 기록부터 센다' 로는
+// 첫 기록이 7월이라 8~9월치가 딸려 나왔다. 빈칸을 안 묻는 규칙이 이것을 푼다.
+const REJOIN_ATT = [
+  { session_date: SEVEN[0].session_date, status: 'O' },   // 1강 — 처음 왔다
+  { session_date: SEVEN[1].session_date, status: 'O' },   // 2강
+  // 3·4·5강 = 하차 기간. 명단에 없어 아무도 안 찍는다 → 행 자체가 없다.
+  { session_date: SEVEN[5].session_date, status: 'O' },   // 6강 — 다시 왔다
+  { session_date: SEVEN[6].session_date, status: 'X' },   // 7강 — 결석
+];
+const rejoin = await openApp(SEVEN, [], REJOIN_ATT);
+await lookup(rejoin.page, '김조원', '1111');
+const rejoinTodo = await todoOf(rejoin.page);
+ok('하차 기간은 안 묻는다', !rejoinTodo.chips.some(c => /^[345]강/.test(c)),
+   rejoinTodo.chips.join(' | '));
+ok('하차 앞뒤로 나온 회차는 묻는다',
+   rejoinTodo.chips.join(',') === '1강,2강,6강,7강', rejoinTodo.chips.join(','));
+await rejoin.context.close();
+
+// −(수업 없음) · 돌봄 · ◎(지난 기수 이수) 는 사람이 시트에 일부러 넣은 예외
+// 표기다. 예외라고 적어 둔 칸에 과제를 묻지 않는다.
+const MARKED_ATT = [
+  { session_date: SEVEN[0].session_date, status: '-' },
+  { session_date: SEVEN[1].session_date, status: '−' },
+  { session_date: SEVEN[2].session_date, status: '돌봄' },
+  { session_date: SEVEN[3].session_date, status: '◎' },
+  { session_date: SEVEN[4].session_date, status: 'O' },
+];
+const marked = await openApp(SEVEN, [], MARKED_ATT);
+await lookup(marked.page, '김조원', '1111');
+const markedTodo = await todoOf(marked.page);
+ok('− · 돌봄 · ◎ 는 안 묻는다', markedTodo.chips.join(',') === '5강',
+   markedTodo.chips.join(','));
+await marked.context.close();
 
 // ==========================================================================
 // 3-3. 무엇을 요구하는가는 **그 주에 나왔는지**에 달렸다

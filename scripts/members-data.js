@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=116';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=116';
+import { matches as hangulMatches } from './hangul.js?v=117';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=117';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -799,6 +799,25 @@ export function getToday() {
 }
 
 /**
+ * **지난 회차인가** — 지금 진행 중인 회차보다 앞선 회차인가.
+ *
+ * 화면이 들고 있는 명단은 늘 **오늘의 명단**이다. 그것을 기준으로 지난 회차를
+ * 저장하면 그때 명단에 없던 사람에게까지 결석(X)이 나간다. 실제로 그렇게 찍혔다 —
+ * 이번에 처음 합류한 사람들이 18·19강 결석으로 남은 것이 이 경로다.
+ *
+ * 막지는 않는다. 그 주에 저장을 깜빡하고 다음 주에 채우는 일이 있기 때문이다.
+ * 대신 저장 직전에 한 번 묻는다 (script.js · admin.js).
+ *
+ * '지금 진행 중인 회차' = 지나간 회차 중 마지막. getSessions() 가 기본으로
+ * 지난 회차만 주므로 그 끝을 쓴다.
+ */
+export function isPastSession(date) {
+  if (!date) return false;
+  const done = getSessions();
+  return done.length > 0 && date < done[done.length - 1].date;
+}
+
+/**
  * 한 회차의 출결만 DB 에서 읽어 온다.
  *
  * 관리자 출석 관리가 쓴다. 예전에는 refreshAttendance() 로 GAS 를 불렀는데,
@@ -924,6 +943,33 @@ export const HOMEWORK_FULL = '과제+소감문';
 
 export function isFullHomework(kind) {
   return String(kind ?? '').indexOf(HOMEWORK_FULL) !== -1;
+}
+
+/**
+ * 그 회차에 **무엇을 요구하는가.** 출결 표기가 정한다.
+ *
+ *   'full' 과제+소감문이라야 인정 — 결석(X)을 메우는 제출이다 (공지 규칙 5)
+ *   'any'  예습과제만 내면 끝. 종류를 안 가린다
+ *   'none' 아무것도 묻지 않는다
+ *
+ * **빈칸이 'none' 인 것이 핵심이다.** 빈칸은 아래 셋 중 하나인데 앱은 구별할
+ * 수 없고, 셋 다 요구할 근거가 없다.
+ *   · 합류 전      — 명단에 들어오기 전 회차
+ *   · 하차 기간    — 나갔다가 돌아온 사람의 그 사이. DG 는 재합류가 있다.
+ *                    7월 합류 → 8월 하차 → 10월 재합류이면 8~9월은 비어 있다.
+ *   · 아직 저장 전 — 조장이 그 회차를 아직 안 찍었다
+ *
+ * −(수업 없음) · 돌봄 · ◎(지난 기수 이수) 는 사람이 시트에 일부러 넣은 예외
+ * 표기다. 예외라고 적어 둔 칸에 과제를 묻지 않는다.
+ *
+ * ⚠️ 예전에는 '첫 기록이 찍힌 회차부터 센다' 는 창으로 가렸다. 그것은 하차를
+ *    담지 못했고(첫 기록은 7월이라 8~9월이 딸려 나왔다), 빈칸→X 저장이
+ *    지난 회차를 채우면 창 자체가 1주차로 밀려 무력해졌다.
+ */
+export function homeworkRule(status) {
+  if (isAbsent(status)) return 'full';   // X
+  if (isPresent(status)) return 'any';   // O · 과제
+  return 'none';                         // 빈칸 · − · 돌봄 · ◎
 }
 
 /** 낸 종류를 화면에 적을 글자로. 종류가 비어 있는 옛 기록도 있다. */

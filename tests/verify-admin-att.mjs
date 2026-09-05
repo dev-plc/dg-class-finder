@@ -40,7 +40,8 @@ let ATT = {
   '정출석1005': { '2026-08-02': 'O', '2026-08-09': 'O' },
   '강조장2001': { '2026-08-02': 'O', '2026-08-09': '' },
   '윤조원2002': { '2026-08-02': 'O', '2026-08-09': '' },
-  '한돌봄2003': { '2026-08-02': 'O', '2026-08-09': '돌봄' },
+  // 08/02 는 일부러 빈칸 — 맨 끝 '지난 회차 확인' 이 이 빈칸을 쓴다.
+  '한돌봄2003': { '2026-08-02': '', '2026-08-09': '돌봄' },
 };
 
 const posted = [];
@@ -55,10 +56,13 @@ const page = await context.newPage();
 await page.clock.setFixedTime(new Date('2026-08-12T09:00:00Z'));
 
 const dialogs = [];
+// 기본은 승인. 맨 끝 '지난 회차 확인' 에서만 취소로 바꿔 본다.
+let confirmAction = 'accept';
 page.on('dialog', d => {
   dialogs.push({ type: d.type(), message: d.message() });
-  // confirm 은 승인, alert 은 닫기
-  (d.type() === 'confirm' ? d.accept() : d.dismiss()).catch(() => {});
+  // confirm 은 승인(또는 취소), alert 은 닫기
+  (d.type() === 'confirm' && confirmAction === 'accept' ? d.accept() : d.dismiss())
+    .catch(() => {});
 });
 page.on('console', m => { if (m.type() === 'error') console.log('   [console.error] ' + m.text()); });
 page.on('pageerror', e => console.log('   [pageerror] ' + e.message));
@@ -381,6 +385,33 @@ ok('6. 고른 주차·조를 기억', /2026-08-02/.test(prefs || '') && /Y2/.tes
 
 const y2rows = await page.$$eval('#attList .att-row', els => els.length);
 ok('   조를 고르면 그 조만', y2rows === 3, `${y2rows}행`);
+
+// --- 검증 8: 지난 회차에 빈칸→X 를 쓰면 묻는다 ----------------------------
+//
+// 명단은 늘 오늘의 것이다. 그것으로 지난 회차를 채우면 그때 명단에 없던
+// 사람에게까지 X 가 나간다 — 이번에 처음 합류한 사람들이 지난 회차 결석으로
+// 찍힌 것이 이 경로였다. 막지는 않는다. 지난 주차 정정이 이 탭의 주 업무다.
+// (지금 08/02 · Y2 를 고른 상태다. 한돌봄이 그 회차에 빈칸이다.)
+posted.length = 0;
+await page.click('.att-state[data-uuid="u6"][data-status="X"]');   // 강조장 → X
+await page.waitForTimeout(200);
+
+dialogs.length = 0;
+confirmAction = 'dismiss';
+await page.click('#attSaveBtn');
+await page.waitForTimeout(700);
+ok('8. 지난 회차에 빈칸을 채울 땐 확인을 묻는다',
+   dialogs.some(d => d.type === 'confirm' && /지난 회차/.test(d.message)),
+   dialogs.map(d => d.message.split('\n')[0]).join(' | '));
+ok('8. 취소하면 아무것도 안 보낸다', posted.length === 0, `요청 ${posted.length}건`);
+
+dialogs.length = 0;
+confirmAction = 'accept';
+await page.click('#attSaveBtn');
+await page.waitForTimeout(800);
+const st8 = Object.fromEntries((posted[0]?.batch || []).map(b => [b.name, b.status]));
+ok('8. 승인하면 빈칸까지 함께 나간다',
+   st8['강조장'] === 'X' && st8['한돌봄'] === 'X', JSON.stringify(st8));
 
 await page.screenshot({ path: `${SHOT}/dg-admin-att.png`, fullPage: true });
 
