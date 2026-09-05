@@ -40,6 +40,15 @@ const SESSIONS = [
   { session_date: '2026-08-16', label: '08/16', name: '19강' },
 ];
 
+// 김밥. 상세 모달이 **다가오는 신청**까지 보여주는지 본다 — 지난 것만 보면
+// 이번에 명단에 올라온 사람이 늘 '신청 내역 없음' 이 된다 (docs/RULES.md).
+// 이 파일은 시계를 고정하지 않으므로 오늘 기준으로 잡는다.
+const FUTURE = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+const LUNCH = [
+  { member_id: 'u1', session_date: '2026-08-09', applied: true },
+  { member_id: 'u1', session_date: FUTURE, applied: true },
+];
+
 // 개인별 카드를 눌렀을 때 뜨는 상세 모달용
 const ATT = [
   { member_id: 'u1', session_date: '2026-08-09', status: 'O' },
@@ -96,6 +105,12 @@ await page.route('**/rest/v1/**', route => {
     // 상세 모달의 '기록 없음' 칸이 사라져 검증이 헛돈다.
     const who = (u.search.match(/member_id=eq\.([^&]+)/) || [])[1];
     body = who ? ATT.filter(r => r.member_id === who) : ATT;
+  } else if (t === 'dg_lunch') {
+    // getUpcomingLunches 는 '오늘 이후' 만 묻는다. 가짜도 그 조건을 지켜야
+    // 지난 신청이 '다가오는 신청' 으로 새어 들어오지 않는다.
+    const gt = (u.search.match(/session_date=gt\.([0-9-]+)/) || [])[1];
+    const who = (u.search.match(/member_id=eq\.([^&]+)/) || [])[1];
+    body = LUNCH.filter(r => (!who || r.member_id === who) && (!gt || r.session_date > gt));
   } else if (t === 'dg_homework') {
     body = HW;
   }
@@ -201,6 +216,24 @@ ok('기록 없는 칸도 읽힌다 (흐리게 지우지 않는다)', md.dimOpaci
 ok('칸 안의 회차 이름이 배경에 묻히지 않는다', md.nameGap > 100, `색 차이 ${md.nameGap}`);
 ok('과제는 강 번호 내림차순 — 조원 화면과 같은 차례',
    md.hw.join(',') === '18강,15강,9강', md.hw.join(','));
+
+// 김밥 — 지난 이력과 **다가오는 신청**을 함께 말해야 한다.
+const mdLunch = await page.evaluate(() => {
+  const head = [...document.querySelectorAll('.member-detail-body .md-section-head')]
+    .find(h => /김밥/.test(h.querySelector('h3')?.textContent || ''));
+  return {
+    summary: head?.querySelector('.md-summary')?.textContent.trim() || '',
+    next: document.querySelectorAll('.member-detail-body .md-lunch-chip.next').length,
+    all: document.querySelectorAll('.member-detail-body .md-lunch-chip').length,
+  };
+});
+ok('개인별 보기가 다가오는 김밥 신청을 말한다',
+   /다가오는/.test(mdLunch.summary) && !/신청 내역 없음/.test(mdLunch.summary),
+   mdLunch.summary);
+ok('지난 이력도 함께 센다 (겹쳐 세지 않는다)', /총 1회 신청/.test(mdLunch.summary),
+   mdLunch.summary);
+ok('다가오는 회차는 칩으로 따로', mdLunch.next === 1 && mdLunch.all === 2,
+   JSON.stringify(mdLunch));
 
 // 한 칸에 쉼표로 이어 붙은 주소를 통째로 href 에 넣으면 아무것도 열리지 않는다
 const mdFour = md.hwLinks.find(r => r.lecture === '18강');

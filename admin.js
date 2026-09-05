@@ -24,6 +24,7 @@ import {
     getMyHomework,
     getSessions,
     getTeamExtras,
+    getUpcomingLunches,
     getHomeworkChecker,
     getSessionExtras,
     getToday,
@@ -42,9 +43,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=118';
+} from './scripts/members-data.js?v=119';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=118';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=119';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -589,22 +590,29 @@ async function showMemberDetail(member) {
     document.body.style.overflow = 'hidden';
 
     try {
-        const [attRows, hwRows] = await Promise.all([
+        const [attRows, hwRows, upcomingLunch] = await Promise.all([
             getMyAttendance(member),
             getMyHomework(member),
+            // 김밥은 다가오는 회차가 본론이다 — 지난 이력만 보면 이번에 합류한
+            // 사람이 늘 '신청 내역 없음' 이 된다 (조회 화면과 같은 규칙).
+            getUpcomingLunches(member).catch(() => []),
         ]);
 
         let html = '';
 
         // ── 출석 현황 ──
+        // ⚠️ **세는 것은 지나간 회차뿐이다.** attRows 에는 다가오는 회차 한 칸이
+        // 함께 들어온다(매트릭스와 같은 규칙) — 그리는 것은 맞고 세는 것은 아니다.
+        const pastRows = attRows.filter(r => !r.upcoming);
+
         // 시트가 '과제' 로 바꿔 둔 칸은 출석으로 센다 (docs/RULES.md).
-        const present = attRows.filter(r => isPresent(r.status)).length;
-        const absent = attRows.filter(r => isAbsent(r.status)).length;
-        const other = attRows.length - present - absent;
-        const lunchCount = attRows.filter(r => r.lunch).length;
+        const present = pastRows.filter(r => isPresent(r.status)).length;
+        const absent = pastRows.filter(r => isAbsent(r.status)).length;
+        const other = pastRows.length - present - absent;
+        const lunchCount = pastRows.filter(r => r.lunch).length;
 
         const attSummary = [
-            `총 ${attRows.length}회차`,
+            `총 ${pastRows.length}회차`,
             `출석 ${present}`,
             `결석 ${absent}`,
             other ? `그 외 ${other}` : '',
@@ -613,6 +621,7 @@ async function showMemberDetail(member) {
         html += `<div class="md-section">`;
         html += `<div class="md-section-head"><h3>📋 출석</h3><span class="md-summary">${attSummary}</span></div>`;
         if (attRows.length) {
+            const upcomingCount = attRows.length - pastRows.length;
             html += `<div class="md-att-grid">`;
             html += [...attRows].reverse().map((r, idx) => {
                 const st = classifyStatus(r.status);
@@ -632,21 +641,25 @@ async function showMemberDetail(member) {
                              : lacking ? '<span class="hw-partial">📝</span>'
                              : (r.homework || partKinds.length) ? '📝' : '';
                 const badges = (r.lunch ? '🍙' : '') + hwIcon;
-                const hiddenClass = idx >= 10 ? ' md-hidden md-att-hidden' : '';
-                const tip = isReplaced ? '결석 — 과제와 소감문으로 메움'
+                // 역순이라 다가오는 회차가 맨 앞이다. 그 칸은 접지 않고, 접는
+                // 셈에서도 빼야 지난 회차가 예전처럼 열 칸 보인다.
+                const rank = r.upcoming ? -1 : idx - upcomingCount;
+                const hiddenClass = rank >= 10 ? ' md-hidden md-att-hidden' : '';
+                const tip = r.upcoming ? '아직 안 온 회차'
+                          : isReplaced ? '결석 — 과제와 소감문으로 메움'
                           : lacking ? `${st.title} — ${homeworkKindLabel(partKinds)} 제출 (메우려면 과제와 소감문)`
                           : partKinds.length ? `${st.title} — ${homeworkKindLabel(partKinds)} 제출`
                           : st.title;
-                return `<div class="att-chip ${cls}${hiddenClass}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${escapeHtml(tip)}">
+                return `<div class="att-chip ${r.upcoming ? 'upcoming' : cls}${hiddenClass}" title="${escapeHtml(r.key)} ${escapeHtml(r.name)} ${escapeHtml(tip)}">
                     <span class="att-date">${escapeHtml(r.key)}</span>
                     ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}
-                    <span class="att-mark">${escapeHtml(label)}</span>
+                    <span class="att-mark">${r.upcoming ? '예정' : escapeHtml(label)}</span>
                     <span class="att-badges">${badges}</span>
                 </div>`;
             }).join('');
             html += `</div>`;
-            if (attRows.length > 10) {
-                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-att-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${attRows.length - 10}개)</button>`;
+            if (pastRows.length > 10) {
+                html += `<button class="md-more-btn" onclick="this.style.display='none'; document.querySelectorAll('.md-att-hidden').forEach(el => el.classList.remove('md-hidden'))">더보기 (${pastRows.length - 10}개)</button>`;
             }
         } else {
             html += `<div class="md-empty">출석 기록이 없습니다.</div>`;
@@ -654,11 +667,25 @@ async function showMemberDetail(member) {
         html += `</div>`;
 
         // ── 김밥 현황 ──
-        const lunchApplied = attRows.filter(r => r.lunch);
+        //
+        // 지난 이력과 **다가오는 신청**을 함께 본다. 지난 것만 보면 이번에 명단에
+        // 올라온 사람은 늘 '신청 내역 없음' 이 된다 — 결과 카드의 '김밥 O' 는
+        // 시트에서 다가오는 회차를 읽은 값이라 서로 어긋난다 (docs/RULES.md).
+        const lunchApplied = pastRows.filter(r => r.lunch);
+        const upWhen = upcomingLunch.slice(0, 3).map(u => u.key).join(' · ')
+                     + (upcomingLunch.length > 3 ? ` 외 ${upcomingLunch.length - 3}건` : '');
+        const lunchSummary = [
+            upcomingLunch.length ? `다가오는 ${upWhen} 신청` : '',
+            lunchApplied.length ? `총 ${lunchApplied.length}회 신청` : '',
+        ].filter(Boolean).join(' · ') || '신청 내역 없음';
+
         html += `<div class="md-section">`;
-        html += `<div class="md-section-head"><h3>🍱 김밥</h3><span class="md-summary">${lunchApplied.length ? `총 ${lunchApplied.length}회 신청` : '신청 내역 없음'}</span></div>`;
-        if (lunchApplied.length) {
+        html += `<div class="md-section-head"><h3>🍱 김밥</h3><span class="md-summary">${escapeHtml(lunchSummary)}</span></div>`;
+        if (upcomingLunch.length || lunchApplied.length) {
             html += `<div class="md-lunch-list">`;
+            // 다가오는 회차를 맨 앞에. 접지 않는다 — 지금 가장 궁금한 것이다.
+            html += upcomingLunch.map(u =>
+                `<span class="md-lunch-chip next"><b>예정</b> ${escapeHtml(u.key)}</span>`).join('');
             html += [...lunchApplied].reverse().map((r, idx) => {
                 const hiddenClass = idx >= 10 ? ' md-hidden md-lunch-hidden' : '';
                 return `<span class="md-lunch-chip${hiddenClass}">${r.name ? `<b>${escapeHtml(r.name)}</b> ` : ''}${escapeHtml(r.key)}</span>`;

@@ -13,7 +13,7 @@ import {
     getSession,
     setSession,
     getTeamExtras,
-    getUpcomingLunch,
+    getUpcomingLunches,
     homeworkKindLabel,
     homeworkRule,
     isAbsent,
@@ -25,9 +25,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=118';
+} from './scripts/members-data.js?v=119';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=118';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=119';
 
 // 1-1. 내 정보 기억
 //
@@ -362,16 +362,21 @@ async function renderMyAttendance(member) {
     // 화면이 다른 사람으로 넘어갔으면 늦게 온 응답은 버린다.
     if (!shownMember || shownMember.id !== member.id) return rows;
 
+    // ⚠️ **세는 것은 지나간 회차뿐이다.** 그리드에는 다가오는 회차 한 칸이
+    // 함께 그려지지만(매트릭스와 같은 규칙), 아직 오지 않은 주를 '총 회차' 나
+    // 결석·미제출로 세면 안 된다.
+    const past = rows.filter(r => !r.upcoming);
+
     // 시트가 '과제' 로 바꿔 둔 칸은 출석으로 센다 (docs/RULES.md).
-    const present = rows.filter(r => isPresent(r.status)).length;
-    const absent = rows.filter(r => isAbsent(r.status)).length;
-    const other = rows.length - present - absent;
-    const lunchCount = rows.filter(r => r.lunch).length;
-    const hwCount = rows.filter(r => r.homework).length;
+    const present = past.filter(r => isPresent(r.status)).length;
+    const absent = past.filter(r => isAbsent(r.status)).length;
+    const other = past.length - present - absent;
+    const lunchCount = past.filter(r => r.lunch).length;
+    const hwCount = past.filter(r => r.homework).length;
 
     if (summary) {
         summary.textContent = [
-            `총 ${rows.length}회차`,
+            `총 ${past.length}회차`,
             `출석 ${present}`,
             `결석 ${absent}`,
             other ? `그 외 ${other}` : '',
@@ -382,7 +387,9 @@ async function renderMyAttendance(member) {
 
     // 앞쪽(오래된) 회차를 접는다. 차례는 그대로 1강 → 최근이다 —
     // 최근 것만 남긴다고 순서를 뒤집으면 어느 회차인지 읽기 어려워진다.
-    const folded = Math.max(0, rows.length - MY_ATT_OPEN);
+    // 접는 것도 지난 회차만 센다. rows.length 로 세면 예정 칸이 자리를 차지해
+    // 최근 10회차가 아니라 9회차만 펴진다.
+    const folded = Math.max(0, past.length - MY_ATT_OPEN);
 
     grid.innerHTML = rows.map((r, i) => {
         const st = classifyStatus(r.status);
@@ -412,10 +419,12 @@ async function renderMyAttendance(member) {
                      : partKinds.length ? `📝 ${homeworkKindLabel(partKinds)} 제출` : '']
                     .filter(Boolean).join(' · ');
 
-        return `<div class="att-chip ${cls}${i < folded ? ' old' : ''}" title="${escapeAttr(tip)}">
+        // 아직 안 온 주는 흐리게, 표기 자리에 '예정' 을 적는다 (매트릭스와 같다).
+        // 접히는 쪽에는 절대 넣지 않는다 — 지금 가장 궁금한 칸이다.
+        return `<div class="att-chip ${r.upcoming ? 'upcoming' : cls}${!r.upcoming && i < folded ? ' old' : ''}" title="${escapeAttr(tip)}">
                     <span class="att-date">${escapeHtml(r.key)}</span>
                     ${r.name ? `<span class="att-name">${escapeHtml(r.name)}</span>` : ''}
-                    <span class="att-mark">${escapeHtml(label)}</span>
+                    <span class="att-mark">${r.upcoming ? '예정' : escapeHtml(label)}</span>
                     <span class="att-badges">${badges}</span>
                 </div>`;
     }).join('');
@@ -426,11 +435,11 @@ async function renderMyAttendance(member) {
 
     // 다가오는 회차 신청은 rows 에 없다(지나간 회차만 담는다). 늦게 와도
     // 요약은 먼저 그린다 — 지난 이력만으로도 볼 것이 있다.
-    renderMyLunch(rows, null);
-    getUpcomingLunch(member)
-        .then(up => {
-            if (!up || !shownMember || shownMember.id !== member.id) return;
-            renderMyLunch(rows, up);
+    renderMyLunch(rows, []);
+    getUpcomingLunches(member)
+        .then(ups => {
+            if (!ups.length || !shownMember || shownMember.id !== member.id) return;
+            renderMyLunch(rows, ups);
         })
         .catch(err => console.log('다가오는 김밥 조회 실패:', err));
 
@@ -463,34 +472,41 @@ function setMyAttFold(hidden, open) {
 //
 // 그리드의 🍙 만으로는 "몇 번 신청했는지" 가 한눈에 안 들어온다.
 // 출석 조회에서 이미 받아온 값을 다시 쓰므로 통신이 늘지 않는다.
-function renderMyLunch(rows, upcoming) {
+function renderMyLunch(rows, upcoming = []) {
     const section = document.getElementById('myLunchSection');
     const badge = document.getElementById('myLunchBadge');
     const list = document.getElementById('myLunchList');
     if (!section || !badge || !list) return;
 
-    const applied = rows.filter(r => r.lunch);
+    // **지난 이력만** 센다. 다가오는 회차는 그리드에도 한 칸 들어오므로,
+    // 여기서 같이 세면 한 번 신청한 것이 두 번 세어진다.
+    const applied = rows.filter(r => r.lunch && !r.upcoming);
 
     // 지난 이력이 0건이어도 다가오는 신청이 있으면 '없음' 이라 하지 않는다.
-    // 결과 카드의 '김밥 O' 가 보는 것이 바로 그 회차다 (getUpcomingLunch 주석).
+    // 결과 카드의 '김밥 O' 가 보는 것이 바로 그 회차다 (getUpcomingLunches 주석).
     const total = applied.length
         ? `<span class="lunch-total-badge">🍙 총 ${applied.length}회 신청</span>`
-        : (upcoming ? '' : `<span class="lunch-total-badge none">신청 내역 없음</span>`);
-    const next = upcoming
-        ? `<span class="lunch-total-badge next">🍙 다가오는 ${escapeHtml(upcoming.key)} 신청함</span>`
+        : (upcoming.length ? '' : `<span class="lunch-total-badge none">신청 내역 없음</span>`);
+
+    // 한 달치를 한꺼번에 신청하는 일이 흔하다. 세 개까지 적고 나머지는 건수로.
+    const SHOW = 3;
+    const when = upcoming.slice(0, SHOW).map(u => u.key).join(' · ')
+               + (upcoming.length > SHOW ? ` 외 ${upcoming.length - SHOW}건` : '');
+    const next = upcoming.length
+        ? `<span class="lunch-total-badge next">🍙 다가오는 ${escapeHtml(when)} 신청함</span>`
         : '';
     badge.innerHTML = next + total;
 
     // 다가오는 회차를 맨 앞에. 지금 가장 궁금한 것이라 접지 않는다.
     // 그다음은 최근 회차부터 (조회하는 사람은 대개 최근 것을 궁금해한다).
-    const upChip = upcoming
-        ? `<span class="lunch-chip next" title="아직 지나지 않은 회차입니다">
-               <b>예정</b>
-               <span class="lunch-chip-date">${escapeHtml(upcoming.key)}</span>
-           </span>`
-        : '';
+    const upChips = upcoming.map(u => `
+        <span class="lunch-chip next" title="아직 지나지 않은 회차입니다">
+            <b>예정</b>
+            <span class="lunch-chip-date">${escapeHtml(u.key)}</span>
+        </span>
+    `).join('');
 
-    list.innerHTML = upChip + [...applied].reverse().map((r, i) => `
+    list.innerHTML = upChips + [...applied].reverse().map((r, i) => `
         <span class="lunch-chip${i >= MY_LUNCH_OPEN ? ' old' : ''}">
             ${r.name ? `<b>${escapeHtml(r.name)}</b>` : ''}
             <span class="lunch-chip-date">${escapeHtml(r.key)}</span>
@@ -550,7 +566,9 @@ async function renderMyHomework(member, attRows = []) {
     // DG 는 재합류가 있어서 — 7월 합류 → 8월 하차 → 10월 재합류 — 첫 기록만
     // 보면 8~9월치가 딸려 나온다. 그 사이는 시트에서도 비어 있다.
     const missing = attRows
-        .filter(r => isClassSession(r.name))
+        // 아직 오지 않은 주는 묻지 않는다. 지금도 빈칸이라 homeworkRule 이
+        // 'none' 을 주지만, 나중에 시트가 미리 표기를 넣어도 안전하도록 여기서 뺀다.
+        .filter(r => !r.upcoming && isClassSession(r.name))
         .map(r => ({ r, rule: homeworkRule(r.status) }))
         .filter(({ r, rule }) =>
             rule === 'full' ? !r.homework

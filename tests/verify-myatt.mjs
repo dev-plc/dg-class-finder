@@ -151,11 +151,16 @@ const { context, page } = await openApp(SESSIONS);
 await lookup(page, '김조원', '1111');
 
 const shut = await gridState(page);
-ok('지나간 회차만 그린다 (미래 2회차 제외)', shut.all === 18, `${shut.all}칸 / 전체 20회차`);
-ok('처음에는 최근 10회차만 보인다', shut.shown === 10, `${shut.shown}칸`);
-ok('접히는 쪽은 오래된 회차다',
-   shut.first === PAST[8].label && shut.last === PAST[17].label,
-   `${shut.first} ~ ${shut.last} (기대 ${PAST[8].label} ~ ${PAST[17].label})`);
+// 지난 18회차 + **다가오는 회차 하나**. 조별 매트릭스와 같은 규칙이다 —
+// 김밥은 다가오는 주에 신청하므로 그 칸이 없으면 🍙 를 볼 데가 없다.
+// 그 뒤(20강)까지 당겨 오지는 않는다.
+ok('다가오는 회차 하나까지만 그린다', shut.all === 19, `${shut.all}칸 / 전체 20회차`);
+// ⚠️ 세는 것은 지나간 회차뿐이다. 예정 칸을 총 회차에 넣으면 안 된다.
+ok('요약은 예정 칸을 안 센다', /총 18회차/.test(shut.summary), shut.summary);
+ok('처음에는 최근 10회차 + 예정 1칸', shut.shown === 11, `${shut.shown}칸`);
+ok('접히는 쪽은 오래된 회차다 (예정은 늘 보인다)',
+   shut.first === PAST[8].label && shut.last === SESSIONS[18].label,
+   `${shut.first} ~ ${shut.last} (기대 ${PAST[8].label} ~ ${SESSIONS[18].label})`);
 ok('버튼이 몇 회차가 접혔는지 말한다', shut.btnShown && /이전 8회차 더 보기/.test(shut.btnText),
    shut.btnText);
 ok('버튼은 격자 위에 둔다', shut.btnTop > 0 && shut.btnTop < 5000, `top ${shut.btnTop}px`);
@@ -310,7 +315,7 @@ ok('주소가 없으면 적은 글이 남는다', split.textOnly === '링크 없
 await page.click('#myAttendanceMoreBtn');
 await page.waitForTimeout(250);
 const open = await gridState(page);
-ok('누르면 전부 보인다', open.shown === 18, `${open.shown}칸`);
+ok('누르면 전부 보인다', open.shown === 19, `${open.shown}칸`);
 ok('펼치면 버튼이 접기로 바뀐다', /최근 10회차만 보기/.test(open.btnText), open.btnText);
 ok('펼침 상태를 알린다', open.expanded === 'true' && shut.expanded === 'false',
    `${shut.expanded} → ${open.expanded}`);
@@ -326,7 +331,7 @@ await page.screenshot({ path: `${SHOT}/dg-myatt-open.png` });
 await page.click('#myAttendanceMoreBtn');
 await page.waitForTimeout(250);
 const reshut = await gridState(page);
-ok('다시 누르면 접힌다', reshut.shown === 10 && reshut.expanded === 'false',
+ok('다시 누르면 접힌다', reshut.shown === 11 && reshut.expanded === 'false',
    `${reshut.shown}칸 / expanded=${reshut.expanded}`);
 
 // --- 다른 사람을 조회하면 접힌 채로 시작 -----------------------------------
@@ -335,8 +340,8 @@ await page.waitForTimeout(200);
 await lookup(page, '박신입', '2222');
 const other = await gridState(page);
 ok('다른 사람을 조회하면 다시 접힌 채로 시작',
-   other.expanded === 'false' && other.shown === 10, JSON.stringify(other));
-ok('출결 기록이 없는 사람도 회차 수는 같다', other.all === 18, `${other.all}칸`);
+   other.expanded === 'false' && other.shown === 11, JSON.stringify(other));
+ok('출결 기록이 없는 사람도 회차 수는 같다', other.all === 19, `${other.all}칸`);
 
 await context.close();
 
@@ -524,6 +529,35 @@ ok('다가오는 신청이 있으면 신청 내역 없음이라 하지 않는다
 ok('다가오는 회차는 칩으로 따로 보인다',
    upLunch.next === 1 && upLunch.shown === 1, JSON.stringify(upLunch));
 await upcomingOnly.context.close();
+
+// 다가오는 회차를 **여럿** 신청했으면 다 보여준다. 한 달치를 한꺼번에
+// 신청하는 일이 흔하다 — 한 건만 보이면 나머지를 신청한 줄 모른다.
+const FOUR_WEEKS = SESSIONS.slice(-2).map(x => x.session_date);
+const multi = await openApp(SESSIONS, [], [],
+  FOUR_WEEKS.map(d => ({ member_id: 'u1', session_date: d, applied: true })));
+await lookup(multi.page, '김조원', '1111');
+await multi.page.waitForTimeout(400);
+const multiLunch = await lunchOf(multi.page);
+ok('다가오는 신청을 여러 건 다 보여준다', multiLunch.next === 2, JSON.stringify(multiLunch));
+ok('배지에도 여러 회차를 적는다',
+   FOUR_WEEKS.every(d => multiLunch.badge.includes(d.slice(5).replace('-', '/'))),
+   multiLunch.badge);
+
+// 그리드의 다가오는 칸에도 🍙 가 붙는다 — 그 칸이 없어서 안 보이던 것이 제보였다.
+const upGrid = await multi.page.evaluate(() => {
+  const chips = [...document.querySelectorAll('#myAttendanceGrid .att-chip.upcoming')];
+  return chips.map(c => ({
+    date: c.querySelector('.att-date')?.textContent.trim(),
+    mark: c.querySelector('.att-mark')?.textContent.trim(),
+    badges: c.querySelector('.att-badges')?.textContent.trim(),
+    shown: c.offsetParent !== null,
+  }));
+});
+ok('그리드에 예정 칸이 하나 생긴다', upGrid.length === 1, JSON.stringify(upGrid));
+ok("예정 칸은 '예정' 이라 적고 접히지 않는다",
+   upGrid[0]?.mark === '예정' && upGrid[0]?.shown === true, JSON.stringify(upGrid));
+ok('예정 칸에도 김밥 🍙 가 붙는다', upGrid[0]?.badges === '🍙', JSON.stringify(upGrid));
+await multi.context.close();
 
 // 지난 신청이 많아도 다가오는 칩은 접히지 않는다 — 지금 가장 궁금한 것이다.
 const both = await openApp(SESSIONS, [], null,

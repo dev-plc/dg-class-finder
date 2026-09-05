@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=118';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=118';
+import { matches as hangulMatches } from './hangul.js?v=119';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=119';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -392,9 +392,14 @@ export async function getMyAttendance(member) {
   }
   const today = state.today || todayISO();
 
-  return state.sessions
-    .filter(s => s.date <= today)
-    .map(s => ({
+  // 지난 회차 + **다가오는 회차 하나**. 조별 매트릭스(buildSessionColumns)와
+  // 같은 규칙이다 — 예전에는 여기서만 `date <= today` 로 잘라서, 같은 사람을
+  // 두고 조별 보기는 '09/06 김밥 신청' 을 보여주는데 개인 화면은 그 회차를
+  // 아예 모르는 어긋남이 났다.
+  //
+  // ⚠️ **세는 곳은 upcoming 을 빼야 한다.** '총 22회차' 가 23이 되면 안 되고,
+  //    아직 오지 않은 주를 결석이나 미제출로 세면 더 나쁘다.
+  return getSessions({ throughNext: true }).map(s => ({
       date: s.date,
       key: s.key,
       name: s.name || '',
@@ -403,41 +408,45 @@ export async function getMyAttendance(member) {
       // homework = **인정 대상**. 종류가 모자란 제출은 kinds 로만 넘긴다.
       homework: !!(s.name && hwNames.has(normalizeLecture(s.name))),
       homeworkKinds: (s.name && hwKinds.get(normalizeLecture(s.name))) || [],
-    }));
+      // 아직 오지 않은 주. 그리는 것은 맞고, 세는 것은 아니다.
+      upcoming: s.date > today,
+  }));
 }
 
 /**
- * **다가오는 회차의 김밥 신청.**
+ * **다가오는 회차의 김밥 신청 — 전부.**
  *
- * 김밥 요약은 getMyAttendance 가 준 줄을 쓰는데, 그것은 **지나간 회차만** 담는다
- * (state.sessions 를 today 로 자른다). 그런데 결과 카드의 '김밥' 한 줄은 시트에서
- * **오늘 이후 가장 가까운 열**을 읽어 온 값이다 — 보는 곳이 서로 다르다.
+ * 결과 카드의 '김밥' 한 줄은 시트에서 **오늘 이후 가장 가까운 열**을 읽은 값이다.
+ * 그런데 김밥 요약은 오래 **지나간 회차만** 세어서, 이번에 명단에 올라온 사람은
+ * '카드 O · 신청 내역 없음' 이 늘 났다. 그 어긋남을 메우는 자리다.
  *
- * 그래서 이번에 명단에 올라온 사람은 지난 신청이 있을 리 없어 **카드 O · 요약
- * '신청 내역 없음'** 이 늘 난다. 실제로 그 제보가 왔다. 둘이 같은 이야기를
- * 하도록 다가오는 신청을 따로 읽는다.
+ * **한 건만 보면 안 된다** — 한 달치를 한꺼번에 신청하는 일이 흔하다.
+ * 그리드는 다가오는 회차 하나만 그리지만(매트릭스와 같은 규칙), 요약은 신청한
+ * 미래 회차를 다 보여준다.
  *
- * getMyAttendance 가 이미 이 사람의 dg_lunch 를 다 읽지만, 그 함수의 반환 모양을
- * 바꾸면 부르는 곳이 여럿이라(조회 화면·관리자) 여기서 따로 받는다. 한 줄짜리다.
+ * getMyAttendance 도 이 사람의 dg_lunch 를 다 읽지만, 그 함수는 회차 목록
+ * (dg_sessions)에 있는 날짜만 줄로 만든다. 김밥 탭에만 있는 날짜는 거기 없다.
  *
- * @returns { date, key } | null
+ * @returns [{ date, key }] — 이른 회차부터. 없으면 빈 배열
  */
-export async function getUpcomingLunch(member) {
-  if (!member || !member._uuid) return null;
+export async function getUpcomingLunches(member) {
+  if (!member || !member._uuid) return [];
   const today = state.today || todayISO();
 
   const rows = await sbSelect(
     `dg_lunch?select=session_date&member_id=eq.${member._uuid}` +
     `&applied=is.true&session_date=gt.${encodeURIComponent(today)}` +
-    '&order=session_date&limit=1'
+    '&order=session_date'
   ).catch(() => []);
 
-  const date = rows[0]?.session_date;
-  if (!date) return null;
-
   // 회차 이름은 dg_sessions 가 안다. 김밥 탭에만 있는 날짜면 날짜로 적는다.
-  const s = state.sessions.find(x => x.date === date);
-  return { date, key: s?.key || String(date).slice(5).replace('-', '/') };
+  return rows.map(r => {
+    const s = state.sessions.find(x => x.date === r.session_date);
+    return {
+      date: r.session_date,
+      key: s?.key || String(r.session_date).slice(5).replace('-', '/'),
+    };
+  });
 }
 
 /**

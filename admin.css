@@ -688,6 +688,19 @@ body.dark-mode .md-section-head h3 {
 .member-detail-body .att-mark { color: var(--text-dark); }
 .member-detail-body .att-chip.empty .att-mark,
 .member-detail-body .att-chip.none .att-mark { color: var(--text-light); }
+/* 아직 안 온 회차. 어두운 바탕이라 style.css 의 흐린 파랑은 안 보인다. */
+.member-detail-body .att-chip.upcoming {
+    background: rgba(59, 130, 246, 0.12);
+    border-style: dashed;
+    opacity: 1;
+}
+.member-detail-body .att-chip.upcoming .att-mark { color: var(--text-light); }
+
+/* 김밥 — 다가오는 신청 */
+.md-lunch-chip.next {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.35);
+}
 
 /* 김밥 리스트 */
 .md-lunch-list {

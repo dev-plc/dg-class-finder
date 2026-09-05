@@ -1301,6 +1301,14 @@ body.dark-mode .mx-cell.makeup { color: #fde68a; }
 .att-chip.makeup .att-mark { font-size: 11px; }
 body.dark-mode .att-chip.makeup { color: #fde68a; }
 .att-chip.empty   { opacity: 0.4; }
+/* 아직 안 온 회차. 조별 매트릭스의 '예정' 칸과 같은 뜻이다 — 출결은 아직
+   없지만 김밥 신청은 이미 있을 수 있어서 칸 자체는 보여준다. */
+.att-chip.upcoming {
+    background: rgba(59, 130, 246, 0.08);
+    border-style: dashed;
+    opacity: 0.75;
+}
+.att-chip.upcoming .att-mark { font-size: 11px; opacity: 0.8; }
 .att-chip.none    { opacity: 0.4; }
 
 /* ============================================================
