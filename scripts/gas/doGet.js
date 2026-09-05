@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v29)
+// DGfinder — Google Apps Script 전체 코드 (v30)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,13 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v30
+//   - **결과 카드의 김밥도 X 를 거른다.** v25 에서 'X 를 신청으로 읽던' 것을
+//     고쳤는데 DG_readLunchByDate 만 고쳤다. doGet 안의 kimbapMap(결과 카드
+//     한 줄, 조 요약의 🍙 N, 조원 명단의 🍙 가 쓰는 값)은 아직 '값이 있기만
+//     하면 O' 였다. 안 한다고 X 를 적은 사람이 대상자로 세어져 김밥을 그만큼
+//     더 시킨다. 두 자리가 DG_isLunchApplied 하나를 같이 쓰게 했다.
 //
 // v29
 //   - 메뉴에 '과제 아이디 점검'. 폼에 적은 아이디가 명단과 안 맞으면 그 사람의
@@ -104,7 +111,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 29;
+var DG_VERSION = 30;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -1240,7 +1247,11 @@ function doGet(e) {
           for (var kr = kbHeaderIdx + 1; kr < kbValues.length; kr++) {
             var kbId = DG_normalizeId_(kbValues[kr][kbIdIdx]);
             if (!kbId) continue;
-            kimbapMap[kbId] = String(kbValues[kr][targetKbIdx]).trim() !== '' ? 'O' : 'X';
+            // ⚠️ DG_isLunchApplied 를 쓴다. 예전에는 '값이 있기만 하면 O' 였는데,
+            // 그러면 **안 한다고 적은 X 도 신청**으로 세어져 김밥을 더 시킨다.
+            // 회차별(DG_readLunchByDate)은 v25 에서 고쳤는데 여기를 빠뜨렸다 —
+            // 두 자리가 같은 규칙을 써야 카드와 요약이 어긋나지 않는다.
+            kimbapMap[kbId] = DG_isLunchApplied(kbValues[kr][targetKbIdx]) ? 'O' : 'X';
           }
         }
       }

@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=117';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=117';
+import { matches as hangulMatches } from './hangul.js?v=118';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=118';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -404,6 +404,40 @@ export async function getMyAttendance(member) {
       homework: !!(s.name && hwNames.has(normalizeLecture(s.name))),
       homeworkKinds: (s.name && hwKinds.get(normalizeLecture(s.name))) || [],
     }));
+}
+
+/**
+ * **다가오는 회차의 김밥 신청.**
+ *
+ * 김밥 요약은 getMyAttendance 가 준 줄을 쓰는데, 그것은 **지나간 회차만** 담는다
+ * (state.sessions 를 today 로 자른다). 그런데 결과 카드의 '김밥' 한 줄은 시트에서
+ * **오늘 이후 가장 가까운 열**을 읽어 온 값이다 — 보는 곳이 서로 다르다.
+ *
+ * 그래서 이번에 명단에 올라온 사람은 지난 신청이 있을 리 없어 **카드 O · 요약
+ * '신청 내역 없음'** 이 늘 난다. 실제로 그 제보가 왔다. 둘이 같은 이야기를
+ * 하도록 다가오는 신청을 따로 읽는다.
+ *
+ * getMyAttendance 가 이미 이 사람의 dg_lunch 를 다 읽지만, 그 함수의 반환 모양을
+ * 바꾸면 부르는 곳이 여럿이라(조회 화면·관리자) 여기서 따로 받는다. 한 줄짜리다.
+ *
+ * @returns { date, key } | null
+ */
+export async function getUpcomingLunch(member) {
+  if (!member || !member._uuid) return null;
+  const today = state.today || todayISO();
+
+  const rows = await sbSelect(
+    `dg_lunch?select=session_date&member_id=eq.${member._uuid}` +
+    `&applied=is.true&session_date=gt.${encodeURIComponent(today)}` +
+    '&order=session_date&limit=1'
+  ).catch(() => []);
+
+  const date = rows[0]?.session_date;
+  if (!date) return null;
+
+  // 회차 이름은 dg_sessions 가 안다. 김밥 탭에만 있는 날짜면 날짜로 적는다.
+  const s = state.sessions.find(x => x.date === date);
+  return { date, key: s?.key || String(date).slice(5).replace('-', '/') };
 }
 
 /**
@@ -927,6 +961,21 @@ export function isMissing(status) {
 }
 
 /**
+ * 돌봄으로 섬긴 주.
+ *
+ * 출석 집계에서는 여전히 '그 외' 다 — isPresent 에 넣으면 조 요약·결석 현황·
+ * 하차 검토가 한꺼번에 바뀐다. 여기서 따로 두는 까닭은 **과제 안내 하나** 때문이다:
+ * 그 자리에 있었으니 예습과제는 묻고, 소감문은 안 묻는다 (homeworkRule).
+ *
+ * 시트에 적힌 그대로 견준다 — isMakeup('과제') 과 같은 규칙이다.
+ */
+export const CARE_STATUS = '돌봄';
+
+export function isCare(status) {
+  return String(status ?? '').trim() === CARE_STATUS;
+}
+
+/**
  * 출석 인정 대상인 제출인가 — 과제 **종류**를 본다.
  *
  * 폼의 '어떤 과제인가요?' 값이 `dg_homework.kind` 로 들어온다. 과제만 낸 것과
@@ -959,17 +1008,20 @@ export function isFullHomework(kind) {
  *                    7월 합류 → 8월 하차 → 10월 재합류이면 8~9월은 비어 있다.
  *   · 아직 저장 전 — 조장이 그 회차를 아직 안 찍었다
  *
- * −(수업 없음) · 돌봄 · ◎(지난 기수 이수) 는 사람이 시트에 일부러 넣은 예외
- * 표기다. 예외라고 적어 둔 칸에 과제를 묻지 않는다.
+ * **돌봄은 'any' 다.** 그 자리에 있었으므로 예습과제는 낼 수 있고, 내야 한다.
+ * 소감문은 결석을 메우는 것이라 묻지 않는다.
+ *
+ * −(수업 없음) · ◎(지난 기수 이수) 는 사람이 시트에 일부러 넣은 예외 표기다.
+ * 예외라고 적어 둔 칸에 과제를 묻지 않는다. 뜻을 모르는 그 밖의 표기도 같다.
  *
  * ⚠️ 예전에는 '첫 기록이 찍힌 회차부터 센다' 는 창으로 가렸다. 그것은 하차를
  *    담지 못했고(첫 기록은 7월이라 8~9월이 딸려 나왔다), 빈칸→X 저장이
  *    지난 회차를 채우면 창 자체가 1주차로 밀려 무력해졌다.
  */
 export function homeworkRule(status) {
-  if (isAbsent(status)) return 'full';   // X
-  if (isPresent(status)) return 'any';   // O · 과제
-  return 'none';                         // 빈칸 · − · 돌봄 · ◎
+  if (isAbsent(status)) return 'full';                      // X
+  if (isPresent(status) || isCare(status)) return 'any';    // O · 과제 · 돌봄
+  return 'none';                                            // 빈칸 · − · ◎
 }
 
 /** 낸 종류를 화면에 적을 글자로. 종류가 비어 있는 옛 기록도 있다. */

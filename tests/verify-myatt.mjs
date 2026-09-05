@@ -63,7 +63,7 @@ const { ok, done } = makeReporter('내 출석 현황');
 const browser = await launch();
 
 // 폰 크기로 본다 — 이 격자가 화면을 먹는 게 문제였던 곳이다.
-async function openApp(sessions, homework = HOMEWORK, att = null) {
+async function openApp(sessions, homework = HOMEWORK, att = null, lunch = null) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   await page.clock.setFixedTime(new Date(`${TODAY}T09:00:00Z`));
@@ -85,7 +85,11 @@ async function openApp(sessions, homework = HOMEWORK, att = null) {
       body = select.includes('dg_members!inner') ? []
            : url.search.includes('member_id=eq.u1') ? (att || ATT) : [];
     } else if (table === 'dg_lunch') {
-      body = LUNCH;
+      // getUpcomingLunch 는 '오늘 이후' 만 묻는다. 가짜도 그 조건을 지켜야
+      // 지난 신청이 '다가오는 신청' 으로 새어 들어오지 않는다.
+      const gt = (url.search.match(/session_date=gt\.([0-9-]+)/) || [])[1];
+      const rows = lunch || LUNCH;
+      body = gt ? rows.filter(r => r.session_date > gt) : rows;
     } else if (table === 'dg_homework') {
       body = homework;
     }
@@ -219,11 +223,11 @@ const todo = () => page.evaluate(() => {
 });
 
 const td = await todo();
-// 18회차 중 6회차는 '돌봄' 이라 안 묻는다(예외 표기). 남는 17 − 제출 7 = 10.
-ok('안 낸 건수를 센다 (돌봄 뺀 17회차 - 7건 제출)', /10건/.test(td.title), td.title);
+// 6회차의 '돌봄' 도 센다 — 그 자리에 있었으니 예습과제는 낸다. 18 − 제출 7 = 11.
+ok('안 낸 건수를 센다 (18회차 - 7건 제출)', /11건/.test(td.title), td.title);
 ok("문구는 '과제와 소감문'", /과제와 소감문/.test(td.title) && !/[^와] 과제 /.test(td.title), td.title);
 ok('안 낸 강의를 여덟 개까지만 늘어놓는다', td.chips.length === 8, td.chips.join(' · '));
-ok('나머지는 건수로', td.rest === '외 2건', td.rest);
+ok('나머지는 건수로', td.rest === '외 3건', td.rest);
 ok('낸 강의는 목록에 없다', !td.chips.includes('18강') && !td.chips.includes('16강'),
    td.chips.join(' · '));
 ok('제출 폼으로 이어진다', td.href === 'https://forms.gle/cnhxuonpz2tmMu2y9', td.href);
@@ -429,8 +433,10 @@ ok('하차 앞뒤로 나온 회차는 묻는다',
    rejoinTodo.chips.join(',') === '1강,2강,6강,7강', rejoinTodo.chips.join(','));
 await rejoin.context.close();
 
-// −(수업 없음) · 돌봄 · ◎(지난 기수 이수) 는 사람이 시트에 일부러 넣은 예외
-// 표기다. 예외라고 적어 둔 칸에 과제를 묻지 않는다.
+// −(수업 없음) · ◎(지난 기수 이수) 는 사람이 시트에 일부러 넣은 예외 표기다.
+// 예외라고 적어 둔 칸에 과제를 묻지 않는다.
+//
+// **돌봄은 다르다.** 그 자리에 있었으므로 예습과제는 묻는다 (소감문은 아니다).
 const MARKED_ATT = [
   { session_date: SEVEN[0].session_date, status: '-' },
   { session_date: SEVEN[1].session_date, status: '−' },
@@ -441,9 +447,94 @@ const MARKED_ATT = [
 const marked = await openApp(SEVEN, [], MARKED_ATT);
 await lookup(marked.page, '김조원', '1111');
 const markedTodo = await todoOf(marked.page);
-ok('− · 돌봄 · ◎ 는 안 묻는다', markedTodo.chips.join(',') === '5강',
+ok('− 와 ◎ 는 안 묻는다',
+   !markedTodo.chips.some(c => /^[124]강/.test(c)), markedTodo.chips.join(','));
+ok('돌봄인 주는 예습과제를 묻는다', markedTodo.chips.join(',') === '3강,5강',
    markedTodo.chips.join(','));
 await marked.context.close();
+
+// 돌봄인 주에 예습과제('과제')만 냈으면 다 한 것이다 — 소감문은 안 묻는다.
+const cared = await openApp(SEVEN, [
+  { member_id: 'u1', lecture: '3강', kind: '과제', content: '', submitted_at: null },
+  { member_id: 'u1', lecture: '5강', kind: '과제', content: '', submitted_at: null },
+], MARKED_ATT);
+await lookup(cared.page, '김조원', '1111');
+const caredTodo = await todoOf(cared.page);
+ok('돌봄인 주도 예습과제만 내면 빠진다',
+   caredTodo.chips.length === 0 && !/제출하지 않은/.test(caredTodo.title), caredTodo.title);
+await cared.context.close();
+
+// ==========================================================================
+// 3-2-2. 김밥 요약 — 접기·펼치기와 '다가오는 회차'
+//
+// 17건이 통째로 펼쳐져 화면을 밀었다. 그리고 결과 카드의 '김밥 O' 는 시트에서
+// **오늘 이후 가장 가까운 열**을 읽은 값인데 요약은 지나간 회차만 세어서,
+// 이번에 합류한 사람은 '카드 O · 신청 내역 없음' 이 늘 났다.
+// ==========================================================================
+const lunchOf = (page) => page.evaluate(() => {
+  const list = document.getElementById('myLunchList');
+  const btn = document.getElementById('myLunchMoreBtn');
+  const chips = [...list.querySelectorAll('.lunch-chip')];
+  return {
+    badge: document.getElementById('myLunchBadge').textContent.replace(/\s+/g, ' ').trim(),
+    total: chips.length,
+    // 접혔을 때 실제로 보이는 것만 — display:none 은 offsetParent 가 null 이다.
+    shown: chips.filter(c => c.offsetParent !== null).length,
+    next: chips.filter(c => c.classList.contains('next')).length,
+    btnHidden: btn.hidden,
+    btnText: btn.textContent.trim(),
+  };
+});
+
+// 지난 신청 12건 — 여덟만 펴고 나머지는 버튼 뒤로.
+const MANY_LUNCH = PAST.slice(0, 12)
+  .map(x => ({ member_id: 'u1', session_date: x.session_date, applied: true }));
+const many = await openApp(SESSIONS, [], null, MANY_LUNCH);
+await lookup(many.page, '김조원', '1111');
+const manyLunch = await lunchOf(many.page);
+ok('김밥 이력이 많으면 여덟 건만 편다',
+   manyLunch.total === 12 && manyLunch.shown === 8, JSON.stringify(manyLunch));
+ok('나머지는 펼치기 버튼 뒤로', !manyLunch.btnHidden && /이전 4건 더 보기/.test(manyLunch.btnText),
+   manyLunch.btnText);
+await many.page.click('#myLunchMoreBtn');
+await many.page.waitForTimeout(200);
+const manyOpen = await lunchOf(many.page);
+ok('누르면 전부 펴진다', manyOpen.shown === 12 && /8건만 보기/.test(manyOpen.btnText),
+   JSON.stringify(manyOpen));
+await many.context.close();
+
+// 적으면 버튼 자체가 없다.
+const oneLunch = await openApp(SESSIONS, [], null, LUNCH);
+await lookup(oneLunch.page, '김조원', '1111');
+const fewLunch = await lunchOf(oneLunch.page);
+ok('접을 게 없으면 버튼도 없다', fewLunch.btnHidden && fewLunch.shown === 1,
+   JSON.stringify(fewLunch));
+await oneLunch.context.close();
+
+// **다가오는 회차 신청.** 지난 이력이 하나도 없어도 '신청 내역 없음' 이 아니다 —
+// 결과 카드의 '김밥 O' 가 보는 것이 바로 이 회차다.
+const NEXT_DATE = SESSIONS[SESSIONS.length - 1].session_date;   // TODAY 뒤
+const upcomingOnly = await openApp(SESSIONS, [], [],
+  [{ member_id: 'u1', session_date: NEXT_DATE, applied: true }]);
+await lookup(upcomingOnly.page, '김조원', '1111');
+await upcomingOnly.page.waitForTimeout(400);
+const upLunch = await lunchOf(upcomingOnly.page);
+ok('다가오는 신청이 있으면 신청 내역 없음이라 하지 않는다',
+   !/신청 내역 없음/.test(upLunch.badge) && /다가오는/.test(upLunch.badge), upLunch.badge);
+ok('다가오는 회차는 칩으로 따로 보인다',
+   upLunch.next === 1 && upLunch.shown === 1, JSON.stringify(upLunch));
+await upcomingOnly.context.close();
+
+// 지난 신청이 많아도 다가오는 칩은 접히지 않는다 — 지금 가장 궁금한 것이다.
+const both = await openApp(SESSIONS, [], null,
+  [...MANY_LUNCH, { member_id: 'u1', session_date: NEXT_DATE, applied: true }]);
+await lookup(both.page, '김조원', '1111');
+await both.page.waitForTimeout(400);
+const bothLunch = await lunchOf(both.page);
+ok('접어도 다가오는 칩은 그대로 보인다',
+   bothLunch.next === 1 && bothLunch.shown === 9, JSON.stringify(bothLunch));
+ok('접기 셈은 지난 이력만 센다', /이전 4건 더 보기/.test(bothLunch.btnText), bothLunch.btnText);
+await both.context.close();
 
 // ==========================================================================
 // 3-3. 무엇을 요구하는가는 **그 주에 나왔는지**에 달렸다

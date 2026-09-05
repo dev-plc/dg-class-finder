@@ -1548,6 +1548,23 @@ body.dark-mode .hw-links a.multi b { color: var(--text-dark); }
 .lunch-chip b { font-weight: 700; }
 .lunch-chip-date { font-size: 11px; opacity: 0.7; }
 
+/* 다가오는 회차 — 아직 지나지 않은 신청. 결과 카드의 '김밥 O' 가 보는 것이
+   이 회차다. 지난 이력과 섞이면 "이번 주에 신청했나" 가 안 보인다. */
+.lunch-total-badge.next {
+    background: rgba(37, 99, 235, 0.14);
+    border-color: rgba(37, 99, 235, 0.35);
+    color: #1d4ed8;
+    margin-right: 6px;
+}
+.lunch-chip.next {
+    background: rgba(37, 99, 235, 0.10);
+    border-color: rgba(37, 99, 235, 0.28);
+}
+.dark-mode .lunch-total-badge.next { color: #93c5fd; }
+
+/* 접었을 때 — 최근 8건만. 다가오는 회차(.next)는 .old 가 안 붙어 늘 보인다. */
+.lunch-chips.folded .lunch-chip.old { display: none; }
+
 /* 기억한 조회 지우기 */
 .clear-remembered-btn {
     display: block;

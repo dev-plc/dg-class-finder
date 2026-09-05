@@ -148,6 +148,16 @@ ok('읽은 회차를 같이 돌려준다', Array.isArray(got.dates) && got.dates
 ok('신청자가 없는 회차도 목록에 든다', (got.dates || []).some(d => d.endsWith('-08-16')),
    JSON.stringify(got.dates));
 
+// --- 결과 카드의 김밥도 같은 규칙인가 (v30) ---------------------------------
+//
+// v25 는 DG_readLunchByDate(회차별)만 고쳤다. doGet 안의 kimbapMap 은 아직
+// '값이 있기만 하면 O' 였다 — 결과 카드 한 줄, 조 요약의 🍙 N, 조원 명단의 🍙 가
+// 그 값을 쓴다. 안 한다고 X 를 적은 사람이 대상자로 세어져 김밥을 더 시킨다.
+ok('결과 카드의 김밥도 DG_isLunchApplied 를 쓴다',
+   /kimbapMap\[kbId\] = DG_isLunchApplied\(/.test(src));
+ok("옛 '값이 있기만 하면 O' 가 남아 있지 않다",
+   !/kimbapMap\[kbId\] = String\([^)]*\)\.trim\(\) !== ''/.test(src));
+
 // --- 응답에 실려 나가는가 ---------------------------------------------------
 ok('doGet 응답에 lunchDates 를 싣는다', /lunchDates:\s*lunchInfo\.dates/.test(src));
 ok('호출부가 새 모양(byId)을 쓴다', /var lunchByDate = lunchInfo\.byId;/.test(src));
@@ -155,7 +165,7 @@ ok('호출부가 새 모양(byId)을 쓴다', /var lunchByDate = lunchInfo\.byId
 // 확인할 것은 '김밥 O/X 가 든 버전 이상인가' 와 '머리말과 상수가 같은가' 다.
 const ver = Number(src.match(/var DG_VERSION = (\d+);/)?.[1]);
 const headVer = Number(src.match(/전체 코드 \(v(\d+)\)/)?.[1]);
-ok('v25 이상 (김밥 O/X 가 든 버전)', ver >= 25, `v${ver}`);
+ok('v30 이상 (결과 카드의 김밥까지 X 를 거르는 버전)', ver >= 30, `v${ver}`);
 ok('머리말 버전과 DG_VERSION 이 같다', ver === headVer,
    `머리말 v${headVer} · DG_VERSION ${ver}`);
 

@@ -13,6 +13,7 @@ import {
     getSession,
     setSession,
     getTeamExtras,
+    getUpcomingLunch,
     homeworkKindLabel,
     homeworkRule,
     isAbsent,
@@ -24,9 +25,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=117';
+} from './scripts/members-data.js?v=118';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=117';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=118';
 
 // 1-1. 내 정보 기억
 //
@@ -330,6 +331,8 @@ function renderSessionPicker() {
 const MY_ATT_OPEN = 10;
 // 과제는 다섯 건. 한 줄이 회차 칩보다 굵어서 같은 수만큼 펴 두면 더 길어 보인다.
 const MY_HW_OPEN = 5;
+// 김밥은 칩이 작아 여덟 개(세 줄쯤). 20회차가 넘어가면 이것만으로 화면이 밀린다.
+const MY_LUNCH_OPEN = 8;
 
 // 과제와 소감문 제출 폼. 화면 여러 곳에서 쓰지 않도록 한 곳에 둔다.
 const HOMEWORK_FORM_URL = 'https://forms.gle/cnhxuonpz2tmMu2y9';
@@ -420,7 +423,17 @@ async function renderMyAttendance(member) {
     setMyAttFold(folded, false);
 
     section.style.display = 'block';
-    renderMyLunch(rows);
+
+    // 다가오는 회차 신청은 rows 에 없다(지나간 회차만 담는다). 늦게 와도
+    // 요약은 먼저 그린다 — 지난 이력만으로도 볼 것이 있다.
+    renderMyLunch(rows, null);
+    getUpcomingLunch(member)
+        .then(up => {
+            if (!up || !shownMember || shownMember.id !== member.id) return;
+            renderMyLunch(rows, up);
+        })
+        .catch(err => console.log('다가오는 김밥 조회 실패:', err));
+
     return rows;
 }
 
@@ -450,7 +463,7 @@ function setMyAttFold(hidden, open) {
 //
 // 그리드의 🍙 만으로는 "몇 번 신청했는지" 가 한눈에 안 들어온다.
 // 출석 조회에서 이미 받아온 값을 다시 쓰므로 통신이 늘지 않는다.
-function renderMyLunch(rows) {
+function renderMyLunch(rows, upcoming) {
     const section = document.getElementById('myLunchSection');
     const badge = document.getElementById('myLunchBadge');
     const list = document.getElementById('myLunchList');
@@ -458,19 +471,50 @@ function renderMyLunch(rows) {
 
     const applied = rows.filter(r => r.lunch);
 
-    badge.innerHTML = applied.length
+    // 지난 이력이 0건이어도 다가오는 신청이 있으면 '없음' 이라 하지 않는다.
+    // 결과 카드의 '김밥 O' 가 보는 것이 바로 그 회차다 (getUpcomingLunch 주석).
+    const total = applied.length
         ? `<span class="lunch-total-badge">🍙 총 ${applied.length}회 신청</span>`
-        : `<span class="lunch-total-badge none">신청 내역 없음</span>`;
+        : (upcoming ? '' : `<span class="lunch-total-badge none">신청 내역 없음</span>`);
+    const next = upcoming
+        ? `<span class="lunch-total-badge next">🍙 다가오는 ${escapeHtml(upcoming.key)} 신청함</span>`
+        : '';
+    badge.innerHTML = next + total;
 
-    // 최근 회차가 앞으로 (조회하는 사람은 대개 최근 것을 궁금해한다)
-    list.innerHTML = [...applied].reverse().map(r => `
-        <span class="lunch-chip">
+    // 다가오는 회차를 맨 앞에. 지금 가장 궁금한 것이라 접지 않는다.
+    // 그다음은 최근 회차부터 (조회하는 사람은 대개 최근 것을 궁금해한다).
+    const upChip = upcoming
+        ? `<span class="lunch-chip next" title="아직 지나지 않은 회차입니다">
+               <b>예정</b>
+               <span class="lunch-chip-date">${escapeHtml(upcoming.key)}</span>
+           </span>`
+        : '';
+
+    list.innerHTML = upChip + [...applied].reverse().map((r, i) => `
+        <span class="lunch-chip${i >= MY_LUNCH_OPEN ? ' old' : ''}">
             ${r.name ? `<b>${escapeHtml(r.name)}</b>` : ''}
             <span class="lunch-chip-date">${escapeHtml(r.key)}</span>
         </span>
     `).join('');
 
+    setMyLunchFold(Math.max(0, applied.length - MY_LUNCH_OPEN), false);
     section.style.display = 'block';
+}
+
+/**
+ * 김밥 이력 접기·펼치기. 출석 그리드·과제 목록과 같은 패턴이다
+ * (setMyAttFold · setMyHwFold). 사람을 새로 조회하면 접힌 채로 시작한다.
+ */
+function setMyLunchFold(hidden, open) {
+    const list = document.getElementById('myLunchList');
+    const btn = document.getElementById('myLunchMoreBtn');
+    if (!list || !btn) return;
+
+    list.classList.toggle('folded', hidden > 0 && !open);
+    btn.hidden = hidden === 0;
+    btn.dataset.hidden = String(hidden);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.textContent = open ? `↑ 최근 ${MY_LUNCH_OPEN}건만 보기` : `↓ 이전 ${hidden}건 더 보기`;
 }
 
 // 5-2. 본인 과제 제출
@@ -1043,6 +1087,15 @@ function initEventListeners() {
         hwMore.addEventListener('click', () => {
             setMyHwFold(Number(hwMore.dataset.hidden || 0),
                         hwMore.getAttribute('aria-expanded') !== 'true');
+        });
+    }
+
+    // 지난 김밥 신청 펼치기·접기
+    const lunchMore = document.getElementById('myLunchMoreBtn');
+    if (lunchMore) {
+        lunchMore.addEventListener('click', () => {
+            setMyLunchFold(Number(lunchMore.dataset.hidden || 0),
+                           lunchMore.getAttribute('aria-expanded') !== 'true');
         });
     }
 

@@ -7,7 +7,7 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=117">
+    <link rel="stylesheet" href="style.css?v=118">
 </head>
 <body class="dark-mode">
     <div class="container">
@@ -142,6 +142,11 @@
                         </div>
                         <div id="myLunchBadge" class="lunch-total"></div>
                         <div id="myLunchList" class="lunch-chips"></div>
+                        <!-- 20회차가 넘어가면 이 목록만으로 화면이 밀린다.
+                             최근 8건만 펴 두고 나머지는 이 버튼 뒤로 접는다.
+                             (다가오는 회차 칩은 접지 않는다 — 지금 가장 궁금한 것이다) -->
+                        <button type="button" id="myLunchMoreBtn" class="att-more-btn"
+                                aria-controls="myLunchList" aria-expanded="false" hidden></button>
                     </div>
 
                     <!-- 본인이 낸 과제와 소감문 -->
@@ -269,6 +274,6 @@
         </div>
     </div>
 
-    <script type="module" src="script.js?v=117"></script>
+    <script type="module" src="script.js?v=118"></script>
 </body>
 </html>
