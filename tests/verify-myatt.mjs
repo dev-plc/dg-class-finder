@@ -434,10 +434,16 @@ await noLec.context.close();
 const SEVEN = mkSessions(7);
 const todoOf = (page) => page.evaluate(() => {
   const box = document.getElementById('myHomeworkTodo');
+  const chip = (c) => c.textContent.trim();
   return {
     cls: box.className,
     title: box.querySelector('.hw-todo-title')?.textContent.trim() || '',
-    chips: [...box.querySelectorAll('.hw-todo-chip')].map(c => c.textContent.trim()),
+    chips: [...box.querySelectorAll('.hw-todo-chip')].map(chip),
+    // 결석분 / 예습과제분을 갈라 본다
+    absent: [...box.querySelectorAll('.hw-todo-chip:not(.prep)')].map(chip),
+    prep: [...box.querySelectorAll('.hw-todo-chip.prep')].map(chip),
+    labels: [...box.querySelectorAll('.hw-todo-group-label')].map(e => e.textContent.trim()),
+    rest: box.querySelector('.hw-todo-rest')?.textContent.trim() || '',
   };
 });
 
@@ -475,8 +481,9 @@ await lookup(rejoin.page, '김조원', '1111');
 const rejoinTodo = await todoOf(rejoin.page);
 ok('하차 기간은 안 묻는다', !rejoinTodo.chips.some(c => /^[345]강/.test(c)),
    rejoinTodo.chips.join(' | '));
+// 결석분(7강)이 앞이다 — 결석한 주는 과제+소감문이라야 출석으로 인정된다.
 ok('하차 앞뒤로 나온 회차는 묻는다',
-   rejoinTodo.chips.join(',') === '1강,2강,6강,7강', rejoinTodo.chips.join(','));
+   rejoinTodo.chips.join(',') === '7강,1강,2강,6강', rejoinTodo.chips.join(','));
 await rejoin.context.close();
 
 // −(수업 없음) · ◎(지난 기수 이수) 는 사람이 시트에 일부러 넣은 예외 표기다.
@@ -610,6 +617,55 @@ ok('접어도 다가오는 칩은 그대로 보인다',
    bothLunch.next === 1 && bothLunch.shown === 9, JSON.stringify(bothLunch));
 ok('접기 셈은 지난 이력만 센다', /이전 4건 더 보기/.test(bothLunch.btnText), bothLunch.btnText);
 await both.context.close();
+
+// ==========================================================================
+// 3-2-3. 안 낸 과제 — **결석분을 먼저, 예습과제분은 따로**
+//
+// 결석한 주는 '과제+소감문' 이라야 출석으로 인정되고(공지 규칙 5), 나온 주는
+// 예습과제만 내면 된다. 섞어 두면 급한 것과 덜 급한 것이 구별되지 않고,
+// 무엇을 내야 하는지도 출석 그리드를 되짚어야 알 수 있었다.
+// ==========================================================================
+// 1·3·5강 결석, 2·4·6·7강 출석. 낸 것은 하나도 없다.
+const MIX_ATT = SEVEN.map((x, i) => ({
+  session_date: x.session_date, status: i % 2 === 0 ? 'X' : 'O',
+}));
+const mix = await openApp(SEVEN, [], MIX_ATT);
+await lookup(mix.page, '김조원', '1111');
+const mixTodo = await todoOf(mix.page);
+ok('결석분이 먼저 나온다', mixTodo.chips.join(',') === '1강,3강,5강,7강,2강,4강,6강',
+   mixTodo.chips.join(','));
+ok('결석분과 예습과제분이 갈린다',
+   mixTodo.absent.join(',') === '1강,3강,5강,7강' && mixTodo.prep.join(',') === '2강,4강,6강',
+   `결석 [${mixTodo.absent}] · 예습 [${mixTodo.prep}]`);
+ok('두 갈래가 다 있으면 라벨이 붙는다',
+   mixTodo.labels.length === 2
+   && /결석한 회차 4건/.test(mixTodo.labels[0]) && /과제와 소감문/.test(mixTodo.labels[0])
+   && /나온 회차 3건/.test(mixTodo.labels[1]) && /예습과제/.test(mixTodo.labels[1]),
+   JSON.stringify(mixTodo.labels));
+await mix.context.close();
+
+// 한 갈래뿐이면 라벨을 안 붙인다 — 결석이 없는 사람에게 '나온 회차 …' 는 군더더기다.
+const onlyPrep = await openApp(SEVEN, [],
+  SEVEN.map(x => ({ session_date: x.session_date, status: 'O' })));
+await lookup(onlyPrep.page, '김조원', '1111');
+const onlyPrepTodo = await todoOf(onlyPrep.page);
+ok('한 갈래뿐이면 라벨이 없다', onlyPrepTodo.labels.length === 0 && onlyPrepTodo.chips.length === 7,
+   `라벨 ${onlyPrepTodo.labels.length} · 칩 ${onlyPrepTodo.chips.length}`);
+await onlyPrep.context.close();
+
+// **총 8칸을 결석분이 먼저 쓴다.** 묶음마다 여덟씩 두면 칩이 열여섯 개가 되고,
+// 예습과제분이 앞자리를 먹으면 정작 급한 결석분이 잘린다.
+const MANY = mkSessions(14);
+const MANY_PAST = MANY.filter(x => x.session_date <= TODAY);
+const budget = await openApp(MANY, [],
+  MANY_PAST.map((x, i) => ({ session_date: x.session_date, status: i < 9 ? 'X' : 'O' })));
+await lookup(budget.page, '김조원', '1111');
+const budgetTodo = await todoOf(budget.page);
+ok('여덟 칸을 결석분이 먼저 쓴다',
+   budgetTodo.absent.length === 8 && budgetTodo.prep.length === 0,
+   `결석 ${budgetTodo.absent.length} · 예습 ${budgetTodo.prep.length}`);
+ok('나머지는 두 묶음 통틀어 건수로', /외 /.test(budgetTodo.rest), budgetTodo.rest);
+await budget.context.close();
 
 // ==========================================================================
 // 3-3. 무엇을 요구하는가는 **그 주에 나왔는지**에 달렸다

@@ -1376,6 +1376,19 @@ body.dark-mode .hw-todo-title b { color: #FBBF24; }
     flex-wrap: wrap;
     gap: 5px;
 }
+/* 결석분과 예습과제분을 갈라 보여준다. 결석한 주는 '과제+소감문' 이라야
+   출석으로 인정되고(공지 규칙 5), 나온 주는 예습과제만 내면 된다.
+   라벨은 두 갈래가 다 있을 때만 붙는다 — script.js renderHomeworkTodo. */
+.hw-todo-group + .hw-todo-group { margin-top: 8px; }
+.hw-todo-group-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 700;
+}
+.hw-todo-group-label.absent { color: #B45309; }
+body.dark-mode .hw-todo-group-label.absent { color: #FBBF24; }
+.hw-todo-group-label.prep { font-weight: 600; opacity: 0.65; }
 .hw-todo-chip {
     padding: 3px 9px;
     font-size: 11px;
@@ -1398,6 +1411,13 @@ body.dark-mode .hw-todo-title b { color: #FBBF24; }
     font-weight: 700;
     opacity: 0.75;
 }
+/* 나온 주의 예습과제 — 결석분보다 덜 급하다는 것이 눈에 들어와야 한다.
+   호박색은 결석분에만 쓰고 이쪽은 중립색으로 둔다. */
+.hw-todo-chip.prep {
+    background: rgba(0, 0, 0, 0.06);
+    font-weight: 600;
+}
+body.dark-mode .hw-todo-chip.prep { background: rgba(255, 255, 255, 0.10); }
 .hw-todo-rest {
     padding: 3px 4px;
     font-size: 11px;

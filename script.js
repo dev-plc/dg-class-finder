@@ -25,9 +25,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=120';
+} from './scripts/members-data.js?v=121';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=120';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=121';
 
 // 1-1. 내 정보 기억
 //
@@ -576,6 +576,10 @@ async function renderMyHomework(member, attRows = []) {
           : false)
         .map(({ r, rule }) => ({
             name: r.name,
+            // 화면이 결석분을 먼저 보여주려면 이 값이 있어야 한다. 예전에는
+            // 여기서 버려서, **결석인데 아무것도 안 낸 회차**(kinds 가 빈 배열)가
+            // 예습과제만 안 낸 회차와 글자 그대로 똑같이 보였다.
+            rule,                                    // 'full'(결석) | 'any'(나온 주)
             // 결석한 주에만 '무엇을 냈는데 모자라다' 가 뜻이 있다.
             kinds: rule === 'full' ? (r.homeworkKinds || []) : [],
         }));
@@ -636,25 +640,53 @@ function renderHomeworkTodo(missing, known = true) {
         return;
     }
 
-    // 회차가 많으면 앞의 여덟 개만. 스무 줄짜리 목록은 아무도 안 읽는다.
+    // **결석분을 먼저.** 결석한 주는 '과제+소감문' 이라야 출석으로 인정되고
+    // (공지 규칙 5), 나온 주는 예습과제만 내면 된다. 섞어 놓으면 급한 것과
+    // 덜 급한 것이 구별되지 않고, 무엇을 내야 하는지도 출석 그리드를 되짚어야
+    // 알 수 있다. 차례는 각 묶음 안에서 지금과 같다 — 회차 오름차순(밀린 것부터).
+    const absent = missing.filter(m => m.rule === 'full');
+    const prep = missing.filter(m => m.rule !== 'full');
+
+    // 회차가 많으면 여덟 개만. 스무 줄짜리 목록은 아무도 안 읽는다.
+    //
+    // ⚠️ 묶음마다 여덟씩 두면 칩이 열여섯 개가 되어 상자가 화면을 먹는다.
+    // **총 8칸을 결석분이 먼저 쓰고** 남는 자리에 예습과제분을 채운다 —
+    // 그래야 급한 쪽이 안 잘린다.
     const SHOW = 8;
+    const absentShown = absent.slice(0, SHOW);
+    const prepShown = prep.slice(0, Math.max(0, SHOW - absentShown.length));
+    const hidden = missing.length - absentShown.length - prepShown.length;
+
     // 아예 안 낸 회차와, 냈지만 종류가 모자란 회차를 갈라 보여준다.
     // 뒤엣것을 그냥 '안 냄' 으로 두면 '냈는데 왜' 가 되고, 빼 버리면 무엇을
-    // 더 내야 하는지 알 길이 없다.
-    const chips = missing.slice(0, SHOW).map(m => {
-        if (!m.kinds.length) return `<span class="hw-todo-chip">${escapeHtml(m.name)}</span>`;
+    // 더 내야 하는지 알 길이 없다. (종류가 모자란 것은 결석분에만 있다)
+    const chip = (m) => {
+        const cls = m.rule === 'full' ? 'hw-todo-chip' : 'hw-todo-chip prep';
+        if (!m.kinds.length) return `<span class="${cls}">${escapeHtml(m.name)}</span>`;
         const kinds = homeworkKindLabel(m.kinds);
-        return `<span class="hw-todo-chip part" title="${escapeAttr(`낸 것: ${kinds} · 출석 인정은 과제와 소감문입니다`)}">`
+        return `<span class="${cls} part" title="${escapeAttr(`낸 것: ${kinds} · 출석 인정은 과제와 소감문입니다`)}">`
              + `${escapeHtml(m.name)}<b>${escapeHtml(kinds)}</b></span>`;
-    }).join('');
-    const rest = missing.length > SHOW ? `<span class="hw-todo-rest">외 ${missing.length - SHOW}건</span>` : '';
+    };
+
+    // 라벨은 **두 갈래가 다 있을 때만** 붙인다. 결석이 없는 사람에게
+    // '나온 회차 …' 라는 줄은 군더더기다.
+    const split = absentShown.length > 0 && prepShown.length > 0;
+    const group = (items, cls, label) => !items.length ? '' : `
+        <div class="hw-todo-group">
+            ${split ? `<span class="hw-todo-group-label ${cls}">${escapeHtml(label)}</span>` : ''}
+            <div class="hw-todo-list">${items.map(chip).join('')}</div>
+        </div>`;
+
+    const rest = hidden > 0 ? `<div class="hw-todo-list"><span class="hw-todo-rest">외 ${hidden}건</span></div>` : '';
 
     box.className = 'hw-todo';
     box.innerHTML = `<div class="hw-todo-head">
             <span class="hw-todo-title">📝 제출하지 않은 과제와 소감문 <b>${missing.length}건</b></span>
             ${btn}
         </div>
-        <div class="hw-todo-list">${chips}${rest}</div>`;
+        ${group(absentShown, 'absent', `결석한 회차 ${absent.length}건 · 과제와 소감문을 내야 출석으로 인정됩니다`)}
+        ${group(prepShown, 'prep', `나온 회차 ${prep.length}건 · 예습과제만 내면 됩니다`)}
+        ${rest}`;
 }
 
 /**
