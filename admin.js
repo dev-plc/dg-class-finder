@@ -43,9 +43,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=121';
+} from './scripts/members-data.js?v=122';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=121';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=122';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -1935,7 +1935,11 @@ let prSessionTouched = false;     // 사람이 주차를 직접 골랐는가
 let prScope = 'all';              // 'all' | 'loc:웨슬리홀' | 'team:Y1'
 let prSkip = new Set();           // 출력에서 뺀 조
 let prLunchSet = new Set();
+// 인정 대상('과제+소감문')만 든 Set.
 let prHwSet = new Set();
+// 실제로 낸 종류 그대로 (uuid → [kind…]). 예습과제만 낸 사람이 여기에만 있다 —
+// 종이에는 둘을 안 가리고 ✓ 로 찍으므로(prHwAny) 이것까지 봐야 한다.
+let prHwKinds = new Map();
 // 과제가 왜 안 붙었는지 — 화면이 이유를 말하는 데 쓴다
 let prExtras = { hwLoaded: false, hwTotal: 0, hwNear: [] };
 let prReady = false;
@@ -2150,10 +2154,12 @@ function renderPrDataInfo() {
     // 신청도 남아 있어서, 그냥 세면 집계표 합계와 어긋난다.
     const people = prScopedTeams().flatMap(t => t.members);
     const lunchN = people.filter(m => prLunchSet.has(m._uuid)).length;
-    const hwN = people.filter(m => prHwSet.has(m._uuid)).length;
+    // 종이에 찍히는 수와 같아야 한다 — 종이는 종류를 안 가리고 ✓ 를 찍는다
+    // (prHwAny). 여기서만 '과제+소감문' 으로 재면 화면과 종이가 어긋난다.
+    const hwN = people.filter(m => prHwAny(m._uuid)).length;
     const offList = prLunchSet.size - lunchN;
 
-    const info = `🍙 김밥 ${lunchN}명 · 📝 과제+소감문 ${hwN}명`
+    const info = `🍙 김밥 ${lunchN}명 · 📝 과제 ${hwN}명`
                + (name ? ` (‘${attEsc(name)}’ 기준)` : '')
                + (offList > 0 ? ` · 지금 명단에 없는 ${offList}명 제외` : '');
 
@@ -2163,6 +2169,9 @@ function renderPrDataInfo() {
              + '시트의 회차 이름(예: 18강)을 채우고 다시 가져오세요.';
     } else if (!prExtras.hwLoaded) {
         warn = '⚠️ 과제를 불러오지 못했습니다. 주차를 다시 고르면 다시 시도합니다.';
+    // ⚠️ 종류를 안 가린 수로 잰다. '과제+소감문' 으로 재면 **그 주 전원이
+    // 예습과제만 낸 경우** 제출이 멀쩡히 있는데도 '낸 과제가 없습니다' 라는
+    // 틀린 경고가 뜨고 애먼 강의명 대조를 권하게 된다.
     } else if (!hwN && prExtras.hwTotal) {
         warn = `⚠️ ‘${attEsc(name)}’ 으로 낸 과제가 없습니다.`;
         if (prExtras.hwNear.length) {
@@ -2213,7 +2222,7 @@ function renderPrPreview() {
                 ${prCol.lunch() ? `<td class="pr-c-mark">${prLunchSet.has(m._uuid) ? 'O' : ''}</td>` : ''}
                 ${prCol.lunchReq() ? '<td class="pr-c-wide"></td>' : ''}
                 <td class="pr-c-mark"></td>
-                ${prCol.hw() ? `<td class="pr-c-mark">${prHwSet.has(m._uuid) ? '✓' : ''}</td>` : ''}
+                ${prCol.hw() ? `<td class="pr-c-mark">${prHwAny(m._uuid) ? '✓' : ''}</td>` : ''}
                 ${prCol.memo() ? '<td class="pr-c-memo"></td>' : '<td class="pr-c-fill"></td>'}
             </tr>`).join('');
 
@@ -2257,6 +2266,18 @@ function renderPrPreview() {
     prPreview.innerHTML = (prCol.summary() ? renderPrSummaries(teams, head) : '') + sheets;
     renderPrPickList();
     updatePrCount();
+}
+
+/**
+ * 종이 출석부의 과제 칸 — **낸 사람은 종류를 안 가리고 ✓**.
+ *
+ * 예전에는 '과제+소감문' 만 찍어서, 예습과제만 낸 사람이 종이에서 빈칸이었다.
+ * 다른 화면은 같은 사람을 📝 로 보여주는데 출석부만 안 나왔다 — 어느 주든
+ * '과제+소감문' 이라야 인정이던 시절의 기준이 여기만 남아 있던 것이다.
+ * 지금은 나온 주면 예습과제로 끝이다 (homeworkRule · docs/RULES.md).
+ */
+function prHwAny(uuid) {
+    return prHwSet.has(uuid) || (prHwKinds.get(uuid) || []).length > 0;
 }
 
 // 이름 밑에 붙일 직책. '조원' 은 대부분이라 적어 봐야 눈만 어지럽다 —
@@ -2585,6 +2606,7 @@ async function loadPrintData() {
         const extras = await getSessionExtras(prSessionDate, s?.name || '');
         prLunchSet = extras.lunch;
         prHwSet = extras.homework;
+        prHwKinds = extras.homeworkKinds;
         prExtras = { hwLoaded: extras.hwLoaded, hwTotal: extras.hwTotal, hwNear: extras.hwNear };
         prReady = true;
     } catch (err) {

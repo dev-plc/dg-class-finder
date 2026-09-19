@@ -49,11 +49,14 @@ const SESSIONS = [
 // 08/16 김밥 신청자 3명 · 19강 과제 제출자 2명 (폼 표기는 '제19강')
 const LUNCH = { '2026-08-16': ['u1', 'u2', 'u13'] };
 const HOMEWORK = [
-  // ⚠️ 종이에 '냈음' 이 찍히면 현장에서 되돌릴 길이 없다 —
-  //    인정 대상('과제+소감문')만 찍혀야 한다.
+  // 종이는 **종류를 안 가리고** ✓ 를 찍는다 — 나온 주는 예습과제로 끝이다
+  // (docs/RULES.md). 예전에는 '과제+소감문' 만 찍어서, 예습과제만 낸 사람이
+  // 다른 화면에서는 📝 로 보이는데 출석부에서만 빈칸이었다.
   { member_id: 'u1', lecture: '제19강', kind: '과제+소감문' },
   { member_id: 'u3', lecture: '19 강', kind: '과제+소감문' },
   { member_id: 'u5', lecture: '18강', kind: '과제+소감문' },
+  // 예습과제만 낸 사람 — 이 사람도 ✓ 여야 한다.
+  { member_id: 'u4', lecture: '제19강', kind: '과제' },
 ];
 
 const { ok, done } = makeReporter('출석부 출력');
@@ -204,7 +207,21 @@ ok('김밥 신청자에게 O', y1.rows[0][2] === 'O' && y1.rows[1][2] === 'O' &&
 ok('머리말에 김밥 인원이 나온다', /김밥 2명/.test(y1.sub), y1.sub);
 ok("폼 표기 '제19강' 도 과제 ✓ 로", y1.rows[0][4] === '✓', JSON.stringify(y1.rows[0]));
 ok("'19 강' 도 같은 회차로 인식", y1.rows[2][4] === '✓', JSON.stringify(y1.rows[2]));
+// 예습과제('과제')만 낸 사람도 ✓ 다. 나온 주는 그것으로 끝이기 때문이다
+// (homeworkRule · docs/RULES.md). 예전에는 '과제+소감문' 만 찍어서 이 칸이
+// 빈칸이었고, 개별 조회·조별 매트릭스에서는 📝 로 보이는데 출석부에서만
+// 안 나온다는 제보가 그래서 나왔다.
+ok('예습과제만 낸 사람도 과제 ✓', y1.rows[3][4] === '✓', JSON.stringify(y1.rows[3]));
 ok('다른 강의 과제는 안 붙는다', y1.rows[4][4] === '', JSON.stringify(y1.rows[4]));
+
+// 위쪽 줄이 종이와 같은 수를 말한다 — 종이는 종류를 안 가리므로 여기도 안 가린다.
+const info19 = await page.$eval('#prDataInfo', el => el.textContent.trim());
+ok('위쪽 줄이 종이와 같은 수를 센다 (Y1 세 명)', /📝 과제 3명/.test(info19), info19);
+// 제출이 있으므로 '낸 과제가 없습니다' 가 뜨면 안 된다. 예전에는 종류로 재서,
+// 그 주 전원이 예습과제만 내면 멀쩡한 제출을 두고 틀린 경고가 떴다.
+ok('제출이 있으면 경고가 없다',
+   !(await page.$$eval('.pr-data-warn', els => els.map(e => e.textContent.trim()))).length,
+   JSON.stringify(await page.$$eval('.pr-data-warn', els => els.map(e => e.textContent.trim()))));
 ok('출석 칸은 비어 있다 (현장에서 손으로)', y1.rows[0][3] === '', JSON.stringify(y1.rows[0]));
 
 // --- 이름 칸: 직책 표시 · 가운데정렬 --------------------------------------
@@ -1020,7 +1037,7 @@ const hwTicks = () => page.$$eval('.pr-sheet[data-team="Y1"] tbody tr',
 const dataInfo = () => page.$eval('#prDataInfo', el => el.textContent.trim());
 
 ok('과제가 붙는다', await hwTicks() === 1, `${await hwTicks()}명`);
-ok('몇 명에게 붙었는지 알려 준다', /📝 과제\+소감문 1명/.test(await dataInfo()), await dataInfo());
+ok('몇 명에게 붙었는지 알려 준다', /📝 과제 1명/.test(await dataInfo()), await dataInfo());
 ok('어느 강의명으로 붙였는지 알려 준다', /19강/.test(await dataInfo()), await dataInfo());
 
 // 위쪽 집계와 집계표 합계가 같은 사람을 세는가
@@ -1043,7 +1060,7 @@ hwRows.push({ member_id: 'u2', lecture: '제19강', kind: '과제+소감문' });
 await page.click('#syncReloadBtn');
 await page.waitForTimeout(1500);
 ok('동기화한 과제가 새로 고침으로 붙는다', await hwTicks() === 2, `${await hwTicks()}명`);
-ok('집계도 같이 늘어난다', /📝 과제\+소감문 2명/.test(await dataInfo()), await dataInfo());
+ok('집계도 같이 늘어난다', /📝 과제 2명/.test(await dataInfo()), await dataInfo());
 
 // --- 붙지 않을 때 이유를 말하는가 -----------------------------------------
 await page.selectOption('#prSessionPicker', '2026-08-30');   // 20강 — 폼에는 '20과'
