@@ -2587,7 +2587,7 @@ function prJumpTo(scope) {
     prPreview.querySelectorAll('.pr-jumped').forEach(el => el.classList.remove('pr-jumped'));
     target.classList.add('pr-jumped');
     clearTimeout(prJumpTimer);
-    prJumpTimer = setTimeout(() => target.classList.remove('pr-jumped'), 1600);
+    prJumpTimer = setTimeout(() => target.classList.remove('pr-jumped'), 3000);
 }
 let prJumpTimer = null;
 
@@ -2599,11 +2599,15 @@ function prApplyAutoLunchReq() {
 
 async function loadPrintData() {
     if (!prSessionDate) return;
+    const currentSessionDate = prSessionDate;
+
     prLoading = true;
     renderPrPreview();
     try {
         const s = prSessionMeta();
-        const extras = await getSessionExtras(prSessionDate, s?.name || '');
+        const extras = await getSessionExtras(currentSessionDate, s?.name || '');
+        if (prSessionDate !== currentSessionDate) return; // Ignore stale results
+        
         prLunchSet = extras.lunch;
         prHwSet = extras.homework;
         prHwKinds = extras.homeworkKinds;

@@ -12,7 +12,7 @@
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { ROOT, makeReporter } from './lib/harness.mjs';
+import { ROOT, makeReporter } from './lib/harness.mjs?v=121';
 
 const GAS_PORT = 8103;
 const DB_PORT = 8104;
