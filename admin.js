@@ -2606,8 +2606,12 @@ async function loadPrintData() {
     try {
         const s = prSessionMeta();
         const extras = await getSessionExtras(currentSessionDate, s?.name || '');
-        if (prSessionDate !== currentSessionDate) return; // Ignore stale results
-        
+
+        // 기다리는 동안 사람이 주차를 바꿨으면 이 응답은 버린다. 안 버리면
+        // 늦게 온 옛 주차 값이 새 주차 화면을 덮어써서, 고른 것과 다른 회차의
+        // 김밥·과제가 종이에 찍힌다.
+        if (prSessionDate !== currentSessionDate) return;
+
         prLunchSet = extras.lunch;
         prHwSet = extras.homework;
         prHwKinds = extras.homeworkKinds;

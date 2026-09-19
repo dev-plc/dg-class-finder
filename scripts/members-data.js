@@ -552,8 +552,6 @@ export function isClassSession(name) {
 //      그대로 남는다 — refresh() 가 지운다.
 let homeworkAllCache = null;
 
-
-
 /**
  * 한 회차의 김밥·과제를 **전 인원**에 대해 받는다. 출석부 출력이 쓴다.
  *

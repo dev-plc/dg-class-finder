@@ -8,3 +8,6 @@ node_modules/
 
 # 검증이 남기는 스크린샷 (확인용 산출물, 커밋 대상 아님)
 tests/.shots/
+
+# Playwright 실행 상태 — 저장소에 둘 것이 아니다
+test-results/
