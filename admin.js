@@ -27,7 +27,6 @@ import {
     getUpcomingLunches,
     getHomeworkChecker,
     getSessionExtras,
-    clearHomeworkCache,
     getToday,
     homeworkKindLabel,
     isAbsent,
@@ -2579,16 +2578,15 @@ function prApplyAutoLunchReq() {
 
 async function loadPrintData() {
     if (!prSessionDate) return;
-    
-    // 과제 캐시를 비워 최신 제출을 받는다. 출석부 출력은 종이로 나가는
-    // 마지막 단계라, 여기서 옛것을 찍으면 현장에서 되돌릴 수 없다.
-    clearHomeworkCache();
+    const currentSessionDate = prSessionDate;
 
     prLoading = true;
     renderPrPreview();
     try {
         const s = prSessionMeta();
-        const extras = await getSessionExtras(prSessionDate, s?.name || '');
+        const extras = await getSessionExtras(currentSessionDate, s?.name || '');
+        if (prSessionDate !== currentSessionDate) return; // Ignore stale results
+        
         prLunchSet = extras.lunch;
         prHwSet = extras.homework;
         prExtras = { hwLoaded: extras.hwLoaded, hwTotal: extras.hwTotal, hwNear: extras.hwNear };
