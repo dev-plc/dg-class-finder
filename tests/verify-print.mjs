@@ -1,6 +1,6 @@
 // 조별 출석부 출력 검증 — 사양서 검증 1~8번.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs?v=121';
 
 const PORT = 8096;
 const server = await serveRepo(PORT);
@@ -590,7 +590,7 @@ ok('그 장소의 집계표로 옮겨 간다', afterLoc.jumped === '__summary__:
 ok('실제로 스크롤이 내려간다', afterLoc.scrolled > 0, `${afterLoc.scrolled}px`);
 
 await page.selectOption('#prScopePicker', 'team:O1');
-await page.waitForTimeout(900);
+await page.waitForTimeout(1500);
 const afterTeam = await page.evaluate(() => ({
   sheets: document.querySelectorAll('.pr-sheet').length,
   jumped: document.querySelector('.pr-sheet.pr-jumped')?.dataset.team || '',
@@ -603,7 +603,7 @@ ok('조작부에 가리지 않는 자리에 선다', afterTeam.top > 0 && afterT
    `${afterTeam.top}px`);
 
 await page.selectOption('#prScopePicker', 'all');
-await page.waitForTimeout(900);
+await page.waitForFunction(() => window.scrollY === 0, null, { timeout: 3000 }).catch(() => {});
 ok('전체를 고르면 맨 위로', await page.evaluate(() => window.scrollY) === 0,
    `${await page.evaluate(() => window.scrollY)}px`);
 

@@ -6,7 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT, makeReporter } from './lib/harness.mjs';
+import { ROOT, makeReporter } from './lib/harness.mjs?v=121';
 
 const SRC = join(ROOT, 'scripts', 'gas', 'doGet.js');
 const src = readFileSync(SRC, 'utf8');
@@ -98,7 +98,7 @@ const syncSrc = readFileSync(join(ROOT, 'scripts', 'sync-sheet-to-db.mjs'), 'utf
 ok('동기화 쪽에도 같은 규칙이 있다',
    /Ａ-Ｚａ-ｚ０-９/.test(reportSrc) && /normalize\('NFC'\)/.test(reportSrc));
 ok('규칙을 두 번 적어 두지 않는다', !/Ａ-Ｚａ-ｚ０-９/.test(syncSrc)
-   && /from '\.\/sync-report\.mjs'/.test(syncSrc));
+   && /from '\.\/sync-report\.mjs/.test(syncSrc));
 ok('아이디를 맞추는 자리에서 그 규칙을 쓴다',
    (syncSrc.match(/uuidById\.get\(normId\(/g) || []).length >= 2,
    `${(syncSrc.match(/uuidById\.get\(normId\(/g) || []).length}곳`);

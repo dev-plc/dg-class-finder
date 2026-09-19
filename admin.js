@@ -27,6 +27,7 @@ import {
     getUpcomingLunches,
     getHomeworkChecker,
     getSessionExtras,
+    clearHomeworkCache,
     getToday,
     homeworkKindLabel,
     isAbsent,
@@ -2566,7 +2567,7 @@ function prJumpTo(scope) {
     prPreview.querySelectorAll('.pr-jumped').forEach(el => el.classList.remove('pr-jumped'));
     target.classList.add('pr-jumped');
     clearTimeout(prJumpTimer);
-    prJumpTimer = setTimeout(() => target.classList.remove('pr-jumped'), 1600);
+    prJumpTimer = setTimeout(() => target.classList.remove('pr-jumped'), 3000);
 }
 let prJumpTimer = null;
 
@@ -2578,6 +2579,11 @@ function prApplyAutoLunchReq() {
 
 async function loadPrintData() {
     if (!prSessionDate) return;
+    
+    // 과제 캐시를 비워 최신 제출을 받는다. 출석부 출력은 종이로 나가는
+    // 마지막 단계라, 여기서 옛것을 찍으면 현장에서 되돌릴 수 없다.
+    clearHomeworkCache();
+
     prLoading = true;
     renderPrPreview();
     try {

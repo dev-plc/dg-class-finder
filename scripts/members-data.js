@@ -553,6 +553,16 @@ export function isClassSession(name) {
 let homeworkAllCache = null;
 
 /**
+ * 과제 캐시를 비운다.
+ *
+ * 출석부 출력이 종이로 나가는 마지막 단계라, 여기서 옛것을 찍으면
+ * 현장에서 되돌릴 수 없다. 출석부 출력 진입마다 비워서 최신을 받는다.
+ */
+export function clearHomeworkCache() {
+  homeworkAllCache = null;
+}
+
+/**
  * 한 회차의 김밥·과제를 **전 인원**에 대해 받는다. 출석부 출력이 쓴다.
  *
  * getTeamExtras 와 달리 member_id 목록을 URL 에 싣지 않는다. 조 하나면 몰라도

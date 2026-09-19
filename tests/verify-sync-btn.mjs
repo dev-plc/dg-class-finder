@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 
-import { serveRepo, launch, makeReporter, ROOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, ROOT } from './lib/harness.mjs?v=121';
 
 const PORT = 8095;
 const server = await serveRepo(PORT);
@@ -164,7 +164,7 @@ ok('2시간마다라고 알린다', /2시간마다/.test(at0400), at0400);
 // 적으면 그 시각에 안 돌았을 때 고장으로 읽힌다.
 ok("'무렵' 이라고 적는다 — 예약 실행은 밀린다", /무렵/.test(at0400), at0400);
 
-await page.screenshot({ path: '/dg-sync-btn.png' });
+await page.screenshot({ path: 'tests/.shots/dg-sync-btn.png' });
 
 // --- 자동 새로고침 ----------------------------------------------------------
 //
