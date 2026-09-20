@@ -18,6 +18,10 @@ const MEMBERS = Array.from({ length: 30 }, (_, i) => ({
   lunch: 'O', status: 'active', age: 30 + i,
 }));
 MEMBERS[0].name = '하관리자';   // 정렬 검증: 이름은 뒤지만 관리자라 맨 위
+// 이름 뒤 전화 뒷 4자리 검증용. 단언이 쓰는 앞쪽(01~05)은 건드리지 않는다.
+MEMBERS[28].name = '같은이름';                    // phone 1028
+MEMBERS[29].name = '같은이름';                    // phone 1029 — 이름만으로는 구별 불가
+MEMBERS[27].phone = '';                           // 번호가 비어 있는 사람
 
 // 실제 화면처럼 16회차 — 가로 스크롤이 생겨야 고정을 볼 수 있다.
 // 3번째(08/02)만 강의명이 '자유교제' — 수업 없는 회차다.
@@ -201,15 +205,47 @@ const cellsOf = (rowIdx) => page.$$eval(
     cls: e.className,
   })));
 
+// .mx-name 안에는 이름과 전화 뒷 4자리(.mx-phone)가 함께 있다. 견줄 것은 이름뿐이다.
 const nameOf = (rowIdx) => page.$eval(
-  `.matrix-table tbody tr:nth-child(${rowIdx}) .mx-name`, el => el.textContent.trim());
+  `.matrix-table tbody tr:nth-child(${rowIdx}) .mx-name`,
+  (el) => {
+    const c = el.cloneNode(true);
+    c.querySelector('.mx-phone')?.remove();
+    return c.textContent.trim();
+  });
 
 ok('관리자가 맨 위', (await nameOf(1)) === '하관리자', await nameOf(1));
 ok('조장이 두 번째', (await nameOf(2)) === '조원02', await nameOf(2));
 
 const idx = await page.$$eval('.matrix-table tbody tr .mx-name',
-  els => els.map(e => e.textContent.trim()));
+  els => els.map(e => {
+    const c = e.cloneNode(true);
+    c.querySelector('.mx-phone')?.remove();
+    return c.textContent.trim();
+  }));
 const rowOf = (name) => idx.indexOf(name) + 1;
+
+// --- 이름 뒤 전화 뒷 4자리 ------------------------------------------------
+//
+// 동명이인이 있으면 이름만으로는 누가 누군지 알 수 없다. 조원 명단·종이
+// 출석부·관리자 상세는 이미 적고 있었고 이 표만 빠져 있었다.
+const nameCells = await page.$$eval('.matrix-table tbody tr .mx-name', els =>
+  els.map(e => ({
+    full: e.textContent.trim(),
+    phone: e.querySelector('.mx-phone')?.textContent.trim() || '',
+  })));
+const cellOf = (nm) => nameCells.find(c => c.full.startsWith(nm));
+
+ok('이름 뒤에 전화 뒷 4자리가 붙는다', cellOf('조원02')?.phone === '1001',
+   JSON.stringify(cellOf('조원02')));
+const twins = nameCells.filter(c => c.full.startsWith('같은이름'));
+ok('동명이인 둘이 서로 다르게 보인다',
+   twins.length === 2 && twins[0].full !== twins[1].full
+   && twins[0].phone === '1028' && twins[1].phone === '1029',
+   JSON.stringify(twins));
+ok('번호가 없는 사람은 이름만 (빈 칸이 안 붙는다)',
+   cellOf('조원28')?.full === '조원28' && cellOf('조원28')?.phone === '',
+   JSON.stringify(cellOf('조원28')));
 
 const r1 = await cellsOf(rowOf('하관리자'));   // u1 — D[0] 김밥 + 1강 과제
 ok('신청·제출한 주차에 🍙📝 둘 다', r1[0].badges === '🍙📝', JSON.stringify(r1.slice(0, 3)));
@@ -275,6 +311,20 @@ ok('오른쪽 끝까지 스크롤해도 이름 열이 붙어 있음',
    !stick.scrolledX || Math.abs(stick.nameLeft) < 3, JSON.stringify(stick));
 ok('아래로 스크롤해도 회차 헤더가 붙어 있음',
    !stick.scrolledY || Math.abs(stick.headTop) < 3, JSON.stringify(stick));
+
+// 이름 열은 가로 스크롤 중에도 **붙어 있는 칸**이라, 넓어지면 그만큼 회차가
+// 안 보인다. 이름 뒤에 번호를 붙인 뒤로 특히 그렇다 — 폰 폭에서 재 둔다.
+const nameW = await page.evaluate(() => {
+  const sc = document.querySelector('.matrix-scroll');
+  const cell = [...document.querySelectorAll('.matrix-table tbody .mx-name-cell')]
+    .find(el => el.offsetParent !== null);
+  return {
+    cell: Math.round(cell.getBoundingClientRect().width),
+    view: Math.round(sc.getBoundingClientRect().width),
+  };
+});
+ok('이름 열이 화면을 먹지 않는다 (보이는 폭의 40% 안)',
+   nameW.cell <= nameW.view * 0.4, `${nameW.cell}px / 보이는 폭 ${nameW.view}px`);
 
 // --- 범례 ------------------------------------------------------------------
 const legend = await page.$eval('.matrix-legend', el => el.textContent.replace(/\s+/g, ' ').trim());

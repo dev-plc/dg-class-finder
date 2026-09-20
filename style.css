@@ -1140,6 +1140,9 @@ body.large-text .map-image {
 }
 .matrix-table thead .mx-corner { z-index: 4; background: var(--milk-beige); }
 .mx-name { display: block; font-weight: 700; white-space: nowrap; }
+/* 전화 뒷 4자리. 종이 출석부의 .pr-phone 과 같은 값이다 — 이름은 굵게 그대로 두고
+   번호만 작고 흐리게. 붙어 있는 칸(sticky)이라 굵게 하면 폭을 먹는다. */
+.mx-phone { margin-left: 5px; font-size: 10px; font-weight: 400; opacity: 0.55; }
 .mx-role { display: block; font-size: 9px; opacity: 0.6; white-space: nowrap; }
 .mx-status { display: block; font-weight: 700; font-size: 12px; }
 /* 🍙 · 📝 는 출결 밑에 한 줄로. 자리를 늘 잡아둬야 칸 높이가 들쭉날쭉하지 않다 */

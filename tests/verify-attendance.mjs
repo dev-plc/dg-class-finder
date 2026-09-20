@@ -217,8 +217,16 @@ ok('출석표 행 = 조원수', rows === 4, `${rows}행`);
 
 // 줄 차례는 명단 정렬에 따라 흔들린다. 이름으로 찾는다.
 const rowCells = (name) => page.evaluate((n) => {
+  // .mx-name 안에는 이름과 전화 뒷 4자리(.mx-phone)가 함께 있다 — 이름만 견준다.
+  const justName = (r) => {
+    const el = r.querySelector('.mx-name');
+    if (!el) return '';
+    const c = el.cloneNode(true);
+    c.querySelector('.mx-phone')?.remove();
+    return c.textContent.trim();
+  };
   const tr = [...document.querySelectorAll('.matrix-table tbody tr')]
-    .find(r => r.querySelector('.mx-name')?.textContent.trim() === n);
+    .find(r => justName(r) === n);
   return [...(tr?.querySelectorAll('td') || [])].map(e => ({
     st: e.querySelector('.mx-status')?.textContent.trim() || '',
     cls: e.className,

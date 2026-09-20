@@ -9,7 +9,7 @@
 // 노란 '과제' 칸은 두 갈래로 들어온다 — 시트가 적어 준 '과제' 와, 앱이 X + 과제제출을
 // 보고 스스로 칠하는 것. 둘 다 makeup 이라 모양이 같다. 뜻과 셈법은 docs/RULES.md.
 
-import { getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=122';
+import { getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=123';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -173,7 +173,14 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
         return `
             <tr>
                 <th class="mx-name-cell" scope="row">
-                    <span class="mx-name">${escapeHtml(m.name)}</span>
+                    <!-- 이름 뒤에 전화 뒷 4자리. 동명이인이 있으면 이름만으로는
+                         누가 누군지 알 수 없다. 조원 명단·종이 출석부·관리자 상세는
+                         이미 적고 있었고 이 표만 빠져 있었다 — 새로 드러내는 것이
+                         아니라 빠진 자리를 메우는 것이다.
+                         꼴은 종이 출석부(.pr-nm > .pr-phone)에서 가져왔다. -->
+                    <span class="mx-name">${escapeHtml(m.name)}${
+                        m.phone ? `<span class="mx-phone">${escapeHtml(m.phone)}</span>` : ''
+                    }</span>
                     <span class="mx-role">${escapeHtml(m.role || '조원')} · 출석 ${present}</span>
                 </th>
                 ${cells}

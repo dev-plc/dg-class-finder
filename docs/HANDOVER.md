@@ -22,7 +22,7 @@ PL교회 제자훈련(DG) 조 배치·출석 앱. `dgfinder.plch.kr`.
 | 조회 | `index.html` · `script.js` | 조원·조장 (이름+전화 뒷 4자리) |
 | 관리자 | `admin.html` · `admin.js` | 관리자 (⚠️ 인증이 sessionStorage 뿐) |
 | 데이터 계층 | `scripts/members-data.js` | 화면은 여기만 통해 데이터를 만진다 |
-| 출석표 렌더러 | `scripts/matrix-renderer.js` | 두 화면이 함께 쓴다 |
+| 출석표 렌더러 | `scripts/matrix-renderer.js` | 두 화면이 함께 쓴다 — 고치면 **둘 다** 바뀐다 |
 | 시트↔DB 동기화 | `scripts/sync-sheet-to-db.mjs` + `.github/workflows/sync-db.yml` | 2시간마다 |
 | GAS | `scripts/gas/doGet.js` (사본) | 시트 읽기·쓰기, 10분 트리거 |
 
@@ -149,6 +149,20 @@ npm run bump:check   # 어긋난 곳만 보고 (고치지 않음)
 ⚠️ **신청 판정은 `DG_isLunchApplied()` 하나만 쓴다.** v25 가 회차별만 고치고
 `kimbapMap` 을 빠뜨려서, `X` 라고 적은 사람이 김밥 대상자로 세어졌다 (조 요약의
 🍙 N · 조원 명단 🍙 도 그 값이다). v30 에서 맞췄다 — **재배포해야 반영된다.**
+
+### 6-5. 이름 칸에는 전화 뒷 4자리가 함께 있다
+
+이름+뒷번호를 적는 자리가 넷이다 — 조원 명단 · 종이 출석부 · 관리자 개인 상세 ·
+**전체 출석표**(매트릭스). 동명이인을 이름만으로는 구별할 수 없어서다.
+
+꼴의 단일 출처는 종이 출석부다: 겉 `span` 안에 번호 `span` 을 넣는다
+(`.pr-nm > .pr-phone`, 매트릭스는 `.mx-name > .mx-phone`).
+
+⚠️ **`.mx-name` 의 `textContent` 는 이제 `'조원021001'` 이다.** 이름으로 줄을 찾는
+코드·검증은 `.mx-phone` 을 떼고 견뎌야 한다. 안 그러면 조용히 아무 줄도 못 찾는다.
+
+⚠️ 이름 열(`.mx-name-cell`)은 가로 스크롤 중에도 **붙어 있는 칸**이다. 넓어지면
+그만큼 회차가 안 보인다 — `verify-matrix` 가 폰 폭에서 그 폭을 재고 있다.
 
 ### 7. 시트에서 지운 것이 DB 에서 안 지워질 수 있다
 
