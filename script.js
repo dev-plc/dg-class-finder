@@ -25,9 +25,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=124';
+} from './scripts/members-data.js?v=125';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=124';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=125';
 
 // 1-1. 내 정보 기억
 //
@@ -879,7 +879,7 @@ function refreshSaveBar() {
     info.textContent = `출석 ${present} · 결석 ${checks.length - present}`
         + (changes ? ` · 변경 ${changes}건` : '');
     btn.disabled = changes === 0;
-    btn.textContent = changes === 0 ? '변경 사항 없음' : `출석 저장 (${checks.length}명)`;
+    btn.textContent = changes === 0 ? '변경 사항 없음' : `저장하기 (${checks.length}명)`;
     bar.classList.toggle('has-changes', changes > 0);
 }
 
