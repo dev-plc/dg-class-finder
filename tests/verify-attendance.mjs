@@ -161,6 +161,9 @@ ok('체크만으로는 저장하지 않음', posted.length === 0, `요청 ${post
 // 변경 건수는 그 옆 정보 줄이 말한다.
 const btnText = await page.$eval('#saveAttendanceBtn', el => el.textContent.trim());
 ok('저장 버튼이 쓸 인원을 보여줌', btnText.includes('4명'), btnText);
+// 문구도 묶어 둔다 — '반영' 은 어디에 무엇이 되는지 모호했다. 관리자 화면도
+// '${n}명 저장' 이라 두 화면의 말이 같아야 한다.
+ok("버튼 문구는 '출석 저장'", /출석 저장/.test(btnText), btnText);
 const infoText = await page.$eval('#attendanceSaveInfo', el => el.textContent.trim());
 ok('정보 줄이 변경 건수와 출결 수를 보여줌',
    /변경 1건/.test(infoText) && /출석 2/.test(infoText) && /결석 2/.test(infoText), infoText);
