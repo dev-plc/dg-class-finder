@@ -23,6 +23,7 @@ import {
     getMyAttendance,
     getMyHomework,
     getSessions,
+    getLastSync,
     getTeamExtras,
     getUpcomingLunches,
     getHomeworkChecker,
@@ -43,9 +44,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=125';
+} from './scripts/members-data.js?v=126';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=125';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=126';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -102,6 +103,9 @@ subscribe((event) => {
 
     // 결석 현황도 받아 둔 값이다. 새로 가져왔으면 다시 센다.
     if (abHistory) { abHistory = null; loadAbsence(); }
+
+    // 마지막 동기화 줄도 새로 읽는다 — 방금 돈 것이 반영돼야 한다.
+    renderLastSync();
 
     // 출석부 출력도 스냅숏이다. 시트에서 새로 가져왔으면 **주차 목록부터**
     // 다시 세우고 김밥·과제를 다시 읽는다 — 이번 주 회차가 새로 생겼을 수도,
@@ -186,6 +190,10 @@ function setSyncInfo(msg, kind = '') {
  *
  * ⚠️ 워크플로의 cron 을 고치면 여기도 같이 고칠 것. 두 곳에 적힌 값이
  * 어긋나면 화면이 거짓말을 한다.
+ *
+ * ⚠️ **cron 대로 오지 않는다.** GitHub 이 예약 실행을 흘려서 실측은 하루
+ * 네 번쯤이다(2026-08~09, 218회/51일 · 간격 3~8시간). 그래서 아래 문구도
+ * '2시간마다' 가 아니라 '두세 시간마다' 이고 '무렵' 이다.
  */
 function nextAutoSync(now = new Date()) {
     const t = new Date(now.getTime());
@@ -203,11 +211,44 @@ function syncIdleMessage(now = new Date()) {
         { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Seoul' });
     // '무렵' 인 이유: GitHub 의 예약 실행은 30~45분씩 밀린다. 정확한 시각을
     // 적어 두면 그 시각에 안 돌았을 때 고장으로 읽힌다.
-    return `2시간마다 저절로 가져옵니다 (다음 ${hhmm} 무렵). ` +
+    return `두세 시간마다 저절로 가져옵니다 (다음 ${hhmm} 무렵). ` +
            `급하면 여기서 바로. 보통 1~2분 걸립니다.`;
 }
 
 setSyncInfo(syncIdleMessage());
+
+/**
+ * **마지막 동기화를 화면에 적는다.**
+ *
+ * 이 값을 안 띄웠더니 dg_sync_log 에 줄이 하나도 안 쌓이는 채로 51일이 지나도
+ * 아무도 몰랐다 — 시퀀스 권한이 빠져 insert 가 막혔는데 Actions 로그에만
+ * 218번 찍혔다. 사람이 보는 자리에 있어야 다음엔 바로 드러난다.
+ */
+async function renderLastSync() {
+    const el = document.getElementById('syncLast');
+    if (!el) return;
+    let last = null;
+    try { last = await getLastSync(); } catch { /* 아래에서 '기록 없음' 으로 */ }
+
+    if (!last || !last.finishedAt) {
+        el.className = 'sync-last warn';
+        el.textContent = '⚠️ 동기화 기록이 없습니다 — supabase/dg_sync_log.sql 을 다시 실행하세요.';
+        return;
+    }
+    const when = new Date(last.finishedAt).toLocaleString('ko-KR',
+        { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit',
+          timeZone: 'Asia/Seoul' });
+    const counts = [
+        last.attendance != null ? `출석 ${last.attendance}` : '',
+        last.homework != null ? `과제 ${last.homework}` : '',
+        last.lunch != null ? `김밥 ${last.lunch}` : '',
+    ].filter(Boolean).join(' · ');
+    el.className = 'sync-last';
+    el.textContent = `마지막 동기화 ${when}${counts ? ' · ' + counts : ''}`;
+}
+
+// 화면을 열면 바로 한 번. 명단이 아직 안 왔어도 이 줄은 따로 읽는다.
+renderLastSync();
 
 syncBtn?.addEventListener('click', async () => {
     syncBtn.disabled = true;

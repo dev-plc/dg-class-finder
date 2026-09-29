@@ -32,6 +32,19 @@ create index if not exists dg_sync_log_finished_idx
 grant select on public.dg_sync_log to anon, authenticated;
 grant all    on public.dg_sync_log to service_role;
 
+-- ⚠️ **시퀀스 권한을 빠뜨리면 insert 가 통째로 막힌다.**
+--
+-- id 가 bigserial 이라 dg_sync_log_id_seq 라는 시퀀스가 따로 생긴다. 위의
+-- `grant all on <table>` 은 표만 덮어서, 동기화가 줄을 넣으려 할 때
+--   permission denied for sequence dg_sync_log_id_seq
+-- 로 막힌다. 스크립트는 그걸 경고로만 남기고 계속 가므로 **조용히** 실패한다.
+-- 화면은 dg_attendance.updated_at 이라는 옛 신호로 물러나 멀쩡해 보인다.
+-- 실제로 51일 동안 이 줄이 하나도 안 쌓인 채로 돌았다.
+--
+-- 이 저장소에서 시퀀스를 쓰는 표는 이것뿐이다 — 나머지 dg_* 는 uuid 나
+-- 복합키라 이 함정에 안 걸린다.
+grant usage, select on sequence public.dg_sync_log_id_seq to service_role;
+
 alter table dg_sync_log enable row level security;
 
 -- 읽기만 연다. 쓰는 것은 service_role 인 동기화 스크립트뿐이다

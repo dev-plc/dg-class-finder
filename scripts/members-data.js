@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=125';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=125';
+import { matches as hangulMatches } from './hangul.js?v=126';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=126';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -1194,6 +1194,39 @@ let pollTimer = null;
 let pollBusy = false;              // 새로고침 중에 또 들어오지 않게
 let pollGen = 0;                   // 다시 걸 때마다 올린다 (옛 루프가 살아남지 않게)
 let pollUnloadHooked = false;
+
+/**
+ * **마지막 동기화 한 줄** — 언제 끝났고 몇 건이 들어갔나.
+ *
+ * 관리자 화면이 보여준다. 이 값을 화면에 안 띄웠더니, dg_sync_log 에 줄이
+ * 하나도 안 쌓이는 채로 **51일이 지나도 아무도 몰랐다** (시퀀스 권한이 빠져
+ * insert 가 막혔는데 스크립트는 경고만 남기고 지나갔다).
+ *
+ * 폴링이 쓰는 fetchSyncMark 와 같은 표를 읽지만 쓰임이 다르다 — 그쪽은
+ * '바뀌었나' 만 보고, 이쪽은 사람에게 보여줄 값이다.
+ *
+ * @returns { finishedAt, members, attendance, lunch, homework } | null
+ */
+export async function getLastSync(cohortId) {
+  const id = cohortId || getCachedCohortId();
+  if (!id) return null;
+  try {
+    const rows = await sbSelect(
+      `dg_sync_log?select=finished_at,members,attendance,lunch,homework` +
+      `&cohort_id=eq.${encodeURIComponent(id)}&order=finished_at.desc&limit=1`);
+    if (!rows || !rows.length) return null;     // 표는 있는데 줄이 없다
+    const r = rows[0];
+    return {
+      finishedAt: r.finished_at || null,
+      members: r.members ?? null,
+      attendance: r.attendance ?? null,
+      lunch: r.lunch ?? null,
+      homework: r.homework ?? null,
+    };
+  } catch {
+    return null;      // 표가 없다(404) — 화면은 '기록 없음' 으로 말한다
+  }
+}
 
 /**
  * 동기화가 끝났다는 표시. 없으면 null 을 돌려주고 폴링은 조용히 쉰다.

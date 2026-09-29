@@ -21,6 +21,11 @@ const page = await (await browser.newContext()).newPage();
 page.on('pageerror', e => console.log('   [pageerror] ' + e.message));
 
 let memberFetches = 0;
+// 마지막 동기화 줄이 무엇을 보여주는지 갈아 끼우며 본다.
+let syncLogRows = [{
+  finished_at: '2026-08-22T04:20:00Z',
+  members: 242, attendance: 4884, lunch: 1738, homework: 3800,
+}];
 await page.route('**/rest/v1/**', route => {
   const url = new URL(route.request().url());
   const table = url.pathname.split('/').pop();
@@ -29,7 +34,7 @@ await page.route('**/rest/v1/**', route => {
     if (url.searchParams.get('select') === 'cohort_id') body = [{ cohort_id: COHORT }];
     else { memberFetches++; body = MEMBERS; }
   } else if (table === 'dg_sessions') body = SESSIONS;
-  else if (table === 'dg_sync_log') body = [{ finished_at: '2026-08-22T04:20:00Z' }];
+  else if (table === 'dg_sync_log') body = syncLogRows;
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 });
 
@@ -80,6 +85,50 @@ const info1 = await page.$eval('#syncInfo', el => el.textContent.trim());
 ok('결과 메시지를 보여준다', /1~2분/.test(info1) && /저절로 새로 읽습니다/.test(info1), info1);
 
 ok('연타 방지 — 버튼이 잠긴다', await page.$eval('#syncBtn', el => el.disabled));
+
+// --- 마지막 동기화 줄 ------------------------------------------------------
+//
+// 이 줄이 없어서 dg_sync_log 에 한 줄도 안 쌓이는 채로 51일이 지나도 아무도
+// 몰랐다 — 시퀀스 권한이 빠져 insert 가 막혔는데 Actions 로그에만 찍혔다.
+await page.waitForFunction(
+  () => (document.getElementById('syncLast')?.textContent || '').length > 0,
+  null, { timeout: 10000 });
+const last1 = await page.$eval('#syncLast', el => el.textContent.trim());
+// ko-KR 로 찍으므로 '8. 22. 오후 1:20' 꼴이다. 04:20 UTC = 13:20 KST.
+ok('마지막 동기화 시각을 보여준다',
+   /마지막 동기화/.test(last1) && /8\.\s*22\./.test(last1) && /1:20/.test(last1), last1);
+ok('건수까지 적는다', /출석 4884/.test(last1) && /과제 3800/.test(last1), last1);
+ok('평소에는 경고가 아니다',
+   !(await page.$eval('#syncLast', el => el.className)).includes('warn'),
+   await page.$eval('#syncLast', el => el.className));
+
+// **줄이 하나도 없으면 경고.** 이것이 이번에 놓쳤던 바로 그 상태다 —
+// 표는 있는데 시퀀스 권한이 없어 insert 가 막혀 영영 비어 있었다.
+syncLogRows = [];
+const p3 = await (await browser.newContext()).newPage();
+await p3.route('**/rest/v1/**', route => {
+  const t = new URL(route.request().url()).pathname.split('/').pop();
+  const body = t === 'dg_members'
+    ? (new URL(route.request().url()).searchParams.get('select') === 'cohort_id'
+        ? [{ cohort_id: COHORT }] : MEMBERS)
+    : t === 'dg_sessions' ? SESSIONS : [];
+  route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+});
+await p3.route('**/script.google.com/**', route =>
+  route.fulfill({ status: 200, contentType: 'application/json',
+                  body: JSON.stringify({ success: true, data: [], sessions: [] }) }));
+await p3.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+await p3.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
+await p3.waitForFunction(
+  () => (document.getElementById('syncLast')?.textContent || '').length > 0,
+  null, { timeout: 15000 });
+const lastNone = await p3.$eval('#syncLast', el =>
+  ({ text: el.textContent.trim(), cls: el.className }));
+ok('기록이 없으면 경고로 알린다',
+   /동기화 기록이 없습니다/.test(lastNone.text) && lastNone.cls.includes('warn'),
+   JSON.stringify(lastNone));
+ok('무엇을 해야 하는지까지 적는다', /dg_sync_log\.sql/.test(lastNone.text), lastNone.text);
+await p3.context().close();
 
 // --- 실패 응답 -------------------------------------------------------------
 gasReply = { success: false, version: 24, message: '워크플로를 찾지 못했습니다 (a/b · x.yml).' };
@@ -159,7 +208,9 @@ ok('홀수 시에는 다음 짝수 시', /다음 오후 1:20 무렵/.test(at0330
 const at2330 = await syncInfoAt('2026-08-22T23:30:00Z');   // 날을 넘긴다
 ok('자정을 넘겨도 이어진다', /다음 오전 9:20 무렵/.test(at2330), at2330);
 
-ok('2시간마다라고 알린다', /2시간마다/.test(at0400), at0400);
+// cron 은 2시간이지만 GitHub 이 예약을 흘려 실측은 하루 네 번쯤이다. 화면이
+// '2시간마다' 라고 단언하면 그 시각에 안 온 것을 고장으로 읽는다.
+ok('두세 시간마다라고 알린다', /두세 시간마다/.test(at0400), at0400);
 // '무렵' 인 이유: GitHub 의 예약 실행은 30~45분씩 밀린다. 딱 떨어지는 시각을
 // 적으면 그 시각에 안 돌았을 때 고장으로 읽힌다.
 ok("'무렵' 이라고 적는다 — 예약 실행은 밀린다", /무렵/.test(at0400), at0400);

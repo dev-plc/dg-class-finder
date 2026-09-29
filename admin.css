@@ -143,6 +143,12 @@ body.dark-mode .logout-btn:hover {
 body.dark-mode .sync-info.ok   { color: #6ee7b7; }
 body.dark-mode .sync-info.fail { color: #fca5a5; }
 
+/* 마지막 동기화 — 평소엔 조용한 한 줄, 기록이 없으면 눈에 띄어야 한다.
+   이 줄이 없어서 dg_sync_log 가 51일 동안 비어 있는 것을 아무도 몰랐다. */
+.sync-last { font-size: 11px; color: var(--text-light); opacity: 0.8; flex: 1 1 100%; }
+.sync-last.warn { color: #b91c1c; opacity: 1; font-weight: 600; }
+body.dark-mode .sync-last.warn { color: #fca5a5; }
+
 /* ==================== 탭 네비게이션 ==================== */
 .tab-nav {
     display: flex;

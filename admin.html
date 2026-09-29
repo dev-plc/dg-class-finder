@@ -12,8 +12,8 @@
     <!-- 파비콘을 파일로 두지 않고 인라인으로. 없으면 브라우저가 /favicon.ico 를
          찾다가 404 를 콘솔에 남긴다. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e293b'/%3E%3Ctext x='16' y='22' font-size='16' font-weight='700' text-anchor='middle' fill='%23e2e8f0' font-family='sans-serif'%3EDG%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="style.css?v=125">
-    <link rel="stylesheet" href="admin.css?v=125">
+    <link rel="stylesheet" href="style.css?v=126">
+    <link rel="stylesheet" href="admin.css?v=126">
 </head>
 <body class="dark-mode">
     <div class="admin-container">
@@ -60,7 +60,10 @@
             <button type="button" id="syncBtn" class="sync-btn">⟳ 시트에서 지금 가져오기</button>
             <button type="button" id="syncReloadBtn" class="sync-btn ghost">화면 새로 고침</button>
             <!-- 다음 자동 동기화 시각은 스크립트가 채운다 (워크플로 cron 과 같은 규칙) -->
-            <span id="syncInfo" class="sync-info">2시간마다 저절로 가져옵니다. 급하면 여기서 바로.</span>
+            <span id="syncInfo" class="sync-info">두세 시간마다 저절로 가져옵니다. 급하면 여기서 바로.</span>
+            <!-- 마지막 동기화가 언제였는지 사람이 볼 자리. 이게 없어서
+                 dg_sync_log 가 51일 동안 비어 있는 것을 아무도 몰랐다. -->
+            <span id="syncLast" class="sync-last"></span>
         </div>
 
         <!-- 탭 네비게이션 -->
@@ -330,7 +333,7 @@
         </div>
     </div>
 
-    <script type="module" src="admin.js?v=125"></script>
+    <script type="module" src="admin.js?v=126"></script>
 </body>
 </html>
 
