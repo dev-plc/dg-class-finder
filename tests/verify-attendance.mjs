@@ -146,8 +146,12 @@ await page.selectOption('#sessionPicker', '2025-11-02');
 await page.waitForTimeout(300);
 const at1102 = await checkedOn();
 // 기록이 있는 셋은 체크, 기록이 없는 새로온이는 빈 채로.
+//
+// ⚠️ 차례는 **시트 순서**다 (team_no 1~4: 김조장·이조원·박과제·새로온이).
+// 예전에는 역할 다음 이름순이라 [김조장·박과제·새로온이·이조원] 이었다 —
+// 종이 출석부와 차례가 달라서 옆줄에 체크할 위험이 있었다 (compareLeadFirst).
 ok('11/02 로 바꾸면 기록 있는 셋만 체크',
-   JSON.stringify(at1102) === '[true,true,false,true]', JSON.stringify(at1102));
+   JSON.stringify(at1102) === '[true,true,true,false]', JSON.stringify(at1102));
 const badges2 = await page.$$eval('.attendance-badge', els => els.length);
 ok('11/02 에는 배지 없음', badges2 === 0, `배지 ${badges2}개`);
 

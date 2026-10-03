@@ -18,6 +18,11 @@ const MEMBERS = Array.from({ length: 30 }, (_, i) => ({
   lunch: 'O', status: 'active', age: 30 + i,
 }));
 MEMBERS[0].name = '하관리자';   // 정렬 검증: 이름은 뒤지만 관리자라 맨 위
+// ⚠️ 관리자(0)·조장(1)은 team_no 도 1·2 라 **시트 순서만으로도 위에 온다** —
+//    그것만으로는 '역할을 올리는가' 를 증명하지 못한다. 그래서 시트 **뒤쪽**에
+//    역할을 하나 심는다. 실제로 틀렸던 경우가 이것이다 (부조장이 조원들 사이).
+MEMBERS[25].name = '늦은부조장';
+MEMBERS[25].role = '부조장';                      // team_no 26 — 시트에서는 거의 끝
 // 이름 뒤 전화 뒷 4자리 검증용. 단언이 쓰는 앞쪽(01~05)은 건드리지 않는다.
 MEMBERS[28].name = '같은이름';                    // phone 1028
 MEMBERS[29].name = '같은이름';                    // phone 1029 — 이름만으로는 구별 불가
@@ -216,6 +221,12 @@ const nameOf = (rowIdx) => page.$eval(
 
 ok('관리자가 맨 위', (await nameOf(1)) === '하관리자', await nameOf(1));
 ok('조장이 두 번째', (await nameOf(2)) === '조원02', await nameOf(2));
+// 역할 서열을 코드에 박지 않는다 — 시트 차례대로다. 그래서 시트 뒤쪽(26번)에
+// 적힌 부조장은 관리자·조장 **뒤**, 조원 **앞**이다.
+ok('시트 뒤쪽의 부조장도 조원보다 위', (await nameOf(3)) === '늦은부조장',
+   await nameOf(3));
+ok('그다음부터 조원 — 시트 순서(이름순이 아니다)',
+   (await nameOf(4)) === '조원03', await nameOf(4));
 
 const idx = await page.$$eval('.matrix-table tbody tr .mx-name',
   els => els.map(e => {

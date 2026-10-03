@@ -12,6 +12,7 @@ import {
     getMyHomework,
     getSession,
     setSession,
+    compareLeadFirst,
     getTeamExtras,
     getUpcomingLunches,
     homeworkKindLabel,
@@ -25,9 +26,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=126';
+} from './scripts/members-data.js?v=127';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=126';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=127';
 
 // 1-1. 내 정보 기억
 //
@@ -765,15 +766,6 @@ function renderTeamSummary(members) {
         + stat('lunch', kimbap, '🍙 김밥');
 }
 
-// 6. 직책별 우선순위 설정
-const rolePriority = {
-    "관리자": 1,
-    "조장": 2,
-    "서브튜터": 3,
-    "조원": 4,
-    "": 4
-};
-
 // 7. 조원 목록 그리기
 function renderTeamMembers(members, teamName, role) {
     const listElement = document.getElementById('teamMemberList');
@@ -796,15 +788,10 @@ function renderTeamMembers(members, teamName, role) {
     renderSessionPicker();
     renderTeamSummary(members);
 
-    const sortedMembers = [...members].sort((a, b) => {
-        const priorityA = rolePriority[a.role] || 4;
-        const priorityB = rolePriority[b.role] || 4;
-        
-        if (priorityA !== priorityB) {
-            return priorityA - priorityB;
-        }
-        return a.name.localeCompare(b.name, 'ko');
-    });
+    // 역할(조장·부조장 등)을 맨 위로, 나머지는 **시트 순서**로.
+    // 종이 출석부와 차례가 다르면 한 사람을 찾을 때마다 명단을 훑게 되고,
+    // 그러다 옆줄에 체크한다 (members-data.js compareMemberOrder 주석).
+    const sortedMembers = [...members].sort(compareLeadFirst);
 
     listElement.innerHTML = sortedMembers.map((m) => {
         const lunchIcon = (m.lunch && m.lunch.toUpperCase() === 'O') ? '<span style="margin-left:4px;" title="김밥 대상자">🍙</span>' : '';

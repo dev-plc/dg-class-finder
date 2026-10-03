@@ -9,7 +9,7 @@
 // 노란 '과제' 칸은 두 갈래로 들어온다 — 시트가 적어 준 '과제' 와, 앱이 X + 과제제출을
 // 보고 스스로 칠하는 것. 둘 다 makeup 이라 모양이 같다. 뜻과 셈법은 docs/RULES.md.
 
-import { getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=126';
+import { compareLeadFirst, getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=127';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -51,14 +51,6 @@ export function buildSessionColumns() {
         .filter(c => c.date);
 }
 
-const rolePriority = {
-    "관리자": 1,
-    "조장": 2,
-    "서브튜터": 3,
-    "조원": 4,
-    "": 4
-};
-
 // extras 는 getTeamExtras() 결과. 없으면 뱃지 없이 그대로 그린다
 // (모달을 여는 순간 표는 뜨고, 김밥·과제는 도착하는 대로 다시 그린다).
 /**
@@ -88,10 +80,7 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
     const hwKindMap = extras?.homeworkKinds || new Map();  // 실제로 낸 종류 그대로
 
     const sorted = [...members].sort((a, b) => {
-        const pa = rolePriority[a.role] || 4;
-        const pb = rolePriority[b.role] || 4;
-        if (pa !== pb) return pa - pb;
-        return a.name.localeCompare(b.name, 'ko');
+        return compareLeadFirst(a, b);
     });
 
     const MAX_OPEN = 10;

@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=126';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=126';
+import { matches as hangulMatches } from './hangul.js?v=127';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=127';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -535,6 +535,33 @@ export function compareMemberOrder(a, b) {
   return n(a.sheet_row) - n(b.sheet_row)
       || n(a.team_no) - n(b.team_no)
       || String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+}
+
+/** 역할이 있는 사람인가. 비었거나 '조원' 이면 아니다. */
+export function isLeadRole(role) {
+  const r = String(role || '').trim();
+  return r !== '' && r !== '조원';
+}
+
+/**
+ * 조장·부조장 같은 **역할을 맨 위로**, 그 안팎은 시트 순서로.
+ *
+ * 예전에는 `{ 관리자:1, 조장:2, 서브튜터:3, 조원:4 }` 표를 **두 파일에 복사해 두고**
+ * (matrix-renderer.js · script.js) `|| 4` 로 물러났다. 그래서 그 표에 없는
+ * **'부조장' 이 조원과 같은 등급**이 돼 명단 가운데 끼어 있었다. 시트에 역할이
+ * 하나 늘 때마다 같은 일이 **조용히** 난다 — 오류가 안 나므로 아무도 모른다.
+ *
+ * 서열을 코드에 박지 않는 까닭: 조장과 부조장 중 누가 위인지는 조직이 정할
+ * 일이고, **시트가 이미 그 차례로 적혀 있다.** 종이 출석부가 멀쩡했던 것도
+ * 거기서는 시트 순서(compareMemberOrder)를 그대로 썼기 때문이다.
+ *
+ * ⚠️ compareMemberOrder 자체는 건드리지 않는다. 출력물·관리자 명단은 역할을
+ * 올리지 않고 시트를 그대로 비추는 편이 맞다.
+ */
+export function compareLeadFirst(a, b) {
+  const la = isLeadRole(a.role) ? 0 : 1;
+  const lb = isLeadRole(b.role) ? 0 : 1;
+  return (la - lb) || compareMemberOrder(a, b);
 }
 
 /** 회차 이름이 강의인지 (수료에 들어가는지). '자유교제' 같은 주는 아니다. */
