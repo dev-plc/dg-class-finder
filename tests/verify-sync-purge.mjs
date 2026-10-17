@@ -32,6 +32,9 @@ let sheetAtt = {};
 // 과제 응답. 아이디만 있고 내용이 없는 줄이 섞여 들어오는 것을 흉내 낸다 —
 // 시트를 읽는 GAS 가 거르는 것은 아이디뿐이다.
 let sheetHw = [];
+// 김밥 탭을 GAS 가 못 읽은 상황을 흉내 낸다 (2026-10 실제로 난 일 — id 머리글이
+// 6행으로 밀렸다). null 이면 예전처럼 김밥 필드를 아예 안 준다.
+let lunchUnreadReason = null;
 // 회차를 어떤 꼴로 주는지 — GAS 판마다 다르다. 정리가 셋 다 견뎌야 한다.
 //   'sessions'     v19+ (연도까지 확정)
 //   'sessionDates' v18 이하 (MM/DD 만)
@@ -47,6 +50,7 @@ const gas = createServer((req, res) => {
     success: true, version: 29, data,
     cohortHint: COHORT, locationMap: {}, teamLinkMap: {},
     homework: sheetHw,
+    ...(lunchUnreadReason ? { lunchDates: [], lunchReason: lunchUnreadReason } : {}),
   };
   if (sessionShape === 'sessions') {
     body.sessions = DATES.map((d, i) => ({
@@ -67,6 +71,9 @@ let attendance = [];          // { member_id, session_date, status }
 let homework = [];            // { member_id, lecture, kind, content }
 let hwUpserted = [];          // 이번 실행에서 실제로 밀어넣은 것 (검증용)
 let hwDeleted = 0;            // 정리가 지운 건수
+let lunchWrites = [];         // dg_lunch 로 밀어넣은 것
+let lunchDeletes = 0;         // dg_lunch 정리가 지운 요청 수
+let syncLogRows = [];         // dg_sync_log 에 남긴 줄
 let deleted = [];             // 지운 것 (검증용)
 let purgeReads = 0;
 
@@ -139,6 +146,16 @@ const db = createServer(async (req, res) => {
       return send([]);
     }
     return send(homework.filter(isBlank).map(h => ({ member_id: h.member_id })));
+  }
+
+  if (table === 'dg_lunch') {
+    if (req.method === 'POST') { lunchWrites.push(JSON.parse(await body(req))); return send([]); }
+    if (req.method === 'DELETE') { lunchDeletes++; return send([]); }
+    return send([{ member_id: 'u1' }]);          // 지울 거리가 있는 척한다
+  }
+  if (table === 'dg_sync_log' && req.method === 'POST') {
+    syncLogRows.push(JSON.parse(await body(req)));
+    return send([]);
   }
 
   if (req.method === 'POST' || req.method === 'PATCH') { await body(req); return send([]); }
@@ -321,6 +338,44 @@ ok('7. 지웠다고 알린다', /🧹 내용이 빈 과제 1건 삭제/.test(r7.
 ok('7. 몇 강만 안 적은 진짜 제출은 안 지운다',
    homework.some(h => h.member_id === 'u2' && h.content === 'https://ex.com/z'),
    JSON.stringify(homework.map(h => `${h.member_id}:${h.lecture || '(빈)'}`)));
+
+// --- 8. 김밥 탭을 못 읽었을 때 --------------------------------------------
+//
+// 2026-10 실제로 난 일: 김밥 탭 위에 줄이 하나 더 붙어 id 머리글이 6행으로
+// 밀렸다. GAS 는 빈 김밥을 줬고, 동기화는 엉뚱한 안내 한 줄만 찍고
+// '✅ 동기화 완료' 로 끝났다. 열흘 동안 새 신청이 안 들어오고 취소가 안 빠졌다.
+sheetHw = [];
+homework = [];
+lunchWrites = [];
+lunchDeletes = 0;
+syncLogRows = [];
+lunchUnreadReason = 'no-header';
+
+const r8 = await run();
+ok('8. 김밥을 못 읽어도 다른 표는 끝까지 돈다', r8.status === 0, `종료코드 ${r8.status}`);
+ok('8. 못 읽었으면 아무것도 밀어넣지 않는다', lunchWrites.length === 0,
+   `${lunchWrites.length}번`);
+ok('8. 못 읽었으면 아무것도 지우지 않는다 — 그게 안전장치다', lunchDeletes === 0,
+   `${lunchDeletes}번`);
+ok('8. 왜 못 읽었는지 그대로 말한다',
+   /김밥 탭을 못 읽었습니다 — 위 10줄 안에 'id' 머리글이 없습니다/.test(r8.out),
+   (r8.out.match(/.*김밥 탭을 못 읽었습니다.*/) || [''])[0].trim());
+ok("8. 엉뚱한 'v21 로 재배포' 안내는 안 나온다", !/v21/.test(r8.out));
+// 로그 끝만 보는 사람이 많다 — '✅ 동기화 완료' 바로 위에 한 번 더.
+const tail8 = r8.out.split('✅ 동기화 완료')[0].split('\n').slice(-6).join('\n');
+ok("8. '✅ 동기화 완료' 바로 위에 한 번 더 말한다", /김밥 탭을 못 읽었습니다/.test(tail8),
+   tail8.replace(/\n/g, ' / '));
+ok("8. 동기화 기록에 김밥을 '0' 이 아니라 '못 읽음(null)' 으로 남긴다",
+   syncLogRows.length === 1 && syncLogRows[0].lunch === null,
+   JSON.stringify(syncLogRows[0]));
+ok('8. 로그에 실명을 안 적는다', !/김조장|이조원/.test(r8.out));
+
+// 이유를 안 주는 옛 GAS 라도, 읽은 회차가 없고 신청도 없으면 못 읽은 것이다.
+lunchUnreadReason = null;
+const oldGas = await run();   // 김밥 필드를 아예 안 준다 → 아주 옛 GAS 갈래
+ok('8. 김밥 필드가 아예 없는 옛 GAS 는 따로 안내한다',
+   /옛 판입니다/.test(oldGas.out) && !/김밥 탭을 못 읽었습니다/.test(oldGas.out),
+   (oldGas.out.match(/.*김밥 건너뜀.*/) || [''])[0].trim());
 
 gas.close();
 db.close();

@@ -130,6 +130,52 @@ ok('기록이 없으면 경고로 알린다',
 ok('무엇을 해야 하는지까지 적는다', /dg_sync_log\.sql/.test(lastNone.text), lastNone.text);
 await p3.context().close();
 
+// --- 김밥을 못 읽은 동기화 --------------------------------------------------
+//
+// 2026-10 실제로 난 일: 김밥 탭의 id 머리글이 6행으로 밀려 GAS 가 김밥을 못
+// 읽었다. 동기화는 김밥을 넣지도 지우지도 않고 lunch 를 null 로 남긴다.
+// 예전에는 이 줄이 '김밥 0' 을 그냥 숫자로 보여줘서 열흘 동안 아무도 몰랐다.
+const lastLineWith = async (row) => {
+  const pg = await (await browser.newContext()).newPage();
+  await pg.route('**/rest/v1/**', route => {
+    const u = new URL(route.request().url());
+    const t = u.pathname.split('/').pop();
+    const body = t === 'dg_members'
+      ? (u.searchParams.get('select') === 'cohort_id' ? [{ cohort_id: COHORT }] : MEMBERS)
+      : t === 'dg_sessions' ? SESSIONS
+      : t === 'dg_sync_log' ? [row] : [];
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await pg.route('**/script.google.com/**', route =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+                    body: JSON.stringify({ success: true, data: [], sessions: [] }) }));
+  await pg.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+  await pg.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
+  await pg.waitForFunction(
+    () => (document.getElementById('syncLast')?.textContent || '').length > 0,
+    null, { timeout: 15000 });
+  const got = await pg.$eval('#syncLast', el => ({ text: el.textContent.trim(), cls: el.className }));
+  await pg.context().close();
+  return got;
+};
+
+const unread = await lastLineWith({
+  finished_at: '2026-10-17T10:50:51Z', members: 253, attendance: 5387, lunch: null, homework: 4266,
+});
+ok('김밥을 못 읽은 동기화는 빨갛게 알린다',
+   /김밥을 못 읽었습니다/.test(unread.text) && unread.cls.includes('warn'), JSON.stringify(unread));
+ok('무엇을 봐야 하는지 적는다 — 탭 이름 · id 머리글 · 날짜 머리글',
+   /탭 이름/.test(unread.text) && /id 머리글/.test(unread.text) && /10\/18/.test(unread.text),
+   unread.text);
+ok('앱의 김밥이 옛것이라고 말한다', /지난번 그대로/.test(unread.text), unread.text);
+
+// 신청이 정말 0건인 것은 고장이 아니다 — 그냥 숫자다.
+const zero = await lastLineWith({
+  finished_at: '2026-10-17T10:50:51Z', members: 253, attendance: 5387, lunch: 0, homework: 4266,
+});
+ok("'김밥 0' 은 경고가 아니다 (못 읽음과 다르다)",
+   !zero.cls.includes('warn') && /김밥 0/.test(zero.text), JSON.stringify(zero));
+
 // --- 실패 응답 -------------------------------------------------------------
 gasReply = { success: false, version: 24, message: '워크플로를 찾지 못했습니다 (a/b · x.yml).' };
 await page.evaluate(() => { document.getElementById('syncBtn').disabled = false; });

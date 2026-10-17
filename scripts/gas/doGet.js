@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v30)
+// DGfinder — Google Apps Script 전체 코드 (v31)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,19 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v31
+//   - **머리글 줄을 위 10줄까지 찾는다** (예전 5줄). 김밥 탭 위에 줄이 하나 더
+//     붙어 id 머리글이 6행으로 밀리자 김밥 탭을 통째로 못 읽었다. 동기화는
+//     김밥을 넣지도 지우지도 못한 채 열흘을 돌았다 — 새 신청은 안 들어오고
+//     취소는 안 빠졌다(2026-10). 출석부·저장·과제 점검도 같은 함수를 쓴다.
+//   - **김밥을 못 읽으면 왜인지 같이 준다** — lunchReason
+//     ('no-sheet' · 'no-header' · 'no-dates'). 예전에는 빈 값만 줘서 동기화
+//     로그에 엉뚱한 안내('v21 로 재배포 필요')만 찍혔다.
+//   - **결과 카드의 김밥(kimbapMap)이 회차별 김밥에서 고른다.** 같은 탭을 제
+//     해석으로 따로 읽던 30줄을 걷어냈다 — 한쪽만 고장 나 카드는 맞아 보이는데
+//     목록·출석부만 얼어붙는 일이 없다. 김밥 탭의 날짜 머리글은 예전에 카드 쪽이
+//     받아 주던 꼴('2026. 10. 18' · '10/18(토)')도 받는다. 출석부 탭은 그대로다.
 //
 // v30
 //   - **결과 카드의 김밥도 X 를 거른다.** v25 에서 'X 를 신청으로 읽던' 것을
@@ -111,7 +124,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 30;
+var DG_VERSION = 31;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -155,8 +168,20 @@ function DG_json(obj) {
 // ===========================================================================
 
 // 헤더 행을 찾는다 ('id' 가 있는 첫 줄).
+/**
+ * 머리글 줄 — 'id' 라고 적힌 칸이 있는 첫 줄.
+ *
+ * ⚠️ **위 10줄까지 찾는다.** 예전에는 5줄이었는데, 김밥 탭 위에 안내 줄이 하나
+ * 더 붙어 id 머리글이 6행으로 밀리자 김밥 탭 전체를 못 읽게 됐다. 동기화는
+ * 김밥을 넣지도 지우지도 못한 채 열흘을 돌았다(2026-10).
+ *
+ * 넓혀도 안전하다 — 칸 값이 **정확히 'id'** 여야 하므로 데이터 줄(아이디는
+ * '김도현5326' 꼴)과 헷갈릴 일이 없다. 출석부·김밥·저장·과제 점검이 함께 쓴다.
+ */
+var DG_HEADER_SCAN_ROWS = 10;
+
 function DG_findHeaderRow(values) {
-  for (var i = 0; i < Math.min(5, values.length); i++) {
+  for (var i = 0; i < Math.min(DG_HEADER_SCAN_ROWS, values.length); i++) {
     var lowered = values[i].map(function (h) { return String(h).trim().toLowerCase(); });
     if (lowered.indexOf('id') !== -1) return i;
   }
@@ -228,8 +253,11 @@ function DG_headerToMMDD(value, tz) {
  *
  * @returns [{ key:'11/02', date:'2025-11-02', col: 열인덱스(0부터) }, ...]
  */
-function DG_buildSessions(headerRow, tz) {
+function DG_buildSessions(headerRow, tz, opts) {
   var forcedYear = parseInt(DG_prop('DG_START_YEAR'), 10) || null;
+  // 김밥 탭만 너그럽게 읽는다 (DG_readLunchByDate). 출석부 탭은 예전과 **똑같이**
+  // 읽어야 한다 — 거기서 무시되던 머리글이 갑자기 회차로 잡히면 회차 목록이 바뀐다.
+  var lenient = !!(opts && opts.lenient);
 
   var out = [];
   var seen = {};
@@ -248,12 +276,30 @@ function DG_buildSessions(headerRow, tz) {
       if (!forcedYear) year = parseInt(iso.slice(0, 4), 10);
       prevMonth = parseInt(key.slice(0, 2), 10);
     } else {
-      var m = String(raw).trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+      var text = String(raw).trim();
+      var m = text.match(/^(\d{1,2})\/(\d{1,2})$/);
+      var givenYear = null;
+      if (!m && lenient) {
+        // 결과 카드(예전 kimbapMap)가 따로 받아 주던 꼴을 목록도 받는다 — 같은 탭을
+        // 두 함수가 다르게 읽으면 카드는 맞는데 목록·출석부만 얼어붙는다.
+        //   '2026. 10. 18'  연도가 적힌 것
+        //   '10/18(토)'     뒤에 글자가 붙은 것 (앞은 반드시 날짜로 시작)
+        var ymd = text.match(/^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})/);
+        if (ymd) {
+          givenYear = parseInt(ymd[1], 10);
+          m = [ymd[0], ymd[2], ymd[3]];
+        } else {
+          m = text.match(/^(\d{1,2})\/(\d{1,2})(?!\d)/);
+        }
+      }
       if (!m) continue;
       var month = parseInt(m[1], 10);
       var day = parseInt(m[2], 10);
 
-      if (year === null) {
+      if (givenYear !== null) {
+        // 연도가 적혀 있으면 추측하지 않는다 — Date 칸과 같다.
+        if (!forcedYear) year = givenYear;
+      } else if (year === null) {
         year = new Date().getFullYear();
       } else if (prevMonth !== null && month < prevMonth) {
         year++;   // 12 → 01
@@ -261,7 +307,10 @@ function DG_buildSessions(headerRow, tz) {
       prevMonth = month;
 
       key = ('0' + month).slice(-2) + '/' + ('0' + day).slice(-2);
-      iso = year + '-' + ('0' + month).slice(-2) + '-' + ('0' + day).slice(-2);
+      // 연도가 적힌 칸은 그 연도를 쓴다 — Date 칸이 자기 연도를 쓰는 것과 같다.
+      // (DG_START_YEAR 로 연도를 못박았어도 적힌 연도가 이긴다.)
+      iso = (givenYear !== null ? givenYear : year) + '-'
+          + ('0' + month).slice(-2) + '-' + ('0' + day).slice(-2);
     }
 
     if (!key || seen[key]) continue;
@@ -324,22 +373,29 @@ function DG_readLunchByDate(ss, tz) {
   var out = {};
   // dates 는 '이 회차를 시트에서 읽었다' 는 뜻이다. 신청자가 하나도 없는
   // 회차도 들어간다 — 동기화가 그 회차의 옛 신청을 지우는 근거로 쓴다.
-  var none = { byId: out, dates: [] };
-  if (!sheet) return none;
+  //
+  // ⚠️ **못 읽었으면 왜 못 읽었는지 같이 돌려준다 (v31).** 예전에는 빈 값만
+  // 돌려줘서, 동기화가 김밥을 통째로 건너뛰는데도 이유를 알 길이 없었다.
+  // 실제로 2026-10 에 김밥 탭이 바뀐 뒤 열흘 동안 DB 의 김밥이 얼어 있었다 —
+  // 새 신청은 안 들어오고 취소는 안 빠졌다. 로그에는 엉뚱한 안내만 찍혔다.
+  var none = function (why) { return { byId: out, dates: [], reason: why }; };
+  if (!sheet) return none('no-sheet');
 
   var values = sheet.getDataRange().getValues();
+  // 머리글 줄 = 위 5줄 안에서 'id' 가 적힌 첫 줄 (DG_findHeaderRow).
+  // 그래서 '머리글 줄이 없다' 와 'id 열이 없다' 는 같은 일이다.
   var headerIdx = DG_findHeaderRow(values);
-  if (headerIdx === -1) return none;
+  if (headerIdx === -1) return none('no-header');
 
   var header = values[headerIdx];
   var idIdx = header.map(function (h) {
     return String(h).trim().toLowerCase();
   }).indexOf('id');
-  if (idIdx === -1) return none;
+  if (idIdx === -1) return none('no-header');
 
-  // 날짜 열은 출석부와 같은 방식으로 읽는다 (연도까지 확정).
-  var cols = DG_buildSessions(header, tz);
-  if (!cols.length) return none;
+  // 날짜 열은 출석부와 같은 방식으로 읽되, 김밥 탭은 조금 너그럽게 (위 주석).
+  var cols = DG_buildSessions(header, tz, { lenient: true });
+  if (!cols.length) return none('no-dates');
 
   for (var r = headerIdx + 1; r < values.length; r++) {
     var id = DG_normalizeId_(values[r][idIdx]);
@@ -1198,62 +1254,26 @@ function doGet(e) {
     var tz = Session.getScriptTimeZone();
 
     // ---------------------------------------------------------------------
-    // [김밥 탭] — 오늘 이후 가장 가까운 날짜 열을 본다
+    // [김밥 탭] — 결과 카드 한 줄: 오늘 이후(오늘 포함) 가장 가까운 회차
     // ---------------------------------------------------------------------
-    var kimbapSheet = ss.getSheetByName(DG_TAB_LUNCH);
+    //
+    // ⚠️ **회차별 김밥(DG_readLunchByDate)에서 고른다 — 같은 탭을 따로 읽지 않는다.**
+    // 예전에는 이 자리가 날짜 머리글을 30줄짜리 제 해석으로 따로 읽었다. 두 함수가
+    // 같은 탭을 다르게 읽으니 한쪽만 고장 나는 일이 생겼다 — 결과 카드·조 요약은
+    // 맞아 보이는데 목록·출석부만 얼어붙는 식이다. 연도 추론도 달랐다(여기는 늘
+    // 올해를 붙였다). 이제 둘은 **같은 것을 읽고, 고장 나도 같이 고장 난다.**
+    var lunchInfo = DG_readLunchByDate(ss, tz);
     var kimbapMap = {};
-    if (kimbapSheet) {
-      var kbValues = kimbapSheet.getDataRange().getValues();
-      var kbHeaderIdx = DG_findHeaderRow(kbValues);
-
-      if (kbHeaderIdx !== -1) {
-        var kbHeadersRaw = kbValues[kbHeaderIdx];
-        var kbIdIdx = kbHeadersRaw.map(function (h) {
-          return String(h).trim().toLowerCase();
-        }).indexOf('id');
-
-        var todayStr = Utilities.formatDate(new Date(), tz, 'yyyy/MM/dd').split('/');
-        var kbToday = new Date(parseInt(todayStr[0], 10), parseInt(todayStr[1], 10) - 1,
-                               parseInt(todayStr[2], 10));
-
-        var minDiff = Infinity;
-        var targetKbIdx = -1;
-
-        for (var c = 0; c < kbHeadersRaw.length; c++) {
-          if (c === kbIdIdx) continue;
-          var d = kbHeadersRaw[c];
-          var dateObj = null;
-
-          if (d instanceof Date) {
-            dateObj = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-          } else if (typeof d === 'string' && d.trim() !== '') {
-            var str = d.trim();
-            var m1 = str.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})/);
-            var m2 = str.match(/(\d{1,2})\/(\d{1,2})/);
-            if (m1) {
-              dateObj = new Date(parseInt(m1[1], 10), parseInt(m1[2], 10) - 1, parseInt(m1[3], 10));
-            } else if (m2) {
-              dateObj = new Date(kbToday.getFullYear(), parseInt(m2[1], 10) - 1, parseInt(m2[2], 10));
-            }
-          }
-
-          if (dateObj) {
-            var diff = dateObj.getTime() - kbToday.getTime();
-            if (diff >= 0 && diff < minDiff) { minDiff = diff; targetKbIdx = c; }
-          }
-        }
-
-        if (targetKbIdx !== -1 && kbIdIdx !== -1) {
-          for (var kr = kbHeaderIdx + 1; kr < kbValues.length; kr++) {
-            var kbId = DG_normalizeId_(kbValues[kr][kbIdIdx]);
-            if (!kbId) continue;
-            // ⚠️ DG_isLunchApplied 를 쓴다. 예전에는 '값이 있기만 하면 O' 였는데,
-            // 그러면 **안 한다고 적은 X 도 신청**으로 세어져 김밥을 더 시킨다.
-            // 회차별(DG_readLunchByDate)은 v25 에서 고쳤는데 여기를 빠뜨렸다 —
-            // 두 자리가 같은 규칙을 써야 카드와 요약이 어긋나지 않는다.
-            kimbapMap[kbId] = DG_isLunchApplied(kbValues[kr][targetKbIdx]) ? 'O' : 'X';
-          }
-        }
+    var kbTodayISO = DG_todayISO(tz);
+    var kbNext = '';
+    for (var ki = 0; ki < lunchInfo.dates.length; ki++) {
+      var kd = lunchInfo.dates[ki];
+      if (kd >= kbTodayISO && (!kbNext || kd < kbNext)) kbNext = kd;
+    }
+    if (kbNext) {
+      // 판정은 이미 DG_isLunchApplied 를 거쳤다 — byId 에는 신청한 회차만 'O' 로 든다.
+      for (var kbId in lunchInfo.byId) {
+        kimbapMap[kbId] = lunchInfo.byId[kbId][kbNext] ? 'O' : 'X';
       }
     }
 
@@ -1313,7 +1333,7 @@ function doGet(e) {
     var sessionLabels = labelInfo.map;
 
     // 김밥 — 회차별. 결과 카드의 한 줄(kimbapMap) 은 그대로 두고 이력을 더한다.
-    var lunchInfo = DG_readLunchByDate(ss, tz);
+    // lunchInfo 는 위 [김밥 탭] 에서 이미 읽었다 — 결과 카드와 같은 것을 쓴다.
     var lunchByDate = lunchInfo.byId;
 
     // 대상 표식
@@ -1417,6 +1437,9 @@ function doGet(e) {
       // 김밥 시트에서 읽은 회차 날짜. 동기화가 '시트에서 지워진 신청' 을
       // 가려내는 데 쓴다 — 신청자가 없는 회차도 들어 있어야 한다.
       lunchDates: lunchInfo.dates,
+      // 김밥을 못 읽었으면 왜인지 — 'no-sheet' · 'no-header' · 'no-dates' (v31).
+      // 동기화가 이것을 그대로 로그와 관리자 화면에 옮긴다.
+      lunchReason: lunchInfo.reason || '',
       // 과제 제출 목록. 인원마다 넣지 않고 따로 둔다 (대부분 몇 건 없다).
       homework: DG_readHomework(ss, tz),
       // 옛 동기화 스크립트 호환

@@ -400,6 +400,10 @@ for (const [col, sql, why] of [
 // 마지막에 dg_sync_log 에 남길 건수. 블록 안에서 세고 맨 끝에 한 줄로 쓴다.
 const counted = { lunch: 0, homework: 0, attendance: 0 };
 
+// 맨 끝 '✅ 동기화 완료' 바로 위에 한 번 더 말할 경고. 로그 끝만 보는 사람이 많다 —
+// 중간에 한 줄 찍고 끝나면, 김밥이 열흘 동안 얼어 있어도 아무도 못 본다(2026-10).
+const lateWarnings = [];
+
 console.log('▶ dg_members');
 const saved = await upsert('dg_members', members, 'cohort_id,name,phone');
 console.log(`   ${saved.length}명 반영`);
@@ -461,13 +465,44 @@ if (sessionRows.length) {
     ? gas.lunchDates
     : [...appliedByDate.keys()];
 
-  if (lunchRows.length) {
+  // **김밥 탭을 못 읽었는가.** GAS v31 부터는 이유(lunchReason)를 같이 준다.
+  // 그 전 GAS 라도 '읽은 회차가 하나도 없고 신청도 없다' 면 못 읽은 것이다 —
+  // 김밥 탭이 있는데 날짜 열이 하나도 없을 수는 없다.
+  //
+  // 못 읽었으면 **넣지도 지우지도 않는다.** 그게 안전장치다 — 못 읽었다고
+  // 다 지우면 전원의 김밥이 사라진다. 대신 **크게 말한다.** 예전에는 엉뚱한 안내
+  // ('v21 로 재배포 필요') 한 줄만 찍고 '✅ 동기화 완료' 로 끝나서, 김밥 탭 머리글이
+  // 6행으로 밀린 채 **열흘 동안** 새 신청이 안 들어오고 취소가 안 빠졌다(2026-10).
+  const LUNCH_REASONS = {
+    'no-sheet':  "'김밥' 이라는 탭이 없습니다 — 탭 이름을 확인하세요",
+    'no-header': "위 10줄 안에 'id' 머리글이 없습니다 — 위에 줄을 더 넣었는지 확인하세요",
+    'no-dates':  '날짜 머리글을 하나도 못 읽었습니다 — 10/18 꼴이어야 합니다',
+  };
+  const lunchUnread = !!gas.lunchReason
+    || (Array.isArray(gas.lunchDates) && !gas.lunchDates.length && !lunchRows.length);
+
+  if (lunchUnread) {
+    const why = LUNCH_REASONS[gas.lunchReason]
+      || '탭 이름이 김밥인지 · 위 10줄 안에 id 머리글이 있는지 · 날짜 머리글이 10/18 꼴인지 확인하세요';
+    const msg = `⚠️ 김밥 탭을 못 읽었습니다 — ${why}.`;
+    console.log('▶ dg_lunch');
+    console.log(`   ${msg}`);
+    console.log('      DB 의 김밥은 지난번 그대로 남습니다. 지우지 않습니다.');
+    lateWarnings.push(msg, '   DB 의 김밥은 지난번 그대로입니다 — 앱의 김밥 표시를 믿지 마세요.');
+    // '신청 0건' 과 '못 읽음' 을 가른다. 관리자 화면이 null 을 보고 빨갛게 알린다.
+    counted.lunch = null;
+  } else if (lunchRows.length) {
     console.log('▶ dg_lunch');
     await upsert('dg_lunch', lunchRows, 'cohort_id,member_id,session_date');
     console.log(`   ${lunchRows.length}건 반영`);
     counted.lunch = lunchRows.length;
+  } else if (!Array.isArray(gas.lunchDates)) {
+    // 아주 옛 GAS(v21 이전)는 회차별 김밥을 아예 주지 않는다.
+    console.log('▶ 김밥 건너뜀 — GAS 가 회차별 김밥을 주지 않는 옛 판입니다 (재배포 필요)');
   } else {
-    console.log('▶ 김밥 건너뜀 — GAS 가 lunchByDate 를 주지 않았습니다 (v21 로 재배포 필요)');
+    // 읽기는 했는데 신청이 하나도 없다 — 아래 정리가 옛 신청을 비운다.
+    console.log('▶ dg_lunch');
+    console.log('   신청 0건');
   }
 
   // 시트에서 지운 신청은 DB 에서도 지운다.
@@ -479,7 +514,8 @@ if (sessionRows.length) {
   // 옛 신청까지 지우면 이력이 사라진다 — 그건 시트가 '취소' 라고 말한 적이 없다.
   // (DRY RUN 은 위에서 이미 끝났다. 여기까지 왔으면 실제로 쓴다.)
   const rosterIds = new Set(saved.map(m => m.id));
-  if (lunchDates.length) {
+  // ⚠️ 못 읽었으면 정리를 하지 않는다 — 위 lunchUnread 주석.
+  if (!lunchUnread && lunchDates.length) {
     let removed = 0;
     for (const date of lunchDates) {
       const { data: have, error } = await sb.from('dg_lunch')
@@ -720,4 +756,8 @@ if (sheetDates.length) {
   }
 }
 
+if (lateWarnings.length) {
+  console.log('');
+  for (const line of lateWarnings) console.log(line);
+}
 console.log('\n✅ 동기화 완료');

@@ -61,7 +61,8 @@ const stubs = { Utilities, PropertiesService, SpreadsheetApp: SpreadsheetAppStub
 const sandbox = new Function(...Object.keys(stubs), `
   ${src}
   return { DG_isLunchApplied, DG_readLunchByDate, DG_normalizeId_, DG_TAB_LUNCH,
-           DG_checkHomeworkIds, DG_TAB_ROSTER, DG_TAB_HOMEWORK };
+           DG_checkHomeworkIds, DG_TAB_ROSTER, DG_TAB_HOMEWORK,
+           DG_findHeaderRow, DG_buildSessions };
 `)(...Object.values(stubs));
 
 // --- 신청인가 아닌가 -------------------------------------------------------
@@ -153,10 +154,71 @@ ok('신청자가 없는 회차도 목록에 든다', (got.dates || []).some(d =>
 // v25 는 DG_readLunchByDate(회차별)만 고쳤다. doGet 안의 kimbapMap 은 아직
 // '값이 있기만 하면 O' 였다 — 결과 카드 한 줄, 조 요약의 🍙 N, 조원 명단의 🍙 가
 // 그 값을 쓴다. 안 한다고 X 를 적은 사람이 대상자로 세어져 김밥을 더 시킨다.
-ok('결과 카드의 김밥도 DG_isLunchApplied 를 쓴다',
-   /kimbapMap\[kbId\] = DG_isLunchApplied\(/.test(src));
+// v31 부터는 아예 회차별 김밥(DG_readLunchByDate — 판정은 DG_isLunchApplied)에서
+// 고른다. 같은 탭을 제 해석으로 따로 읽던 코드는 걷어냈다.
+ok('결과 카드의 김밥이 회차별 김밥에서 고른다',
+   /kimbapMap\[kbId\] = lunchInfo\.byId\[kbId\]\[kbNext\]/.test(src));
 ok("옛 '값이 있기만 하면 O' 가 남아 있지 않다",
    !/kimbapMap\[kbId\] = String\([^)]*\)\.trim\(\) !== ''/.test(src));
+
+// --- 머리글 줄이 밀려도 읽는다 (v31) ---------------------------------------
+//
+// 실제로 난 일: 김밥 탭 위에 줄이 하나 더 붙어 id 머리글이 **6행**으로 밀렸다.
+// 예전에는 위 5줄까지만 찾아서 김밥 탭을 통째로 못 읽었고, 동기화는 김밥을
+// 넣지도 지우지도 못한 채 열흘을 돌았다 — 새 신청은 안 들어오고 취소는 안 빠졌다.
+const lunchSS = (values) => ({
+  getSheetByName: (name) => name === sandbox.DG_TAB_LUNCH
+    ? { getDataRange: () => ({ getValues: () => values }) } : null,
+});
+const pad = (n) => Array.from({ length: n }, () => ['', '', '', '']);
+
+const row6 = sandbox.DG_readLunchByDate(lunchSS([
+  ...pad(5),                                      // 1~5행: 제목·안내
+  ['ID', '이름', '10/11', '10/18'],               // 6행 — 그 일이 난 자리
+  ['최병호1234', '최병호', '', 'O'],
+  ['홍명순5678', '홍명순', 'O', ''],               // 10/18 은 취소했다
+]), 'Asia/Seoul');
+ok('머리글이 6행이어도 읽는다 (그 사고)', !row6.reason && row6.dates.length === 2,
+   JSON.stringify({ reason: row6.reason, dates: row6.dates }));
+ok('6행 머리글 밑의 신청이 들어온다',
+   row6.byId['최병호1234']?.[row6.dates[1]] === 'O', JSON.stringify(row6.byId['최병호1234']));
+ok('6행 머리글 밑의 취소가 빠진다',
+   !row6.byId['홍명순5678']?.[row6.dates[1]], JSON.stringify(row6.byId['홍명순5678']));
+
+// --- 못 읽으면 왜인지 말한다 (v31) -----------------------------------------
+const tooDeep = sandbox.DG_readLunchByDate(lunchSS([
+  ...pad(10), ['ID', '이름', '10/18'], ['최병호1234', '최병호', 'O'],
+]), 'Asia/Seoul');
+ok('10줄 밖이면 머리글을 못 찾았다고 한다', tooDeep.reason === 'no-header',
+   String(tooDeep.reason));
+const noSheet = sandbox.DG_readLunchByDate({ getSheetByName: () => null }, 'Asia/Seoul');
+ok('김밥 탭이 없으면 그렇다고 한다', noSheet.reason === 'no-sheet', String(noSheet.reason));
+const noDates = sandbox.DG_readLunchByDate(lunchSS([
+  ['ID', '이름', '시월 십팔일'], ['최병호1234', '최병호', 'O'],
+]), 'Asia/Seoul');
+ok('날짜 머리글을 못 읽으면 그렇다고 한다', noDates.reason === 'no-dates', String(noDates.reason));
+ok('읽었으면 이유가 없다', !got.reason, String(got.reason));
+ok('못 읽었을 때도 모양은 같다 (동기화가 기대는 byId·dates)',
+   [tooDeep, noSheet, noDates].every(r => r.byId && Array.isArray(r.dates) && !r.dates.length));
+
+// --- 김밥 탭은 카드 쪽이 받던 날짜 꼴도 받는다 · 출석부는 그대로 -----------
+const lenient = sandbox.DG_readLunchByDate(lunchSS([
+  ['ID', '이름', '10/18(토)', '2026. 10. 25'], ['최병호1234', '최병호', 'O', 'O'],
+]), 'Asia/Seoul');
+ok("김밥 탭은 '10/18(토)' · '2026. 10. 25' 도 읽는다",
+   lenient.dates.length === 2 && lenient.dates[1] === '2026-10-25',
+   JSON.stringify(lenient.dates));
+const strict = sandbox.DG_buildSessions(['id', '10/18(토)', '2026. 10. 25', '11/01'], 'Asia/Seoul');
+ok('출석부 탭은 예전과 똑같이 읽는다 (회차가 갑자기 늘면 안 된다)',
+   strict.length === 1 && strict[0].key === '11/01', JSON.stringify(strict));
+ok('날짜처럼 생기지 않은 머리글은 김밥 탭에서도 안 읽는다',
+   sandbox.DG_buildSessions(['출석 1/2', '10/183'], 'Asia/Seoul', { lenient: true }).length === 0);
+
+// 정의(function DG_readLunchByDate(ss, tz))는 빼고 **부르는 곳**만 센다.
+ok('김밥 탭은 한 번만 읽는다 (카드와 목록이 같은 것을 본다)',
+   (src.match(/=\s*DG_readLunchByDate\(/g) || []).length === 1);
+ok('따로 읽던 날짜 해석이 남아 있지 않다', !/targetKbIdx|kbHeadersRaw/.test(src));
+ok('doGet 응답에 lunchReason 을 싣는다', /lunchReason:\s*lunchInfo\.reason/.test(src));
 
 // --- 응답에 실려 나가는가 ---------------------------------------------------
 ok('doGet 응답에 lunchDates 를 싣는다', /lunchDates:\s*lunchInfo\.dates/.test(src));
@@ -165,7 +227,7 @@ ok('호출부가 새 모양(byId)을 쓴다', /var lunchByDate = lunchInfo\.byId
 // 확인할 것은 '김밥 O/X 가 든 버전 이상인가' 와 '머리말과 상수가 같은가' 다.
 const ver = Number(src.match(/var DG_VERSION = (\d+);/)?.[1]);
 const headVer = Number(src.match(/전체 코드 \(v(\d+)\)/)?.[1]);
-ok('v30 이상 (결과 카드의 김밥까지 X 를 거르는 버전)', ver >= 30, `v${ver}`);
+ok('v31 이상 (김밥을 못 읽은 이유를 주는 버전)', ver >= 31, `v${ver}`);
 ok('머리말 버전과 DG_VERSION 이 같다', ver === headVer,
    `머리말 v${headVer} · DG_VERSION ${ver}`);
 

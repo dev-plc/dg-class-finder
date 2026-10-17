@@ -44,9 +44,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=127';
+} from './scripts/members-data.js?v=128';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=127';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=128';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -238,6 +238,19 @@ async function renderLastSync() {
     const when = new Date(last.finishedAt).toLocaleString('ko-KR',
         { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit',
           timeZone: 'Asia/Seoul' });
+
+    // **김밥을 못 읽었으면 빨갛게.** 동기화는 그때 김밥을 넣지도 지우지도 않고
+    // lunch 를 null 로 남긴다('신청 0건' 은 0 이다). 예전에는 이 줄이 '김밥 0' 을
+    // 그냥 숫자로 보여줘서, 김밥 탭 머리글이 6행으로 밀린 채 열흘 동안 새 신청이
+    // 안 들어오고 취소가 안 빠져도 아무도 몰랐다(2026-10).
+    if (last.lunch === null) {
+        el.className = 'sync-last warn';
+        el.textContent = `⚠️ ${when} 동기화에서 김밥을 못 읽었습니다 — 김밥 탭의 탭 이름 · ` +
+                         `위 10줄 안의 id 머리글 · 날짜 머리글(10/18 꼴)을 확인하세요. ` +
+                         `그때까지 앱의 김밥은 지난번 그대로입니다.`;
+        return;
+    }
+
     const counts = [
         last.attendance != null ? `출석 ${last.attendance}` : '',
         last.homework != null ? `과제 ${last.homework}` : '',
