@@ -199,20 +199,31 @@ await page.waitForTimeout(600);
 
 const y1 = await page.$eval('.pr-sheet[data-team="Y1"]', el => ({
   sub: el.querySelector('.pr-sub').textContent.trim(),
+  heads: [...el.querySelectorAll('thead th')].map(th => th.textContent.trim()),
   rows: [...el.querySelectorAll('tbody tr')].map(tr =>
     [...tr.querySelectorAll('td')].map(td => td.textContent.trim())),
 }));
-ok('김밥 신청자에게 O', y1.rows[0][2] === 'O' && y1.rows[1][2] === 'O' && y1.rows[2][2] === '',
-   y1.rows.slice(0, 3).map(r => r[2] || '·').join(','));
+// 칸은 **머리글 이름으로** 찾는다. 자리 번호로 찾으면 칸 차례를 바꿀 때마다
+// 검증이 엉뚱한 칸을 보고도 통과하거나 깨진다.
+const col = (name) => y1.heads.indexOf(name);
+const C_ATT = col('출석'), C_HW = col('과제'), C_LUNCH = col('김밥');
+
+// 이름 다음 차례 — 출석 · 과제 · 김밥 (김밥신청은 기본 꺼짐).
+ok('이름 다음 차례는 출석 · 과제 · 김밥',
+   y1.heads.slice(1, 5).join(',') === '이름,출석,과제,김밥', y1.heads.join(','));
+
+ok('김밥 신청자에게 O',
+   y1.rows[0][C_LUNCH] === 'O' && y1.rows[1][C_LUNCH] === 'O' && y1.rows[2][C_LUNCH] === '',
+   y1.rows.slice(0, 3).map(r => r[C_LUNCH] || '·').join(','));
 ok('머리말에 김밥 인원이 나온다', /김밥 2명/.test(y1.sub), y1.sub);
-ok("폼 표기 '제19강' 도 과제 ✓ 로", y1.rows[0][4] === '✓', JSON.stringify(y1.rows[0]));
-ok("'19 강' 도 같은 회차로 인식", y1.rows[2][4] === '✓', JSON.stringify(y1.rows[2]));
+ok("폼 표기 '제19강' 도 과제 ✓ 로", y1.rows[0][C_HW] === '✓', JSON.stringify(y1.rows[0]));
+ok("'19 강' 도 같은 회차로 인식", y1.rows[2][C_HW] === '✓', JSON.stringify(y1.rows[2]));
 // 예습과제('과제')만 낸 사람도 ✓ 다. 나온 주는 그것으로 끝이기 때문이다
 // (homeworkRule · docs/RULES.md). 예전에는 '과제+소감문' 만 찍어서 이 칸이
 // 빈칸이었고, 개별 조회·조별 매트릭스에서는 📝 로 보이는데 출석부에서만
 // 안 나온다는 제보가 그래서 나왔다.
-ok('예습과제만 낸 사람도 과제 ✓', y1.rows[3][4] === '✓', JSON.stringify(y1.rows[3]));
-ok('다른 강의 과제는 안 붙는다', y1.rows[4][4] === '', JSON.stringify(y1.rows[4]));
+ok('예습과제만 낸 사람도 과제 ✓', y1.rows[3][C_HW] === '✓', JSON.stringify(y1.rows[3]));
+ok('다른 강의 과제는 안 붙는다', y1.rows[4][C_HW] === '', JSON.stringify(y1.rows[4]));
 
 // 위쪽 줄이 종이와 같은 수를 말한다 — 종이는 종류를 안 가리므로 여기도 안 가린다.
 const info19 = await page.$eval('#prDataInfo', el => el.textContent.trim());
@@ -222,7 +233,7 @@ ok('위쪽 줄이 종이와 같은 수를 센다 (Y1 세 명)', /📝 과제 3�
 ok('제출이 있으면 경고가 없다',
    !(await page.$$eval('.pr-data-warn', els => els.map(e => e.textContent.trim()))).length,
    JSON.stringify(await page.$$eval('.pr-data-warn', els => els.map(e => e.textContent.trim()))));
-ok('출석 칸은 비어 있다 (현장에서 손으로)', y1.rows[0][3] === '', JSON.stringify(y1.rows[0]));
+ok('출석 칸은 비어 있다 (현장에서 손으로)', y1.rows[0][C_ATT] === '', JSON.stringify(y1.rows[0]));
 
 // --- 이름 칸: 직책 표시 · 가운데정렬 --------------------------------------
 const nameCells = await page.$$eval('.pr-sheet[data-team="Y1"] tbody .pr-name', els =>

@@ -44,9 +44,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=128';
+} from './scripts/members-data.js?v=129';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=128';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=129';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -2273,10 +2273,10 @@ function renderPrPreview() {
                     <span class="pr-nm">${attEsc(m.name)}<span class="pr-phone">${attEsc(m.phone || '')}</span></span>
                     ${prRoleLabel(m.role) ? `<span class="pr-role">${attEsc(prRoleLabel(m.role))}</span>` : ''}
                 </td>
-                ${prCol.lunch() ? `<td class="pr-c-mark">${prLunchSet.has(m._uuid) ? 'O' : ''}</td>` : ''}
-                ${prCol.lunchReq() ? '<td class="pr-c-wide"></td>' : ''}
                 <td class="pr-c-mark"></td>
                 ${prCol.hw() ? `<td class="pr-c-mark">${prHwAny(m._uuid) ? '✓' : ''}</td>` : ''}
+                ${prCol.lunch() ? `<td class="pr-c-mark">${prLunchSet.has(m._uuid) ? 'O' : ''}</td>` : ''}
+                ${prCol.lunchReq() ? '<td class="pr-c-wide"></td>' : ''}
                 ${prCol.memo() ? '<td class="pr-c-memo"></td>' : '<td class="pr-c-fill"></td>'}
             </tr>`).join('');
 
@@ -2298,10 +2298,12 @@ function renderPrPreview() {
                             <tr>
                                 <th class="pr-c-no">No.</th>
                                 <th class="pr-name">이름</th>
-                                ${prCol.lunch() ? '<th class="pr-c-mark">김밥</th>' : ''}
-                                ${prCol.lunchReq() ? '<th class="pr-c-wide">김밥신청</th>' : ''}
+                                <!-- 이름 다음 차례: 출석 · 과제 · 김밥 · 김밥신청.
+                                     ⚠️ 위 body 의 <td> 차례와 반드시 같아야 한다. -->
                                 <th class="pr-c-mark">출석</th>
                                 ${prCol.hw() ? '<th class="pr-c-mark">과제</th>' : ''}
+                                ${prCol.lunch() ? '<th class="pr-c-mark">김밥</th>' : ''}
+                                ${prCol.lunchReq() ? '<th class="pr-c-wide">김밥신청</th>' : ''}
                                 ${prCol.memo() ? '<th class="pr-c-memo">메모</th>' : '<th class="pr-c-fill"></th>'}
                             </tr>
                         </thead>
