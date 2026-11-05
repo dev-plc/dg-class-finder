@@ -26,9 +26,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=129';
+} from './scripts/members-data.js?v=130';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=129';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=130';
 
 // 1-1. 내 정보 기억
 //
@@ -408,7 +408,10 @@ async function renderMyAttendance(member) {
         // 것이 아니므로, 종류가 모자라다고 흐리게 그리는 것은 **결석한 주에만**
         // 뜻이 있다. 출석한 주에 예습과제를 낸 것은 모자란 게 아니라 다 한 것이다.
         const lacking = st.cls === 'absent' && partKinds.length > 0;
-        const hwIcon = makeupCell ? ''
+        // 노란 칸에는 **언제나** 📝 — 전체 출석표와 같은 모양이다.
+        // 시트의 '과제' 는 사람이 확인하고 찍은 값이라 제출 기록을 기다리지 않는다.
+        // 기록은 동기화로만 와서 몇 시간 늦는다 (docs/RULES.md '노란 칸의 📝').
+        const hwIcon = makeupCell ? '<span class="hw-badge">📝</span>'
                      : lacking ? '<span class="hw-partial">📝</span>'
                      : (r.homework || partKinds.length) ? '📝' : '';
         const badges = (r.lunch ? '🍙' : '') + hwIcon;
@@ -416,6 +419,7 @@ async function renderMyAttendance(member) {
                      isReplaced ? '결석 — 과제와 소감문으로 메움' : st.title,
                      r.lunch ? '🍙 김밥 신청' : '',
                      r.homework ? '📝 과제와 소감문 제출'
+                     : makeupCell ? '📝 시트에 과제로 처리됨 (제출 기록은 아직 앱에 없음)'
                      : lacking ? `📝 ${homeworkKindLabel(partKinds)} 제출 (결석을 메우려면 과제와 소감문)`
                      : partKinds.length ? `📝 ${homeworkKindLabel(partKinds)} 제출` : '']
                     .filter(Boolean).join(' · ');
@@ -559,8 +563,8 @@ async function renderMyHomework(member, attRows = []) {
     //
     // **무엇을 요구하는지는 그 칸의 표기가 정한다** — homeworkRule() 한 곳에서.
     //   'full' 결석(X) → '과제+소감문' 이라야 인정된다 (공지 규칙 5)
-    //   'any'  나온 주(O·과제) → 예습과제만 내면 끝. 종류를 안 가린다
-    //   'none' 빈칸 · − · 돌봄 · ◎ → 묻지 않는다
+    //   'any'  나온 주(O·돌봄) → 예습과제만 내면 끝. 종류를 안 가린다
+    //   'none' 과제 · 빈칸 · − · ◎ → 묻지 않는다 ('과제' 는 시트가 이미 확인했다)
     //
     // 빈칸을 안 묻는 것이 핵심이다. 빈칸은 '합류 전' 이거나 '하차 기간' 이거나
     // '아직 저장 전' 인데 앱은 셋을 구별할 수 없고 셋 다 요구할 근거가 없다.

@@ -11,8 +11,8 @@
 // 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=129';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=129';
+import { matches as hangulMatches } from './hangul.js?v=130';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=130';
 
 export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
 
@@ -1059,6 +1059,10 @@ export function isFullHomework(kind) {
  * **돌봄은 'any' 다.** 그 자리에 있었으므로 예습과제는 낼 수 있고, 내야 한다.
  * 소감문은 결석을 메우는 것이라 묻지 않는다.
  *
+ * **'과제' 는 'none' 이다.** 시트가 이미 과제+소감문을 확인하고 찍은 값이다.
+ * 제출 기록(dg_homework)은 동기화로만 와서 몇 시간 늦는다 — 그 사이 'any' 로
+ * 읽으면 칸은 '과제' 인데 목록은 '예습과제 안 냄' 이라고 말했다.
+ *
  * −(수업 없음) · ◎(지난 기수 이수) 는 사람이 시트에 일부러 넣은 예외 표기다.
  * 예외라고 적어 둔 칸에 과제를 묻지 않는다. 뜻을 모르는 그 밖의 표기도 같다.
  *
@@ -1067,8 +1071,10 @@ export function isFullHomework(kind) {
  *    지난 회차를 채우면 창 자체가 1주차로 밀려 무력해졌다.
  */
 export function homeworkRule(status) {
+  // '과제' 가 isPresent 보다 먼저다 — isPresent 는 '과제' 도 출석으로 센다.
+  if (isMakeup(status)) return 'none';                      // 과제 (시트가 확인함)
   if (isAbsent(status)) return 'full';                      // X
-  if (isPresent(status) || isCare(status)) return 'any';    // O · 과제 · 돌봄
+  if (isPresent(status) || isCare(status)) return 'any';    // O · 돌봄
   return 'none';                                            // 빈칸 · − · ◎
 }
 

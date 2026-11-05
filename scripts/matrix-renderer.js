@@ -9,7 +9,7 @@
 // 노란 '과제' 칸은 두 갈래로 들어온다 — 시트가 적어 준 '과제' 와, 앱이 X + 과제제출을
 // 보고 스스로 칠하는 것. 둘 다 makeup 이라 모양이 같다. 뜻과 셈법은 docs/RULES.md.
 
-import { compareLeadFirst, getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=129';
+import { compareLeadFirst, getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=130';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -141,13 +141,18 @@ export function renderTeamMatrixHTML(teamName, members, extras, opts = {}) {
             // 요구할 것이 아니므로, '종류가 모자라다' 고 흐리게 그리는 것은
             // **결석한 칸에만** 뜻이 있다. 출석한 주의 예습과제는 다 한 것이다.
             const lacking = !c.isUpcoming && st.cls === 'absent' && partKinds.length > 0;
-            const hwIcon = homework ? (makeupCell ? '<span class="hw-badge">📝</span>' : '📝')
+            // 노란 칸에는 **언제나** 📝 — 제출 기록을 기다리지 않는다. 시트의 '과제' 는
+            // 사람이 확인하고 찍은 값이고, 기록은 동기화로만 와서 몇 시간 늦는다.
+            // 그 사이 📝 가 없으면 '과제 처리됐는데 아이콘이 없다' 가 된다 (docs/RULES.md).
+            const hwIcon = makeupCell ? '<span class="hw-badge">📝</span>'
+                         : homework ? '📝'
                          : lacking ? '<span class="hw-partial">📝</span>'
                          : partKinds.length ? '📝' : '';
             const badges = (lunch ? '🍙' : '') + hwIcon;
             const tip = [m.name, c.key, c.name, st.title,
                          lunch ? '🍙 김밥 신청' : '',
                          homework ? '📝 과제+소감문 제출'
+                         : makeupCell ? '📝 시트에 과제로 처리됨 (제출 기록은 아직 앱에 없음)'
                          : lacking ? `📝 ${homeworkKindLabel(partKinds)} 제출 (결석을 메우려면 과제+소감문)`
                          : partKinds.length ? `📝 ${homeworkKindLabel(partKinds)} 제출` : '']
                         .filter(Boolean).join(' · ');

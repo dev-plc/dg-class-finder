@@ -44,9 +44,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=129';
+} from './scripts/members-data.js?v=130';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=129';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=130';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -691,7 +691,9 @@ async function showMemberDetail(member) {
                 // 결석을 메우는 것이지 나온 주에 요구할 것이 아니다.
                 const partKinds = r.homework ? [] : (r.homeworkKinds || []);
                 const lacking = st.cls === 'absent' && partKinds.length > 0;
-                const hwIcon = makeupCell ? ''
+                // 노란 칸에는 언제나 📝 — 조원 화면·전체 출석표와 같다. 시트의 '과제' 는
+                // 제출 기록을 기다리지 않는다 (docs/RULES.md '노란 칸의 📝').
+                const hwIcon = makeupCell ? '<span class="hw-badge">📝</span>'
                              : lacking ? '<span class="hw-partial">📝</span>'
                              : (r.homework || partKinds.length) ? '📝' : '';
                 const badges = (r.lunch ? '🍙' : '') + hwIcon;
@@ -701,6 +703,7 @@ async function showMemberDetail(member) {
                 const hiddenClass = rank >= 10 ? ' md-hidden md-att-hidden' : '';
                 const tip = r.upcoming ? '아직 안 온 회차'
                           : isReplaced ? '결석 — 과제와 소감문으로 메움'
+                          : makeupCell && !r.homework ? `${st.title} — 시트에 과제로 처리됨 (제출 기록은 아직 앱에 없음)`
                           : lacking ? `${st.title} — ${homeworkKindLabel(partKinds)} 제출 (메우려면 과제와 소감문)`
                           : partKinds.length ? `${st.title} — ${homeworkKindLabel(partKinds)} 제출`
                           : st.title;

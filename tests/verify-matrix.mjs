@@ -207,6 +207,8 @@ const cellsOf = (rowIdx) => page.$$eval(
   els => els.map(e => ({
     status: e.querySelector('.mx-status')?.textContent.trim() || '',
     badges: e.querySelector('.mx-badges')?.textContent.trim() || '',
+    hwBadge: !!e.querySelector('.mx-badges .hw-badge'),
+    tip: e.title || '',
     cls: e.className,
   })));
 
@@ -260,7 +262,8 @@ ok('번호가 없는 사람은 이름만 (빈 칸이 안 붙는다)',
 
 const r1 = await cellsOf(rowOf('하관리자'));   // u1 — D[0] 김밥 + 1강 과제
 ok('신청·제출한 주차에 🍙📝 둘 다', r1[0].badges === '🍙📝', JSON.stringify(r1.slice(0, 3)));
-ok('다른 주차엔 뱃지 없음', r1.slice(1).every(c => c.badges === ''),
+// D[4] 는 시트가 '과제' 로 바꿔 둔 칸이라 따로 본다 (바로 아래).
+ok('다른 주차엔 뱃지 없음', r1.slice(1).every((c, i) => i + 1 === 4 || c.badges === ''),
    JSON.stringify(r1.slice(1, 4)));
 
 // 시트가 '과제' 로 바꿔 둔 칸 (D[4]) 과, 앱이 X+과제제출로 칠하는 칸(u3 의 D[2]).
@@ -269,6 +272,13 @@ ok("시트의 '과제' 는 노란 칸이 된다",
    /\bmakeup\b/.test(r1[4].cls) && r1[4].status === '과제',
    `${r1[4].cls} / ${r1[4].status}`);
 ok("파란 '그 밖의 표기'(special) 로 새지 않는다", !/special/.test(r1[4].cls), r1[4].cls);
+// u1 은 D[4] 강의(4강) 제출 기록이 **없다** — 동기화가 아직 안 가져온 것과 같다.
+// 시트가 확인한 칸이므로 📝 는 기록을 기다리지 않는다 (docs/RULES.md '노란 칸의 📝').
+// 예전에는 기록이 있을 때만 붙어서 '과제 처리됐는데 아이콘이 없다' 는 제보가 나왔다.
+ok("기록 없는 '과제' 칸에도 노란 📝", r1[4].hwBadge && r1[4].badges === '📝',
+   JSON.stringify(r1[4]));
+ok("툴팁이 '시트에 과제로 처리됨' 이라고 가른다",
+   /시트에 과제로 처리됨/.test(r1[4].tip) && !/과제\+소감문 제출/.test(r1[4].tip), r1[4].tip);
 
 const r2 = await cellsOf(rowOf('조원02'));   // u2 — D[2] 김밥만 · 1강은 과제만 냈다
 ok('김밥만 신청한 주차엔 🍙 만', r2[2].badges === '🍙',
@@ -285,6 +295,9 @@ ok("폼 표기 '제2강' 도 2강 칸에 📝", r3[2].badges === '📝', JSON.st
 ok('시트발 과제와 앱이 칠한 과제가 같은 모양',
    r3[2].status === '과제' && /\bmakeup\b/.test(r3[2].cls),
    `${r3[2].cls} / ${r3[2].status}`);
+ok('두 갈래의 📝 도 같은 모양 (노란 뱃지)', r3[2].hwBadge && r1[4].hwBadge,
+   JSON.stringify([r3[2], r1[4]]));
+ok('기록이 있으면 툴팁은 제출', /과제\+소감문 제출/.test(r3[2].tip), r3[2].tip);
 
 const r4 = await cellsOf(rowOf('조원04'));   // u4 — 김밥 취소 + '자유교재' 과제
 ok('applied=false 는 🍙 안 뜸', !r4.some(c => c.badges.includes('🍙')),

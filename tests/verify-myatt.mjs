@@ -517,6 +517,41 @@ ok('돌봄인 주도 예습과제만 내면 빠진다',
    caredTodo.chips.length === 0 && !/제출하지 않은/.test(caredTodo.title), caredTodo.title);
 await cared.context.close();
 
+// 시트가 '과제' 로 바꿔 둔 칸 — 제출 기록이 앱에 **아직 없어도** 📝 가 붙고,
+// '안 낸 과제' 로 묻지 않는다. 기록(dg_homework)은 동기화로만 와서 몇 시간 늦는다.
+// 제보: '8강 과제 처리됐는데 과제 아이콘은 없어' (docs/RULES.md '노란 칸의 📝').
+const MAKEUP_ATT = [
+  { session_date: SEVEN[0].session_date, status: '과제' },   // 기록 없음
+  { session_date: SEVEN[1].session_date, status: '과제' },   // 기록 있음
+  { session_date: SEVEN[2].session_date, status: 'O' },      // 아무것도 안 냄 → 묻는다
+];
+const mk = await openApp(SEVEN, [
+  { member_id: 'u1', lecture: '2강', kind: '과제+소감문', content: '', submitted_at: null },
+], MAKEUP_ATT);
+await lookup(mk.page, '김조원', '1111');
+const mkChips = await mk.page.evaluate(() =>
+  [...document.querySelectorAll('#myAttendanceGrid .att-chip')].map(c => ({
+    name: c.querySelector('.att-name')?.textContent.trim(),
+    cls: c.className,
+    badges: c.querySelector('.att-badges')?.textContent.trim(),
+    hwBadge: !!c.querySelector('.att-badges .hw-badge'),
+    tip: c.title,
+  })));
+const chipOf = (n) => mkChips.find(c => c.name === n) || {};
+ok("기록 없는 '과제' 칸에도 노란 📝",
+   /\bmakeup\b/.test(chipOf('1강').cls) && chipOf('1강').hwBadge && chipOf('1강').badges === '📝',
+   JSON.stringify(chipOf('1강')));
+ok("툴팁이 '시트에 과제로 처리됨' 이라고 가른다",
+   /시트에 과제로 처리됨/.test(chipOf('1강').tip), chipOf('1강').tip);
+ok("기록 있는 '과제' 칸도 노란 📝 (툴팁은 제출)",
+   chipOf('2강').hwBadge && /과제와 소감문 제출/.test(chipOf('2강').tip), JSON.stringify(chipOf('2강')));
+const mkTodo = await todoOf(mk.page);
+ok("'과제' 칸은 안 낸 과제로 묻지 않는다",
+   !mkTodo.chips.some(c => /^[12]강/.test(c)), mkTodo.chips.join(','));
+ok('나온 주에 아무것도 안 냈으면 여전히 묻는다', mkTodo.chips.join(',') === '3강',
+   mkTodo.chips.join(','));
+await mk.context.close();
+
 // ==========================================================================
 // 3-2-2. 김밥 요약 — 접기·펼치기와 '다가오는 회차'
 //
