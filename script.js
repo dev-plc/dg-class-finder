@@ -12,7 +12,9 @@ import {
     getMyHomework,
     getSession,
     setSession,
+    ensureSession,
     compareLeadFirst,
+    getTeamAttendance,
     getTeamExtras,
     getUpcomingLunches,
     homeworkKindLabel,
@@ -21,14 +23,14 @@ import {
     isClassSession,
     isPastSession,
     isPresent,
-    refreshAttendance,
+    loadAttendanceForSession,
     saveAttendance,
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=130';
+} from './scripts/members-data.js?v=131';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=130';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=131';
 
 // 1-1. 내 정보 기억
 //
@@ -277,16 +279,11 @@ function displayResult(member) {
     if (isTutor && member.team && memberListContainer) {
         // 지금 누구를 보고 있는지 기억해 둔다. 배경 갱신이 끝나면 이 값으로 다시 그린다.
         shownMember = member;
-        renderTeamMembers(getTeamMembers(member.team), member.team, member.role);
-
-        // 출결의 원본은 시트다. DB 는 동기화 간격만큼 뒤처지므로, 조원 명단을
-        // 열 때는 원본을 읽어 방금 체크한 것이 보이게 한다.
-        // 회차 목록도 같이 오므로 왕복은 한 번이면 된다.
-        refreshAttendance()
-            .then(() => renderTeamMembers(getTeamMembers(member.team), member.team, member.role))
-            .catch(err => console.log("출결 최신화 실패, 마지막 값 표시:", err));
+        showTeamAttendance();
     } else {
         shownMember = member;
+        // 조장 명단을 받던 중이었으면 그 응답은 버린다 — 조원 화면에 명단이 뜨면 안 된다.
+        teamAttToken++;
     }
 
     // 본인 출석 현황은 조장·조원 모두에게 보여준다.
@@ -302,6 +299,67 @@ function displayResult(member) {
 
 // 지금 결과 카드에 떠 있는 사람. 배경 갱신이 끝나면 이 값으로 다시 그린다.
 let shownMember = null;
+
+// 6-0. 조원 명단의 출결 — DB 에서 **한 조 · 한 회차**만
+//
+// 예전에는 GAS 로 시트 전체(261명 × 39회차, 탭 넷)를 읽었다. 한 번에 11~102초.
+// 그동안 로딩 표시가 없어서 조장은 빈 명단에 체크를 시작했고, 응답이 오면 명단을
+// 다시 그리면서 **그 체크가 말없이 사라졌다.** 회차도 그 응답이 와야 정해져서,
+// 화면에는 11/01 이 보이는데 저장하면 '회차를 알 수 없어' 가 떴다.
+//
+// 지금은 회차를 먼저 정하고(ensureSession — 캐시로 즉시), 그 회차의 이 조만
+// DB 에서 읽는다. 받는 동안은 체크·저장을 막고 그렇다고 말한다.
+//
+//   state  'loading' 받아 오는 중 — 체크박스 비활성, 저장 막음
+//          'ready'   받아 왔다
+//          'error'   못 받았다 — 다시 시도 버튼. 저장은 **계속 막는다**:
+//                    빈 명단을 그대로 저장하면 전원이 X 로 나간다
+const teamAtt = { team: '', session: '', state: 'loading' };
+// 이 페이지에서 한 번 받아 온 (조, 회차). 다시 그릴 때는 기다리지 않고 바로 그리고
+// 뒤에서 조용히 새로 읽는다 — 배경 갱신 때마다 명단이 '불러오는 중' 으로 깜빡이지 않게.
+const teamAttLoaded = new Set();
+let teamAttToken = 0;
+let teamAttSaving = false;
+
+function showTeamAttendance() {
+    const member = shownMember;
+    if (!member || !member.team) return;
+    const team = member.team;
+    const session = ensureSession();
+    const key = `${team}|${session}`;
+    const had = teamAttLoaded.has(key);
+
+    teamAtt.team = team;
+    teamAtt.session = session;
+    // 회차가 하나도 없으면 받아 올 것도 없다 — 그대로 그린다 (선택칸도 숨는다).
+    teamAtt.state = (had || !session) ? 'ready' : 'loading';
+    renderTeamMembers(getTeamMembers(team), team, member.role);
+    if (!session) return;
+
+    // 그새 다른 사람을 조회했거나 회차를 바꿨으면 늦게 온 응답은 버린다.
+    const token = ++teamAttToken;
+    // 배경 갱신이 shownMember 를 같은 사람의 새 객체로 바꿔 둘 수 있다 — 아이디로 견준다.
+    const redraw = () => {
+        const cur = shownMember;
+        if (!cur || cur.id !== member.id) return;
+        renderTeamMembers(getTeamMembers(cur.team), cur.team, cur.role);
+    };
+    loadAttendanceForSession(session, { members: getTeamMembers(team) })
+        .then(() => {
+            teamAttLoaded.add(key);
+            if (token !== teamAttToken) return;
+            teamAtt.state = 'ready';
+            redraw();
+        })
+        .catch(err => {
+            console.log('조 출결 조회 실패:', err);
+            if (token !== teamAttToken) return;
+            // 이미 받아 둔 값으로 그려 놨으면 그대로 둔다 — 뒤에서 새로 읽던 것뿐이다.
+            if (had) return;
+            teamAtt.state = 'error';
+            redraw();
+        });
+}
 
 // 6-1. 회차 선택
 //
@@ -320,6 +378,8 @@ function renderSessionPicker() {
     }
 
     row.style.display = 'flex';
+    // 늘 앱이 쥔 회차에 selected 를 붙인다. 안 붙이면 브라우저가 첫 항목을 보여줘서
+    // **보이는 회차와 저장될 회차가 달라진다** (ensureSession 이 비지 않게 정한다).
     const current = getSession();
 
     // 최근 회차를 위로 (조장은 대개 방금 지난 회차를 본다)
@@ -742,19 +802,43 @@ function setMyHwFold(hidden, open) {
     btn.textContent = open ? `↑ 최근 ${MY_HW_OPEN}건만 보기` : `↓ 이전 ${hidden}건 더 보기`;
 }
 
-// 6-2. 조 요약 — 총원 · 출석 · 결석 · 김밥
+// 6-2. 조 요약 — 총원 · 출석 · 결석 · 미입력 · 그 외 · 김밥
 //
-// '돌봄' 같은 시트 표기는 출석도 결석도 아니라서 따로 센다.
+// **카드는 저장된 값이다.** 아래 저장 줄은 지금 체크한 값이라 둘이 다른 것이 정상이다 —
+// 맨 위에 '11/01 저장된 출석' 이라고 적는 까닭이다. 안 적으면 체크 다섯 개를 해 둔
+// 조장이 카드의 '출석 0' 을 보고 고장으로 읽는다. 저장하면 카드가 다시 그려진다.
+//
+// 빈칸은 '미입력' 으로 따로 센다. '그 외' 에 섞으면 '아직 안 찍음' 과 시트의
+// 돌봄 · − · ◎ 가 한 숫자가 된다. '돌봄' 같은 표기는 출석도 결석도 아니라서 '그 외'.
 // 결석으로 묶으면 조장이 "왜 결석이 이렇게 많지" 하고 잘못 읽는다.
 // '과제'(과제+소감문으로 인정)는 출석에 든다 — docs/RULES.md.
+//
+// 칸은 여섯 개로 고정이다 (0 이어도 둔다). 수에 따라 칸이 생겼다 없어지면
+// 3칸 격자에서 한 칸이 둘째 줄에 혼자 남고, 같은 자리에 다른 숫자가 온다.
 function renderTeamSummary(members) {
     const el = document.getElementById('teamSummaryCard');
     if (!el) return;
 
+    const s = getSessions().find(x => x.date === getSession());
+    const label = s ? s.key : '';
+
+    if (teamAtt.state === 'loading') {
+        el.innerHTML = `<div class="summary-status" role="status">⏳ ${escapeHtml(label)} 출석 불러오는 중…</div>`;
+        return;
+    }
+    if (teamAtt.state === 'error') {
+        el.innerHTML = `<div class="summary-status error" role="alert">
+            출석을 불러오지 못했습니다
+            <button type="button" class="summary-retry" data-team-att-retry>다시 시도</button>
+        </div>`;
+        return;
+    }
+
     const up = (v) => String(v || '').trim().toUpperCase();
     const present = members.filter(m => isPresent(m.attendance)).length;
     const absent = members.filter(m => isAbsent(m.attendance)).length;
-    const other = members.length - present - absent;
+    const blank = members.filter(m => up(m.attendance) === '').length;
+    const other = members.length - present - absent - blank;
     const kimbap = members.filter(m => up(m.lunch) === 'O').length;
 
     const stat = (cls, value, label) => `
@@ -763,11 +847,25 @@ function renderTeamSummary(members) {
             <div class="stat-label">${label}</div>
         </div>`;
 
-    el.innerHTML = stat('', members.length, '총원')
+    el.innerHTML = `<div class="summary-head">${escapeHtml(label)} 저장된 출석</div>`
+        + stat('', members.length, '총원')
         + stat('present', present, '✅ 출석')
         + stat('absent', absent, '❌ 결석')
-        + (other ? stat('special', other, '📌 그 외') : '')
+        + stat('blank', blank, '⬜ 미입력')
+        + stat('special', other, '📌 그 외')
         + stat('lunch', kimbap, '🍙 김밥');
+}
+
+// 같은 조 · 같은 회차를 다시 그릴 때 **아직 저장하지 않은 체크**를 건진다.
+// 배경 갱신·늦게 온 응답이 명단을 다시 그려도 조장이 해 둔 체크가 사라지면 안 된다.
+function pendingChecks(listElement, teamName, session) {
+    const keep = new Map();
+    if (listElement.dataset.team !== teamName || listElement.dataset.session !== session) return keep;
+    for (const cb of attendanceChecks()) {
+        if (cb.disabled) continue;
+        if ((cb.checked ? '1' : '0') !== cb.dataset.initial) keep.set(cb.dataset.id, cb.checked);
+    }
+    return keep;
 }
 
 // 7. 조원 목록 그리기
@@ -792,6 +890,16 @@ function renderTeamMembers(members, teamName, role) {
     renderSessionPicker();
     renderTeamSummary(members);
 
+    // 받아 오는 중이거나 못 받았으면 체크를 막는다. 모르는 값 위에 체크하게 두면
+    // 응답이 왔을 때 무엇을 남겨야 할지 알 수 없다 (예전에 체크가 사라진 자리).
+    const session = getSession();
+    const locked = teamAtt.state !== 'ready';
+    const keep = locked ? new Map() : pendingChecks(listElement, teamName, session);
+    listElement.dataset.team = teamName;
+    listElement.dataset.session = session;
+    listElement.classList.toggle('loading', locked);
+    listElement.setAttribute('aria-busy', teamAtt.state === 'loading' ? 'true' : 'false');
+
     // 역할(조장·부조장 등)을 맨 위로, 나머지는 **시트 순서**로.
     // 종이 출석부와 차례가 다르면 한 사람을 찾을 때마다 명단을 훑게 되고,
     // 그러다 옆줄에 체크한다 (members-data.js compareMemberOrder 주석).
@@ -799,19 +907,25 @@ function renderTeamMembers(members, teamName, role) {
 
     listElement.innerHTML = sortedMembers.map((m) => {
         const lunchIcon = (m.lunch && m.lunch.toUpperCase() === 'O') ? '<span style="margin-left:4px;" title="김밥 대상자">🍙</span>' : '';
-        const status = String(m.attendance || '').trim();
+        // 받아 오기 전에는 값을 그리지 않는다 — 캐시에 남은 옛 값이 맞는 줄 안다.
+        const status = locked ? '' : String(m.attendance || '').trim();
 
         // 시트에 '돌봄' · '-' 처럼 O/X 가 아닌 표기가 있으면 체크박스를 두지 않는다.
         // 체크박스로 두면 '체크 안 됨' 으로 보여서, 조장이 무심코 눌러 그 기록을
         // O 로 덮어 버린다. 바꿔야 한다면 시트에서 직접 고치는 게 맞다.
         const isPlain = status === '' || status.toUpperCase() === 'O' || status.toUpperCase() === 'X';
 
-        const checked = status.toUpperCase() === 'O';
+        // data-initial 은 O 인가 아닌가만 담아서 빈칸과 X 를 가르지 못한다.
+        // 저장할 때 GAS 가 '화면에 띄웠던 값' 과 시트를 견주므로(seen) 원값을 따로 둔다.
+        const initial = status.toUpperCase() === 'O';
+        const checked = keep.has(m.id) ? keep.get(m.id) : initial;
         const control = isPlain
-            ? `<input type="checkbox" ${checked ? 'checked' : ''}
+            ? `<input type="checkbox" ${checked ? 'checked' : ''} ${locked ? 'disabled' : ''}
                     class="attendance-check"
+                    data-id="${escapeAttr(m.id)}"
                     data-name="${escapeAttr(m.name)}" data-phone="${escapeAttr(m.phone)}"
-                    data-initial="${checked ? '1' : '0'}">`
+                    data-status="${escapeAttr(status.toUpperCase())}"
+                    data-initial="${initial ? '1' : '0'}">`
             : `<span class="attendance-badge" title="시트에 적힌 표기입니다. 바꾸려면 시트에서 고치세요.">${escapeHtml(status)}</span>`;
 
         return `
@@ -861,6 +975,22 @@ function refreshSaveBar() {
     const info = document.getElementById('attendanceSaveInfo');
     if (!bar || !btn || !info) return;
 
+    // 받아 오는 중 · 못 받음 · 저장 중에는 누를 수 없다. 배경 갱신이 명단을 다시
+    // 그려도(setupSaveBar → 여기) 저장 중인 버튼이 다시 살아나면 안 된다.
+    if (teamAttSaving) {
+        btn.disabled = true;
+        return;
+    }
+    if (teamAtt.state !== 'ready') {
+        info.textContent = teamAtt.state === 'loading'
+            ? '출석을 불러온 뒤 체크할 수 있습니다'
+            : '출석을 불러오지 못해 저장할 수 없습니다';
+        btn.disabled = true;
+        btn.textContent = teamAtt.state === 'loading' ? '불러오는 중…' : '저장할 수 없음';
+        bar.classList.remove('has-changes');
+        return;
+    }
+
     const checks = attendanceChecks();
     const present = checks.filter(cb => cb.checked).length;
     const changes = changedChecks().length;
@@ -888,7 +1018,11 @@ async function saveAttendanceChanges() {
     const session = getSession();
 
     const changed = changedChecks();
-    if (!changed.length || !btn) return;
+    if (!changed.length || !btn || teamAttSaving) return;
+
+    // 버튼이 막혀 있어야 여기 못 오지만, 받아 온 값이 없는 명단으로는 절대 쓰지 않는다 —
+    // 빈 명단을 그대로 저장하면 전원이 X 로 나간다.
+    if (teamAtt.state !== 'ready' || teamAtt.session !== session) return;
 
     if (!session) {
         alert('회차를 알 수 없어 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.');
@@ -904,11 +1038,17 @@ async function saveAttendanceChanges() {
     // 그래도 전원을 보내는 것이지 전원을 덮는 것은 아니다. ◎ · − · 돌봄 처럼
     // 사람이 시트에 직접 넣은 표기는 체크박스가 아니라 배지로 그려서 여기
     // 목록에 아예 들어오지 않는다 (위 renderTeamMembers 참고).
+    //
+    // seen = 화면에 띄웠던 값. DB 는 시트보다 최대 10분 뒤처져서, 그 사이 시트에 손으로
+    // 넣은 O 가 여기서는 빈칸으로 보인다. GAS 가 시트의 지금 칸과 견주어 다르면 쓰지
+    // 않고 changed 로 돌려준다 — 시트의 O 가 말없이 X 로 덮이던 구멍이다.
     const changes = attendanceChecks()
         .map(cb => ({
+            id: cb.dataset.id,
             name: cb.dataset.name,
             phone: cb.dataset.phone,
             status: cb.checked ? 'O' : 'X',
+            seen: cb.dataset.status || '',
         }));
 
     // **지난 회차**를 저장하려 하면 한 번 묻는다.
@@ -926,18 +1066,43 @@ async function saveAttendanceChanges() {
     }
 
     const prevText = btn.textContent;
+    teamAttSaving = true;
     btn.disabled = true;
     btn.textContent = '저장 중…';
 
     try {
-        const { saved, kept, missing } = await saveAttendance(session, changes);
+        const { saved, kept, missing, changed: sheetFirst, dbPushed } =
+            await saveAttendance(session, changes.map(({ id, ...rest }) => rest));
+        teamAttSaving = false;
 
-        // 이제 전원을 보내므로 기준선도 전원을 다시 뜬다.
-        // (kept·missing 은 실제로 안 바뀌었지만 체크 모양은 그대로 두는 게 맞다 —
-        //  다음 저장에서 다시 시도된다)
-        for (const cb of attendanceChecks()) cb.dataset.initial = cb.checked ? '1' : '0';
+        // 이제 전원을 보내므로 기준선도 전원을 다시 뜬다 — **보낸 값**으로. 저장 중에
+        // 배경 갱신이 명단을 다시 그렸을 수 있어 아이디로 찾는다.
+        // kept·missing 은 실제로 안 바뀌었으므로 seen(data-status)은 그대로 둔다.
+        // 시트가 먼저 바뀐 사람(changed)은 **시트 값으로** 다시 맞춘다.
+        const sent = new Map(changes.map(c => [c.id, c.status]));
+        const notWritten = new Set([...(kept || []).map(k => String(k).replace(/\(.*\)$/, '')),
+                                    ...(missing || []).map(String)]);
+        const sheetNow = new Map((sheetFirst || []).map(c => [c.id, String(c.current || '').toUpperCase()]));
+        for (const cb of attendanceChecks()) {
+            const id = cb.dataset.id;
+            if (sheetNow.has(id)) {
+                const cur = sheetNow.get(id);
+                cb.checked = cur === 'O';
+                cb.dataset.initial = cb.checked ? '1' : '0';
+                cb.dataset.status = cur;
+                continue;
+            }
+            if (!sent.has(id)) continue;
+            cb.dataset.initial = sent.get(id) === 'O' ? '1' : '0';
+            // 다시 저장할 때 자기가 방금 쓴 값에 걸리지 않게 seen 도 새 값으로.
+            if (!notWritten.has(id)) cb.dataset.status = sent.get(id);
+        }
 
         const notes = [];
+        if (sheetFirst && sheetFirst.length) {
+            notes.push(`시트에서 먼저 바뀐 ${sheetFirst.length}명은 그대로 두었습니다: `
+                + sheetFirst.map(c => `${c.name}(${c.current || '빈칸'})`).join(', '));
+        }
         if (kept && kept.length) notes.push(`다른 표기가 있어 두었습니다: ${kept.join(', ')}`);
         if (missing && missing.length) notes.push(`명단에 없습니다: ${missing.join(', ')}`);
 
@@ -946,11 +1111,15 @@ async function saveAttendanceChanges() {
 
         // 요약 숫자도 같이 맞춘다 (명단은 그대로 두고 카드만).
         if (shownMember) renderTeamSummary(getTeamMembers(shownMember.team));
-        if (info) info.textContent = `✅ ${session} ${saved}건 저장 완료`;
+        const key = getSessions().find(x => x.date === session)?.key || session;
+        // DB 밀어넣기가 실패했으면 이 기기는 맞지만 다른 기기는 10분 트리거 뒤에 본다.
+        if (info) info.textContent = `✅ ${key} ${saved}건 저장 완료`
+            + (dbPushed === false ? ' · 시트에 저장됨 · 앱 반영은 10분 안에' : '');
         if (notes.length) alert(notes.join('\n'));
 
-        setTimeout(refreshSaveBar, 2500);
+        setTimeout(refreshSaveBar, dbPushed === false ? 6000 : 2500);
     } catch (error) {
+        teamAttSaving = false;
         console.log('출결 저장 실패:', error);
         alert('출결 저장에 실패했습니다: ' + error.message);
         btn.textContent = prevText;
@@ -975,14 +1144,18 @@ async function saveAttendanceChanges() {
 // 대응이 어긋나고, 어긋나도 오류가 안 나서 📝 가 한 번도 안 뜬다.
 // ============================================================================
 
-// extras 는 getTeamExtras() 결과. 없으면 뱃지 없이 그대로 그린다
-// (모달을 여는 순간 표는 뜨고, 김밥·과제는 도착하는 대로 다시 그린다).
-function renderTeamMatrix(teamName, members, extras) {
+// extras 는 getTeamExtras(), history 는 getTeamAttendance() 결과.
+//
+// ⚠️ 칸 값은 **반드시 getStatus 로** 넘긴다 (CLAUDE.md 5). m.attendanceByDate 에는
+// 이제 읽은 회차만 들어 있어서, 안 넘기면 한 열만 차는데 오류가 안 난다.
+function renderTeamMatrix(teamName, members, extras, history) {
     const scrollEl = document.getElementById('matrixScroll');
     const titleEl = document.getElementById('matrixTitle');
     if (!scrollEl) return;
 
-    const { titleText, tableHTML, foldBtnHtml } = renderTeamMatrixHTML(teamName, members, extras);
+    const { titleText, tableHTML, foldBtnHtml } = renderTeamMatrixHTML(teamName, members, extras, {
+        getStatus: (m, date) => history.get(m._uuid)?.get(date) ?? '',
+    });
 
     // 버튼을 버리면 접힌 앞쪽 회차를 펼칠 길이 없다 (관리자 화면과 같게 둔다).
     if (titleEl) titleEl.innerHTML = escapeHtml(titleText) + (foldBtnHtml || '');
@@ -1011,13 +1184,42 @@ function wireMatrixFold(modalEl) {
 let matrixToken = 0;
 wireMatrixFold(document.getElementById('matrixModal'));
 
-function openMatrixModal() {
+// 받아 오는 동안 · 못 받았을 때의 모달 안.
+function renderMatrixStatus(teamName, state) {
+    const scrollEl = document.getElementById('matrixScroll');
+    const titleEl = document.getElementById('matrixTitle');
+    if (titleEl) titleEl.textContent = `👥 ${teamName} 전체 출석표`;
+    if (!scrollEl) return;
+    scrollEl.innerHTML = state === 'error'
+        ? `<div class="matrix-status error" role="alert">출석표를 불러오지 못했습니다
+               <button type="button" class="summary-retry" data-matrix-retry>다시 시도</button></div>`
+        : `<div class="matrix-status" role="status">⏳ 출석표 불러오는 중…</div>`;
+}
+
+function loadMatrix() {
     if (!shownMember || !shownMember.team) return;
     const team = shownMember.team;
     const members = getTeamMembers(team);
+    const modal = document.getElementById('matrixModal');
 
-    // 표부터 띄운다. 김밥·과제를 기다리느라 버튼이 먹통처럼 보이면 안 된다.
-    renderTeamMatrix(team, members, null);
+    // 칸 값(전 회차)도 DB 에서 받는다. 표를 먼저 띄우면 빈 칸이 '기록 없음' 으로 읽힌다.
+    renderMatrixStatus(team, 'loading');
+    const token = ++matrixToken;
+    Promise.all([getTeamAttendance(members), getTeamExtras(members)])
+        .then(([history, extras]) => {
+            // 그새 닫혔거나 다른 조를 열었으면 늦게 온 응답은 버린다.
+            if (token !== matrixToken || !modal?.classList.contains('active')) return;
+            renderTeamMatrix(team, members, extras, history);
+        })
+        .catch(err => {
+            console.log('조 출석표 조회 실패:', err);
+            if (token !== matrixToken || !modal?.classList.contains('active')) return;
+            renderMatrixStatus(team, 'error');
+        });
+}
+
+function openMatrixModal() {
+    if (!shownMember || !shownMember.team) return;
 
     const modal = document.getElementById('matrixModal');
     if (!modal) return;
@@ -1025,14 +1227,7 @@ function openMatrixModal() {
     modal.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
 
-    const token = ++matrixToken;
-    getTeamExtras(members)
-        .then(extras => {
-            // 그새 닫혔거나 다른 조를 열었으면 늦게 온 응답은 버린다.
-            if (token !== matrixToken || !modal.classList.contains('active')) return;
-            renderTeamMatrix(team, members, extras);
-        })
-        .catch(err => console.log('조 김밥·과제 조회 실패:', err));
+    loadMatrix();
 }
 
 function closeMatrixModal() {
@@ -1112,11 +1307,15 @@ function initEventListeners() {
                 return;
             }
             setSession(e.target.value);
-            if (shownMember) {
-                renderTeamMembers(getTeamMembers(shownMember.team), shownMember.team, shownMember.role);
-            }
+            // 그 회차를 DB 에서 읽는다 (이 페이지에서 이미 읽었으면 바로 그린다).
+            if (shownMember) showTeamAttendance();
         });
     }
+
+    // 조원 명단 '다시 시도'
+    document.getElementById('teamSummaryCard')?.addEventListener('click', (e) => {
+        if (e.target.closest('[data-team-att-retry]')) showTeamAttendance();
+    });
 
     // 출결 일괄 저장
     const saveBtn = document.getElementById('saveAttendanceBtn');
@@ -1160,6 +1359,7 @@ function initEventListeners() {
     if (matrixModal) {
         matrixModal.addEventListener('click', (e) => {
             if (e.target === matrixModal) closeMatrixModal();
+            if (e.target.closest('[data-matrix-retry]')) loadMatrix();
         });
     }
     document.addEventListener('keydown', (e) => {

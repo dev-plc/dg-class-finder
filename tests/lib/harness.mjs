@@ -102,3 +102,40 @@ export function makeReporter(title) {
 
   return { ok, done, results };
 }
+
+/**
+ * 가짜 dg_attendance — 앱이 보내는 PostgREST 조건을 **그대로 따라** 거른다.
+ *
+ *   member_id=eq.u1 · member_id=in.(u1,u2) · session_date=eq.YYYY-MM-DD
+ *
+ * v131 부터 조장 화면도 출결을 DB 에서 읽는다 (한 조 · 한 회차, 전체 출석표는 한 조 ·
+ * 전 회차). 조건을 무시하고 다 돌려주면 '한 회차만 묻는가' 를 검증할 수 없고,
+ * 다른 회차 값이 섞여 들어와도 통과한다.
+ *
+ * @param {URL} url
+ * @param {Array<{member_id, session_date, status}>} rows
+ */
+export function filterAttendance(url, rows) {
+  const p = url.searchParams;
+  let out = rows;
+  const mid = p.get('member_id') || '';
+  if (mid.startsWith('eq.')) out = out.filter(r => r.member_id === mid.slice(3));
+  if (mid.startsWith('in.(')) {
+    const ids = new Set(mid.slice(4, -1).split(','));
+    out = out.filter(r => ids.has(r.member_id));
+  }
+  const sd = p.get('session_date') || '';
+  if (sd.startsWith('eq.')) out = out.filter(r => r.session_date === sd.slice(3));
+  return out;
+}
+
+/** { '이름전화': { 'YYYY-MM-DD': status } } → dg_attendance 행. 빈 값은 행이 없는 것과 같다. */
+export function attendanceRowsFrom(members, byKey) {
+  const rows = [];
+  for (const m of members) {
+    for (const [date, status] of Object.entries(byKey[`${m.name}${m.phone}`] || {})) {
+      if (status !== '') rows.push({ member_id: m.id, session_date: date, status });
+    }
+  }
+  return rows;
+}

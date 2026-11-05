@@ -1,7 +1,7 @@
 // 전체 출석표에 김밥(🍙) · 과제(📝) 가 붙는지 검증.
 // Supabase / GAS 는 가짜 응답으로 대신한다 (컨테이너 밖으로 못 나간다).
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT, filterAttendance, attendanceRowsFrom } from './lib/harness.mjs';
 
 const PORT = 8093;
 const server = await serveRepo(PORT);
@@ -79,10 +79,13 @@ const { ok, done } = makeReporter('전체 출석표');
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 420, height: 860 } });
 const page = await context.newPage();
+// 오늘은 기기 날짜다 (v131 — GAS 의 today 를 더는 받지 않는다).
+await page.clock.setFixedTime(new Date('2026-08-12T09:00:00Z'));
 page.on('dialog', d => { console.log('   [dialog] ' + d.message()); d.dismiss().catch(() => {}); });
 page.on('console', m => { if (m.type() === 'error') console.log('   [console.error] ' + m.text()); });
 page.on('pageerror', e => console.log('   [pageerror] ' + e.message));
 
+const ATT_ROWS = attendanceRowsFrom(MEMBERS, ATT_BY_DATE);
 const restCalls = [];
 await page.route('**/rest/v1/**', route => {
   const url = new URL(route.request().url());
@@ -93,6 +96,8 @@ await page.route('**/rest/v1/**', route => {
     body = url.searchParams.get('select') === 'cohort_id' ? [{ cohort_id: COHORT }] : MEMBERS;
   } else if (table === 'dg_sessions') {
     body = SESSIONS;
+  } else if (table === 'dg_attendance') {
+    body = filterAttendance(url, ATT_ROWS);
   } else if (table === 'dg_lunch') {
     body = LUNCH.filter(r => r.applied !== false || !url.search.includes('applied=is.true'));
   } else if (table === 'dg_homework') {
@@ -101,18 +106,11 @@ await page.route('**/rest/v1/**', route => {
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 });
 
+// 출결 읽기는 DB 다. GAS(시트 전체)를 읽으면 실패로 센다 — 11~102초 걸리던 길이다.
+let gasGets = 0;
 await page.route('**/script.google.com/**', route => {
-  route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-    success: true, version: 23,
-    today: '2026-08-12',
-    currentSession: '2026-08-09',
-    sessions: SESSIONS.map(s => ({ key: s.label, date: s.session_date, label: s.name })),
-    data: MEMBERS.map(m => ({
-      id: `${m.name}${m.phone}`, name: m.name, phone: m.phone, team: m.team,
-      attendanceByDate: ATT_BY_DATE[`${m.name}${m.phone}`] || {},
-    })),
-    locationMap: {}, teamLinkMap: {}, cohortHint: COHORT,
-  }) });
+  if (route.request().method() === 'GET') gasGets++;
+  route.fulfill({ status: 500, contentType: 'application/json', body: '{"success":false}' });
 });
 
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
@@ -137,6 +135,15 @@ await page.waitForTimeout(400);
 
 const rows = await page.$$eval('.matrix-table tbody tr', els => els.length);
 ok('행 = 조원 30명', rows === 30, `${rows}행`);
+ok('출결을 GAS(시트 전체)로 읽지 않는다', gasGets === 0, `${gasGets}회`);
+// ⚠️ CLAUDE.md 5 — getStatus 를 안 넘기면 **한 열만** 찬다. 오류는 안 난다.
+// 출석 칸(O·X)이 든 열이 둘 이상이어야 한다.
+const filledCols = await page.$$eval('.matrix-table tbody tr:first-child td', els =>
+  els.filter(e => /\b(present|absent|makeup)\b/.test(e.className)).length);
+ok('전체 출석표가 여러 회차 열을 채운다 (한 열만 차면 실패)', filledCols >= 5, `${filledCols}열`);
+const teamAttQ = restCalls.filter(c => c.startsWith('dg_attendance') && c.includes('member_id=in.'));
+ok('전 회차는 조원만 한 번에 묻는다', teamAttQ.some(c => !c.includes('session_date=')),
+   teamAttQ.join(' | '));
 
 const heads = await page.$$eval('.matrix-table thead th', els =>
   els.map(e => ({

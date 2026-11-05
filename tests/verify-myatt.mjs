@@ -96,13 +96,10 @@ async function openApp(sessions, homework = HOMEWORK, att = null, lunch = null) 
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 
+  // 조회 화면은 출결을 GAS 로 읽지 않는다 (v131). 불리면 실패로 응답해, 기대는 곳이
+  // 남아 있으면 여기서 드러나게 한다.
   await page.route('**/script.google.com/**', route => {
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-      success: true, version: 24, today: TODAY,
-      currentSession: sessions[sessions.length - 1].session_date,
-      sessions: sessions.map(s => ({ key: s.label, date: s.session_date, label: s.name })),
-      data: [], locationMap: {}, teamLinkMap: {}, cohortHint: COHORT,
-    }) });
+    route.fulfill({ status: 500, contentType: 'application/json', body: '{"success":false}' });
   });
 
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });

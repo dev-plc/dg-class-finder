@@ -1188,9 +1188,11 @@ body.dark-mode .mx-cell.makeup { color: #fde68a; }
    제목에서 이 숫자들을 빼야 '전체 출석표' 버튼이 같은 줄에 들어간다.
    ============================================================ */
 .team-summary-card {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    /* 칸 여섯 개를 3칸 격자로 — 줄마다 셋씩 고르게. flex-wrap 이던 때는 폰에서
+       김밥 칸이 둘째 줄에 혼자 남았다. */
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px 8px;
     margin: 10px 0 14px;
     padding: 12px;
     background: var(--milk-beige);
@@ -1198,13 +1200,54 @@ body.dark-mode .mx-cell.makeup { color: #fde68a; }
     border-radius: 10px;
 }
 .team-summary-card .stat {
-    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 6px 10px;
-    min-width: 58px;
+    padding: 6px 4px;
+    min-width: 0;
 }
+/* '11/01 저장된 출석' — 카드가 저장된 값이라는 것. 아래 저장 줄(지금 체크한 값)과
+   숫자가 다른 것이 정상임을 글로 보인다. */
+.team-summary-card .summary-head {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.7;
+    color: var(--midnight-blue);
+}
+/* 불러오는 중 · 못 불러옴 */
+.team-summary-card .summary-status,
+.matrix-status {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 14px 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--midnight-blue);
+    text-align: center;
+}
+.team-summary-card .summary-status.error,
+.matrix-status.error { color: #dc2626; }
+.summary-retry {
+    padding: 6px 14px;
+    min-height: 36px;
+    background: var(--midnight-blue);
+    /* 다크모드에서는 --midnight-blue 가 밝은 색이 된다 — 글자는 배경 쪽 색으로 */
+    color: var(--milk-beige);
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.matrix-status { min-height: 120px; }
+/* 받아 오는 동안 명단은 흐리게 — 이름은 보이되 체크할 수 없다는 것이 보여야 한다. */
+.team-member-list-grid.loading { opacity: 0.45; }
+.team-member-list-grid.loading .attendance-check { cursor: not-allowed; }
 .team-summary-card .stat-value {
     font-size: 20px;
     font-weight: 700;
@@ -1221,6 +1264,7 @@ body.dark-mode .mx-cell.makeup { color: #fde68a; }
 .team-summary-card .stat.absent  .stat-value { color: #dc2626; }
 .team-summary-card .stat.special .stat-value { color: #2563eb; }
 .team-summary-card .stat.lunch   .stat-value { color: #d97706; }
+.team-summary-card .stat.blank   .stat-value { opacity: 0.55; }
 
 /* ============================================================
    본인 출석 현황

@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v31)
+// DGfinder — Google Apps Script 전체 코드 (v32)
 //
 // 이 파일은 GAS 에디터에 붙여넣는 내용의 사본이다 (버전 관리용).
 // 고칠 일이 있으면 여기서 고치고 GAS 로 옮긴 뒤, 반드시 아래 방식으로 재배포한다.
@@ -19,6 +19,17 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v32
+//   - **시트를 먼저 고친 칸을 덮지 않는다** — 저장 요청의 사람마다 seen(앱 화면에
+//     띄웠던 값)을 받아, 시트의 지금 칸과 다르면 쓰지 않고 changed 로 돌려준다.
+//     앱(v131~)은 출결을 DB 에서 읽는데 DB 는 시트보다 최대 10분 뒤처진다
+//     (10분 트리거). 그 사이 시트에 손으로 넣은 O 를 앱은 빈칸으로 보여주고,
+//     조장이 그대로 저장하면 X 가 나가 **시트의 O 가 말없이 덮였다.**
+//     이미 잡고 있는 잠금 안에서 견주므로 왕복이 늘지 않는다.
+//     seen 을 안 보내는 옛 화면에는 예전처럼 쓴다. 보내려는 값이 이미 시트에
+//     있으면(같은 값) 막을 까닭이 없으므로 쓴다.
+//   - 전원이 changed 여도 실패가 아니다 (success: true, saved: 0).
 //
 // v31
 //   - **머리글 줄을 위 10줄까지 찾는다** (예전 5줄). 김밥 탭 위에 줄이 하나 더
@@ -124,7 +135,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 31;
+var DG_VERSION = 32;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -696,7 +707,11 @@ function doPost(e) {
       if (DG_ALLOWED_STATUS.indexOf(status) === -1) {
         throw new Error("허용되지 않는 값입니다: '" + status + "'");
       }
-      entries.push({ id: name + phone, status: status });
+      // seen — 앱 화면에 띄웠던 값 (v32). 없으면(옛 화면) null 로 두고 견주지 않는다.
+      var rawSeen = incoming[i].seen;
+      var seen = (rawSeen === undefined || rawSeen === null)
+        ? null : String(rawSeen).trim().toUpperCase();
+      entries.push({ id: name + phone, status: status, seen: seen });
     }
 
     // ---- 잠금 -------------------------------------------------------------
@@ -753,9 +768,14 @@ function doPost(e) {
       // 시트에는 사람이 직접 넣은 '돌봄' · '-' 같은 표기가 있고, 앱은 그 뜻을
       // 모른다. 조장이 무심코 체크하면 그 기록이 O/X 로 덮여 사라진다.
       // 바꿔야 한다면 시트에서 직접 고치는 게 맞다.
+      //
+      // 앱이 본 값(seen)과 시트의 지금 칸이 다르면 쓰지 않는다 (v32). 앱은 DB 를
+      // 읽는데 DB 는 최대 10분 뒤처진다 — 그 사이 시트에 손으로 넣은 값을 앱은 모른다.
+      // 모르는 값을 덮지 않고 changed 로 돌려주면 앱이 시트 값으로 다시 그린다.
       var saved = [];
       var missing = [];
       var kept = [];
+      var changed = [];
       for (var k = 0; k < entries.length; k++) {
         var row = rowOf[entries[k].id];
         if (row === undefined) { missing.push(entries[k].id); continue; }
@@ -764,9 +784,16 @@ function doPost(e) {
         var current = cell instanceof Date
           ? Utilities.formatDate(cell, tz, 'yyyy-MM-dd')
           : String(cell == null ? '' : cell).trim();
+        var currentUp = current.toUpperCase();
 
-        if (DG_ALLOWED_STATUS.indexOf(current.toUpperCase()) === -1) {
+        if (DG_ALLOWED_STATUS.indexOf(currentUp) === -1) {
           kept.push(entries[k].id + '(' + current + ')');
+          continue;
+        }
+
+        if (entries[k].seen !== null && currentUp !== entries[k].seen
+            && currentUp !== entries[k].status) {
+          changed.push({ id: entries[k].id, current: currentUp });
           continue;
         }
 
@@ -790,16 +817,20 @@ function doPost(e) {
       }
 
       return DG_json({
-        success: saved.length > 0,
+        // 시트가 먼저 바뀐 칸(changed)은 실패가 아니다 — 지킨 것이다. 앱이 다시 그린다.
+        success: saved.length > 0 || changed.length > 0,
         version: DG_VERSION,
         session: target.date,
         saved: saved.length,
         missing: missing,
         // O/X 가 아닌 값이 있어 건드리지 않은 칸
         kept: kept,
+        // 시트가 앱이 본 값과 달라 쓰지 않은 칸 [{ id, current }] (v32)
+        changed: changed,
         dbPushed: pushed,
         dbError: pushError,
         message: saved.length ? '출석 저장 완료'
+               : changed.length ? '시트에서 먼저 바뀌어 두었습니다: ' + changed.map(function (c) { return c.id; }).join(', ')
                : kept.length ? '이미 다른 표기가 있어 두었습니다: ' + kept.join(', ')
                : 'ID 불일치'
       });

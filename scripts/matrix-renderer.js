@@ -1,15 +1,16 @@
 // 조 전체 출석표(매트릭스) — 조회 화면과 관리자 화면이 함께 쓴다.
 //
 // ⚠️ **칸 값을 어디서 읽는지가 이 파일의 전부다.** 기본값은 `m.attendanceByDate` 인데
-// 그 객체를 전 회차로 채우는 것은 `refreshAttendance()`(GAS 왕복) 뿐이고,
-// **관리자 화면은 그것을 부르지 않는다.** 새 화면에서 쓸 때는 `getStatus` 를 넘길 것.
-// 안 넘기면 값이 한 열만 차는데 오류가 안 나고, localStorage 캐시 때문에 개발 중엔
-// 되는 것처럼 보인다 — 확인은 시크릿 창에서. (자세히는 docs/HANDOVER.md)
+// 그 객체에는 `loadAttendanceForSession()` 이 읽은 회차만 들어 있다 — 전 회차로 채우는
+// 길은 없다 (예전 `refreshAttendance()` GAS 왕복은 v131 에서 없앴다). 그래서 쓰는 곳은
+// 두 화면 다 `getStatus` 를 넘긴다. 안 넘기면 값이 한 열만 차는데 오류가 안 나고,
+// localStorage 캐시 때문에 개발 중엔 되는 것처럼 보인다 — 확인은 시크릿 창에서.
+// (자세히는 docs/HANDOVER.md)
 //
 // 노란 '과제' 칸은 두 갈래로 들어온다 — 시트가 적어 준 '과제' 와, 앱이 X + 과제제출을
 // 보고 스스로 칠하는 것. 둘 다 makeup 이라 모양이 같다. 뜻과 셈법은 docs/RULES.md.
 
-import { compareLeadFirst, getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=130';
+import { compareLeadFirst, getSessions, getToday, homeworkKindLabel, isClassSession, isMakeup, isPresent, normalizeLecture } from './members-data.js?v=131';
 
 export function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, c => (
@@ -57,11 +58,11 @@ export function buildSessionColumns() {
  * 조 전체 출석표 HTML.
  *
  * ⚠️ 칸 값을 어디서 읽는지가 이 함수의 함정이다. 기본값은 `m.attendanceByDate`
- * 인데, **그 객체를 전 회차로 채우는 것은 `refreshAttendance()`(GAS 왕복) 뿐이다.**
- * 조회 화면(조장)은 조원 명단을 열 때 그것을 부르지만 **관리자 화면은 안 부른다** —
- * 거기서는 `loadAttendanceForSession()` 이 넣은 **한 회차**만 들어 있다.
+ * 인데, 그 객체에는 `loadAttendanceForSession()` 이 넣은 **읽은 회차만** 들어 있다.
+ * 조회 화면은 `getTeamAttendance()`, 관리자 화면은 `getAttendanceHistory()` 로 전 회차를
+ * 받아 넘긴다.
  *
- * 그래서 관리자처럼 다른 곳에서 쓸 때는 `getStatus` 를 반드시 넘긴다.
+ * 그래서 어디서 쓰든 `getStatus` 를 반드시 넘긴다.
  * 안 넘기면 나머지 열이 전부 `·`(기록 없음)로 나오는데 **오류가 안 나서 조용히
  * 틀린다.** 게다가 같은 브라우저로 조장 화면을 먼저 열었으면 localStorage 캐시
  * 덕에 맞아 보이므로, 확인은 반드시 **시크릿 창**에서 할 것.

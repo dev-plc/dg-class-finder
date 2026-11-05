@@ -7,16 +7,19 @@
 //   조회(명단·조·위치·배치도·안내방)  Supabase 가 원본. 시트에서 일 1회 동기화된다.
 //   출석                              시트가 원본. 쓰기는 GAS 로 가고, DB 는 비추기만 한다.
 //
-// 출석만 GAS 를 계속 쓰는 이유: DB 값은 시트보다 뒤처진다 (워크플로 2시간).
-// 조장이 조원 명단을 열 때는 시트에서 바로 읽어와야 방금 체크한 것이 보인다.
+// 출석 **읽기**도 DB 다 (v131). 예전에는 조장이 조원 명단을 열 때 GAS 로 시트
+// 전체를 읽었는데(refreshAttendance), 한 번에 11~102초가 걸렸다. DB 가 뒤처지는
+// 폭은 정해져 있다 — 앱에서 저장한 것은 GAS 가 그 자리에서 DB 에 밀고, 시트를
+// 손으로 고친 것은 10분 트리거(DG_pushToDb)가 옮긴다. 그 10분 사이에 시트를 먼저
+// 고친 칸은 저장할 때 GAS 가 '본 값(seen)' 과 견주어 지킨다 (saveAttendance).
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=130';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=130';
+import { matches as hangulMatches } from './hangul.js?v=131';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=131';
 
-export const MODULE_VERSION = 'dg members-data v1 (Supabase 조회 + GAS 출석)';
+export const MODULE_VERSION = 'dg members-data v2 (Supabase 조회·출석 읽기 + GAS 출석 쓰기)';
 
-// 출석 읽기·쓰기 전용. 조회 경로는 이 URL 을 타지 않는다.
+// 출석 쓰기(doPost) 전용. 읽기는 이 URL 을 타지 않는다 — doGet 은 동기화만 쓴다.
 const GAS_API_URL =
   'https://script.google.com/macros/s/AKfycbz1tpAmZB0NEHX0TppV-wrq7ud4IG5PmwukVNuZNT5y46tucKpSyRDnfjLosAyno90r2A/exec';
 
@@ -38,8 +41,7 @@ const state = {
   locationMap: {},
   teamLinks: {},
   sessions: [],     // [{ key:'11/02', date:'2025-11-02' }] — 연도는 GAS 가 확정한다
-  session: '',      // 지금 보고 있는 회차 (YYYY-MM-DD)
-  today: '',        // GAS 기준 오늘. 미래 회차를 거르는 데 쓴다.
+  session: '',      // 지금 보고 있는 회차 (YYYY-MM-DD). ensureSession() 이 채운다
   loaded: false,
 };
 const subscribers = new Set();
@@ -159,8 +161,7 @@ async function fetchFromServer(cohortId) {
     sbSelect(`dg_attendance?select=member_id,status,` +
              `dg_members!inner(cohort_id)&dg_members.cohort_id=eq.${enc}` +
              `&session_date=eq.${todayISO()}&order=member_id`),
-    // 회차 목록. 조원 화면이 본인 출석 그리드를 그릴 때 쓴다.
-    // 조장은 뒤에 GAS 에서 더 최신인 것으로 덮어쓴다.
+    // 회차 목록. 본인 출석 그리드 · 조장 회차 선택 · 전체 출석표가 쓴다.
     sbSelect(`dg_sessions?select=session_date,label,name&cohort_id=eq.${enc}&order=session_date`),
   ]);
 
@@ -207,13 +208,12 @@ export async function refresh() {
   const previous = state.cohortId;
   const fresh = await fetchFromServer(cohortId);
 
-  // 시트에서 읽어 둔 회차별 출결(attendanceByDate)은 이 응답에 없다.
-  // 그대로 갈아끼우면 화면이 붙들고 있던 회차별 값이 통째로 사라진다.
+  // 회차별로 읽어 둔 출결(attendanceByDate — loadAttendanceForSession 이 채운다)은
+  // 이 응답에 없다. 그대로 갈아끼우면 화면이 붙들고 있던 회차별 값이 통째로 사라진다.
   //
-  // 조장 화면은 곧바로 refreshAttendance() 를 다시 불러서 티가 안 났지만,
   // 관리자 출석 관리는 로드 시점 값을 스냅숏으로 떠 두기 때문에 여기서 비면
   // '아직 아무도 안 찍힘' 으로 보인다. 그 상태에서 일괄 버튼을 누르면
-  // 시트에 있던 기록이 통째로 덮인다.
+  // 시트에 있던 기록이 통째로 덮인다. 조장 화면도 다시 그릴 때 이 값을 쓴다.
   //
   // 기수가 바뀌었으면 이전 값은 남의 것이므로 옮기지 않는다.
   if (previous === cohortId) {
@@ -311,48 +311,6 @@ export function getTeamLink(teamName) {
 // ============================================================================
 
 /**
- * 시트에서 회차 목록과 출결을 통째로 다시 읽는다.
- *
- * 조장이 조원 명단을 열 때 한 번 부른다. DB 는 동기화 간격만큼 뒤처지므로
- * 방금 체크한 것을 보이게 하려면 원본을 읽어야 한다.
- * 회차 목록도 같이 오므로 GAS 왕복은 한 번이면 된다.
- */
-export async function refreshAttendance() {
-  const res = await fetch(`${GAS_API_URL}?t=${Date.now()}`);
-  const result = await res.json();
-  if (!result.success) throw new Error(result.message || '출결 조회 실패');
-
-  // 회차 — 연도는 GAS 가 확정해서 준다. 여기서 추측하지 않는다.
-  //
-  // GAS 의 label 이 강의명('18강')이고 key 가 'MM/DD' 다. Supabase 쪽은 이름이
-  // 반대(label=MM/DD, name=강의명)라 여기서 맞춰 준다. 안 맞추면 조장 화면에서
-  // 강의명이 통째로 사라지고 과제가 회차에 붙지 않는다.
-  state.sessions = (result.sessions || []).map(s => ({
-    key: s.key,
-    date: s.date,
-    name: s.label || '',
-  }));
-  state.today = result.today || todayISO();
-  if (!state.session || !state.sessions.some(s => s.date === state.session)) {
-    state.session = result.currentSession || '';
-  }
-
-  // 인원별 회차 출결
-  const byId = new Map();
-  for (const r of result.data || []) {
-    const id = String(r.id || `${r.name || ''}${r.phone || ''}`).replace(/\s/g, '');
-    if (id) byId.set(id, r.attendanceByDate || {});
-  }
-  for (const m of state.members) {
-    m.attendanceByDate = byId.get(m.id) || {};
-    m.attendance = m.attendanceByDate[state.session] || '';
-  }
-
-  writeCacheSync();
-  notify({ type: 'attendance-refresh' });
-}
-
-/**
  * 본인의 회차별 출결. 조원이 자기 이력을 볼 때 쓴다.
  *
  * Supabase 에서 읽는다. 시트가 원본이지만 여기서 GAS 를 부르면 모든 조회에
@@ -390,7 +348,7 @@ export async function getMyAttendance(member) {
     if (!hwKinds.has(k)) hwKinds.set(k, []);
     hwKinds.get(k).push(r.kind || '');
   }
-  const today = state.today || todayISO();
+  const today = todayISO();
 
   // 지난 회차 + **다가오는 회차 하나**. 조별 매트릭스(buildSessionColumns)와
   // 같은 규칙이다 — 예전에는 여기서만 `date <= today` 로 잘라서, 같은 사람을
@@ -431,7 +389,7 @@ export async function getMyAttendance(member) {
  */
 export async function getUpcomingLunches(member) {
   if (!member || !member._uuid) return [];
-  const today = state.today || todayISO();
+  const today = todayISO();
 
   const rows = await sbSelect(
     `dg_lunch?select=session_date&member_id=eq.${member._uuid}` +
@@ -862,7 +820,7 @@ export function splitSubmissionLinks(content) {
  */
 export function getSessions({ all = false, throughNext = false } = {}) {
   if (all) return state.sessions.slice();
-  const today = state.today || todayISO();
+  const today = todayISO();
   const past = state.sessions.filter(s => s.date <= today);
   if (!throughNext) return past;
 
@@ -875,9 +833,36 @@ export function getSessions({ all = false, throughNext = false } = {}) {
   return next ? [...past, next] : past;   // 마지막 회차 뒤라면 지금과 똑같다
 }
 
-/** GAS 가 확정한 오늘 (YYYY-MM-DD). 미래 회차를 가려내는 데 쓴다. */
+/**
+ * 오늘 (YYYY-MM-DD, 기기 날짜). 미래 회차를 가려내는 데 쓴다.
+ *
+ * 예전에는 GAS 가 준 '오늘' 을 먼저 썼는데, 그 값은 시트 전체를 읽는 왕복
+ * (refreshAttendance)에 딸려 왔다. 그 왕복을 없앴으므로 기기 날짜를 쓴다 —
+ * 그전에도 GAS 응답이 오기 전에는 늘 이 값이었다. 미래 회차 저장은 GAS 가
+ * 서버 시계로 한 번 더 막는다.
+ */
 export function getToday() {
-  return state.today || todayISO();
+  return todayISO();
+}
+
+/**
+ * 지금 볼 회차를 정한다 — 비었거나 목록에 없으면 **가장 최근에 지난 회차.**
+ *
+ * GAS 의 currentSession 과 같은 규칙이다. 예전에는 그 값이 GAS 응답(11~102초)에
+ * 딸려 와서, 기다리는 동안 회차가 비어 있었다. 그런데 회차 선택칸은 첫 항목을
+ * 보여주므로 **화면에는 11/01 이 보이는데 앱은 회차를 모르는** 상태가 됐고,
+ * 그때 저장하면 '회차를 알 수 없어 저장하지 못했습니다' 가 떴다.
+ *
+ * 캐시된 회차 목록으로 바로 정해진다 (동기 함수).
+ * @returns 회차 날짜, 회차가 하나도 없으면 ''
+ */
+export function ensureSession() {
+  const done = getSessions();
+  if (!done.length) return '';
+  if (!state.session || !done.some(s => s.date === state.session)) {
+    setSession(done[done.length - 1].date);
+  }
+  return state.session;
 }
 
 /**
@@ -902,9 +887,11 @@ export function isPastSession(date) {
 /**
  * 한 회차의 출결만 DB 에서 읽어 온다.
  *
- * 관리자 출석 관리가 쓴다. 예전에는 refreshAttendance() 로 GAS 를 불렀는데,
- * 그건 시트 전체(229명 × 39회차)를 읽어 통째로 내려주기 때문에 화면을 열 때도
- * 주차를 바꿀 때도 몇 초씩 걸렸다. 정작 화면이 쓰는 건 한 회차뿐이다.
+ * 관리자 출석 관리와 조장 화면이 쓴다. 예전에는 GAS 로 시트 전체(261명 × 39회차)를
+ * 읽어 통째로 내려받았기 때문에 화면을 열 때도 주차를 바꿀 때도 몇 초씩 —
+ * 조장 화면은 11~102초 — 걸렸다. 정작 화면이 쓰는 건 한 회차뿐이다.
+ *
+ * `members` 를 주면 그 사람들만 묻는다 (조장 화면 — 한 조, 몇 명).
  *
  * DB 는 시트보다 뒤처질 수 있지만 그 폭이 정해져 있다 —
  * GAS 10분 트리거가 시트와 DB 를 맞추고, 앱에서 저장한 것은 저장하는 그 자리에서
@@ -914,24 +901,53 @@ export function isPastSession(date) {
  * 보고 O/X 가 아닌 칸이면 거부(kept)하므로, DB 가 뒤처져 있어도 '◎' 가 O/X 로
  * 덮이는 일은 없다.
  */
-export async function loadAttendanceForSession(date) {
+export async function loadAttendanceForSession(date, { members } = {}) {
   if (!date) return new Map();
 
+  const ids = members ? members.map(m => m._uuid).filter(Boolean) : null;
+  if (ids && !ids.length) return new Map();
+  const only = ids ? `&member_id=in.(${ids.join(',')})` : '';
+
   const rows = await sbSelect(
-    `dg_attendance?select=member_id,status&session_date=eq.${encodeURIComponent(date)}&order=member_id`
+    `dg_attendance?select=member_id,status&session_date=eq.${encodeURIComponent(date)}${only}&order=member_id`
   );
   const byUuid = new Map(rows.map(r => [r.member_id, r.status ?? '']));
 
+  // 물은 사람만 고친다. 묻지 않은 사람을 빈칸으로 덮으면 다른 화면이 들고 있던 값이 지워진다.
+  const asked = ids ? new Set(ids) : null;
   for (const m of state.members) {
+    if (asked && !asked.has(m._uuid)) continue;
     m.attendanceByDate = m.attendanceByDate || {};
     m.attendanceByDate[date] = byUuid.get(m._uuid) ?? '';
-  }
-  if (date === state.session) {
-    for (const m of state.members) m.attendance = m.attendanceByDate[date] || '';
+    if (date === state.session) m.attendance = m.attendanceByDate[date] || '';
   }
 
   notify({ type: 'session-attendance-loaded', session: date });
   return byUuid;
+}
+
+/**
+ * 한 조의 전 회차 출결. 조장 화면의 전체 출석표가 쓴다.
+ *
+ * 렌더러에는 `getStatus` 로 넘긴다 (CLAUDE.md 5 · docs/HANDOVER.md 함정 1).
+ * m.attendanceByDate 는 이제 **읽은 회차만** 들어 있어서, 안 넘기면 한 열만 찬다.
+ *
+ * @returns Map(uuid → Map('YYYY-MM-DD' → status)) — getAttendanceHistory 와 같은 모양
+ */
+export async function getTeamAttendance(members) {
+  const out = new Map();
+  const ids = (members || []).map(m => m._uuid).filter(Boolean);
+  if (!ids.length) return out;
+
+  const rows = await sbSelect(
+    `dg_attendance?select=member_id,session_date,status&member_id=in.(${ids.join(',')})` +
+    `&order=member_id,session_date`
+  );
+  for (const r of rows) {
+    if (!out.has(r.member_id)) out.set(r.member_id, new Map());
+    out.get(r.member_id).set(r.session_date, String(r.status ?? '').trim());
+  }
+  return out;
 }
 
 /**
@@ -1116,13 +1132,20 @@ export function setSession(date) {
 }
 
 /**
- * 출결 저장. **바뀐 사람만** 넘길 것.
+ * 출결 저장.
  *
- * 전원을 present ? 'O' : 'X' 로 보내면 사람이 시트에 직접 넣은 다른 표기가
- * 한 번에 지워진다. 손대지 않은 사람은 목록에서 빼야 한다.
+ * 사람이 시트에 직접 넣은 다른 표기(돌봄 · ◎ · 과제 …)는 GAS 가 거부한다(kept).
+ *
+ * **`seen` — 화면에 띄웠던 값.** DB 는 시트보다 최대 10분 뒤처진다(10분 트리거).
+ * 그 사이 시트에 손으로 넣은 O 를 화면은 빈칸으로 보여주고, 조장이 그대로 저장하면
+ * X 가 나가 **시트의 O 가 말없이 덮였다.** 그래서 사람마다 화면에 띄웠던 값을 함께
+ * 보낸다. GAS(v32~)는 시트의 지금 칸이 그 값과 다르면 쓰지 않고 `changed` 로
+ * 돌려준다 — 이미 잡고 있는 잠금 안에서 견주므로 왕복이 늘지 않는다.
+ * GAS v31 은 seen 을 모르니 무시한다 (예전처럼 쓴다).
  *
  * @param {string} session  'YYYY-MM-DD'
- * @param {Array}  changes  [{ name, phone, status }, ...]
+ * @param {Array}  changes  [{ name, phone, status, seen? }, ...]
+ * @returns {{ saved, kept, missing, changed: [{ id, name, current }], dbPushed }}
  */
 export async function saveAttendance(session, changes) {
   if (!session) throw new Error('회차가 지정되지 않았습니다.');
@@ -1142,13 +1165,24 @@ export async function saveAttendance(session, changes) {
   // 보이고, 다음 갱신 때 조용히 옛 값으로 되돌아간다.
   const keptIds = new Set((result.kept || []).map(s => String(s).replace(/\(.*\)$/, '')));
   const missingIds = new Set((result.missing || []).map(String));
+  // 시트가 먼저 바뀌어 안 쓴 사람(changed) — 화면은 **시트의 지금 값**으로 맞춘다.
+  const changedCur = new Map((result.changed || []).map(x => [String(x.id), String(x.current ?? '')]));
 
+  const put = (m, v) => {
+    m.attendanceByDate = m.attendanceByDate || {};
+    m.attendanceByDate[session] = v;
+    if (session === state.session) m.attendance = v;
+  };
+  const changed = [];
   for (const c of changes) {
     const m = state.members.find(x => x.name === c.name && x.phone === c.phone);
     if (!m || keptIds.has(m.id) || missingIds.has(m.id)) continue;
-    m.attendanceByDate = m.attendanceByDate || {};
-    m.attendanceByDate[session] = c.status;
-    if (session === state.session) m.attendance = c.status;
+    if (changedCur.has(m.id)) {
+      put(m, changedCur.get(m.id));
+      changed.push({ id: m.id, name: m.name, phone: m.phone, current: changedCur.get(m.id) });
+      continue;
+    }
+    put(m, c.status);
   }
   writeCacheSync();
 
@@ -1156,6 +1190,10 @@ export async function saveAttendance(session, changes) {
     saved: result.saved || 0,
     kept: result.kept || [],
     missing: result.missing || [],
+    changed,
+    // false 면 시트에는 들어갔지만 DB 에는 아직 — 다른 기기는 10분 트리거 뒤에 본다.
+    // v18 이전 GAS 처럼 이 값을 안 주면 undefined 다 (알리지 않는다).
+    dbPushed: result.dbPushed,
   };
 }
 

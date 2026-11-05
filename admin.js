@@ -44,9 +44,9 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=130';
+} from './scripts/members-data.js?v=131';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=130';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=131';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -95,8 +95,7 @@ async function loadData() {
 // 캐시로 먼저 그렸다면 갱신이 끝났을 때 다시 그려야 한다.
 // 안 그리면 화면에는 옛 값이 남고, 보는 사람은 그것이 옛것인 줄 모른다.
 subscribe((event) => {
-    if (event.type !== 'refresh' && event.type !== 'cohort-changed'
-        && event.type !== 'attendance-refresh') return;
+    if (event.type !== 'refresh' && event.type !== 'cohort-changed') return;
     memberData = getMembers();
     renderTeamsView(teamFilter ? teamFilter.value : '');
     renderMembersView(memberFilter ? memberFilter.value : '');
@@ -468,8 +467,8 @@ wireMatrixFold(document.getElementById('matrixModal'));
  * 관리자용 전체 출석표.
  *
  * ⚠️ **`getStatus` 를 반드시 넘긴다.** 렌더러의 기본값은 `m.attendanceByDate` 인데,
- * 관리자 화면은 `refreshAttendance()`(GAS 왕복)를 부르지 않아 그 객체에 **지금 고른
- * 출석관리 주차 한 회차**밖에 없다. 안 넘기면 나머지 열이 전부 `·` 로 나오는데
+ * 그 객체에는 `loadAttendanceForSession()` 이 읽은 회차 — 여기서는 **지금 고른
+ * 출석관리 주차 한 회차** — 밖에 없다. 안 넘기면 나머지 열이 전부 `·` 로 나오는데
  * 오류가 안 나서 조용히 틀린다. (같은 브라우저로 조장 화면을 먼저 열었으면
  * localStorage 캐시 때문에 맞아 보인다 — 확인은 시크릿 창에서.)
  */
@@ -1212,11 +1211,15 @@ async function saveAttChanges() {
         + `지금 명단을 기준으로 비어 있는 ${blanks.length}명이 결석으로 저장됩니다.\n`
         + `그때 명단에 없던 사람도 함께 저장됩니다.\n\n계속할까요?`)) return;
 
+    // seen = 화면이 읽어 온 값(attBaseline). DB 는 시트보다 최대 10분 뒤처져서 그 사이
+    // 시트에 손으로 넣은 O 를 여기서는 빈칸으로 본다. GAS(v32~)가 시트의 지금 칸과
+    // 견주어 다르면 쓰지 않고 changed 로 돌려준다 — 빈칸→X 가 시트의 O 를 덮던 구멍.
     const payload = [];
     for (const c of [...changes, ...blanks]) {
         const m = byUuid.get(c.uuid);
         if (!m) continue;
-        payload.push({ name: m.name, phone: m.phone, status: c.status });
+        payload.push({ name: m.name, phone: m.phone, status: c.status,
+                       seen: attBaseline.get(c.uuid) ?? '' });
     }
     if (!payload.length) return;
 
@@ -1228,10 +1231,15 @@ async function saveAttChanges() {
 
         // 저장된 것만 반영된다. kept(다른 표기가 있어 두고 온 칸)·missing(시트에
         // 행이 없는 사람)은 실제로 안 바뀌었으므로, 화면을 시트 기준으로 다시 뜬다.
+        // changed(시트가 먼저 바뀐 칸)는 saveAttendance 가 시트 값으로 넣어 두었다.
         attSnapshot();
         renderAttList();
 
         const notes = [];
+        if (result.changed?.length) {
+            notes.push(`시트에서 먼저 바뀐 ${result.changed.length}명은 그대로 두었습니다: `
+                + result.changed.map(c => `${c.name}(${c.current || '빈칸'})`).join(', '));
+        }
         if (result.kept?.length) notes.push(`시트에 다른 표기가 있어 두었습니다: ${result.kept.join(', ')}`);
         if (result.missing?.length) notes.push(`시트에서 찾지 못했습니다: ${result.missing.join(', ')}`);
         if (attSaveInfo) attSaveInfo.textContent = `✅ ${result.saved}건 저장 완료`;

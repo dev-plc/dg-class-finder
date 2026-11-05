@@ -44,6 +44,10 @@ let ATT = {
   '한돌봄2003': { '2026-08-02': '', '2026-08-09': '돌봄' },
 };
 
+// 시트가 DB 보다 앞선 칸 — 시트에 손으로 넣었고 10분 트리거가 아직 안 옮긴 값.
+// 가짜 DB 는 모르고 가짜 GAS 만 안다 (검증 9).
+const SHEET_AHEAD = {};
+
 const posted = [];
 const { ok, done } = makeReporter('관리자 출석 관리');
 
@@ -115,18 +119,25 @@ await page.route('**/script.google.com/**', route => {
   if (req.method() === 'POST') {
     const body = JSON.parse(req.postData() || '{}');
     posted.push(body);
-    // GAS 처럼 동작한다: O/X/빈칸 이 아닌 칸은 두고(kept) 온다
+    // GAS(v32) 처럼 동작한다: O/X/빈칸 이 아닌 칸은 두고(kept) 오고,
+    // 시트의 지금 칸이 화면이 본 값(seen)과 다르면 쓰지 않고 돌려준다(changed).
     const kept = [];
+    const changed = [];
     let saved = 0;
     for (const b of body.batch || []) {
       const id = `${b.name}${b.phone}`;
-      const cur = String(ATT[id]?.[body.session] ?? '').trim();
+      const cur = String(SHEET_AHEAD[id]?.[body.session] ?? ATT[id]?.[body.session] ?? '').trim();
       if (!['O', 'X', ''].includes(cur.toUpperCase())) { kept.push(`${id}(${cur})`); continue; }
+      if (b.seen !== undefined && cur.toUpperCase() !== String(b.seen).toUpperCase()
+          && cur.toUpperCase() !== b.status) {
+        changed.push({ id, current: cur.toUpperCase() });
+        continue;
+      }
       ATT[id][body.session] = b.status;
       saved++;
     }
     return route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ success: true, session: body.session, saved, missing: [], kept }) });
+      body: JSON.stringify({ success: true, session: body.session, saved, missing: [], kept, changed }) });
   }
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(gasPayload()) });
 });
@@ -156,10 +167,13 @@ ok('탭이 바로 열림', openMs < 2000, `${openMs}ms`);
 // 화면이 쓰고 있는 것과 같은 인스턴스가 나온다 — 테스트용 훅을 코드에 심지 않는다.
 const ASSET_V = await page.evaluate(() =>
   document.querySelector('script[src*="admin.js"]').src.match(/v=(\d+)/)[1]);
+// 새 출결이 DB 에 들어왔고(10분 트리거) 배경 갱신이 돈 것 — 그 회차를 다시 읽고 refresh.
+// (예전에는 refreshAttendance() 로 GAS 를 불렀다. v131 에서 그 길을 없앴다.)
 async function refreshFromServer() {
   await page.evaluate(async (v) => {
     const mod = await import(`./scripts/members-data.js?v=${v}`);
-    await mod.refreshAttendance();
+    await mod.loadAttendanceForSession('2026-08-09');
+    await mod.refresh();
   }, ASSET_V);
 }
 
@@ -226,6 +240,10 @@ ok('1. 전체 보기에서는 바뀐 두 명만 전송', !!body1 && body1.batch.
    body1 ? JSON.stringify(body1.batch) : '(요청 없음)');
 ok('1. 손대지 않은 빈칸은 안 나간다',
    !('강조장' in st1) && !('윤조원' in st1), JSON.stringify(st1));
+// seen = 화면이 읽어 온 값. GAS(v32)가 시트의 지금 칸과 견준다.
+const seen1 = Object.fromEntries((body1?.batch || []).map(b => [b.name, b.seen]));
+ok('1. 사람마다 화면이 본 값(seen)을 함께 보낸다',
+   seen1['김조장'] === '' && seen1['최빈칸'] === '', JSON.stringify(seen1));
 
 // --- 조를 고르면 그 조의 빈칸은 예전처럼 함께 나간다 -----------------------
 //
@@ -412,6 +430,38 @@ await page.waitForTimeout(800);
 const st8 = Object.fromEntries((posted[0]?.batch || []).map(b => [b.name, b.status]));
 ok('8. 승인하면 빈칸까지 함께 나간다',
    st8['강조장'] === 'X' && st8['한돌봄'] === 'X', JSON.stringify(st8));
+
+// --- 검증 9: 시트를 먼저 고친 칸 — 빈칸→X 가 시트의 O 를 덮지 않는다 ---------
+//
+// DB 는 시트보다 최대 10분 뒤처진다. 그 사이 시트에 손으로 넣은 O 를 화면은 빈칸으로
+// 보고, 조를 고른 채 저장하면 빈칸→X 가 그 O 를 덮었다.
+await page.selectOption('#attSessionPicker', '2026-08-09');
+await page.waitForTimeout(800);
+await page.selectOption('#attTeamPicker', 'Y1');
+await page.waitForTimeout(300);
+SHEET_AHEAD['김조장1001'] = { '2026-08-09': 'O' };   // DB 에는 아직 빈칸
+const rowState = (name) => page.evaluate((n) => {
+  const r = [...document.querySelectorAll('.att-row')]
+    .find(x => x.querySelector('.att-name').textContent.trim() === n);
+  return r?.querySelector('.att-state.on')?.dataset.status || '';
+}, name);
+ok('9. 화면은 김조장을 빈칸으로 본다 (DB)', await rowState('김조장') === '', await rowState('김조장'));
+
+posted.length = 0;
+dialogs.length = 0;
+await page.click('.att-state[data-uuid="u4"][data-status="O"]');   // 최빈칸 → O (무엇이든 하나 고친다)
+await page.waitForTimeout(150);
+await page.click('#attSaveBtn');
+await page.waitForTimeout(900);
+const b9 = (posted[0]?.batch || []).find(b => b.name === '김조장');
+ok('9. 빈칸이라 X · seen 빈칸으로 나간다', b9?.status === 'X' && b9?.seen === '', JSON.stringify(b9));
+ok('9. 시트의 O 는 그대로', SHEET_AHEAD['김조장1001']['2026-08-09'] === 'O'
+   && ATT['김조장1001']['2026-08-09'] === '', JSON.stringify(ATT['김조장1001']));
+ok('9. 그 줄은 시트 값(O)으로 다시 그린다', await rowState('김조장') === 'O', await rowState('김조장'));
+ok('9. 그렇게 했다고 알린다',
+   dialogs.some(d => /시트에서 먼저 바뀐 1명/.test(d.message) && /김조장\(O\)/.test(d.message)),
+   dialogs.map(d => d.message).join(' | '));
+ok('9. 나머지는 저장된다', ATT['최빈칸1004']['2026-08-09'] === 'O', ATT['최빈칸1004']['2026-08-09']);
 
 await page.screenshot({ path: `${SHOT}/dg-admin-att.png`, fullPage: true });
 
