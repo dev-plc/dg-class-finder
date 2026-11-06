@@ -17,7 +17,7 @@ node tests/verify-print.mjs       # 하나만
 | 파일 | 무엇 |
 |---|---|
 | `verify-print.mjs` | 출석부 출력 — A4 한 장 안에 드는가, 집계표, 장 고르기, 김밥·과제 붙기 |
-| `verify-admin.mjs` | 관리자 화면 — 검색·조별·개인별, 조 차례(YF · YM · C · 남 · 여) |
+| `verify-admin.mjs` | 관리자 화면 — 검색(초성 · 겹자음 포함)·조별·개인별, 조 차례(YF · YM · C · 남 · 여) |
 | `verify-admin-att.mjs` | 출석 관리 — 스냅숏·일괄 버튼·보호값(◎ − 돌봄)·빈칸→결석 |
 | `verify-absence.mjs` | 결석 현황 — 이 주차 결석자(`과제` 포함), 2회 이상, 하차 검토와 완화 대상(원칙 5), 교역자별 정렬 |
 | `verify-attendance.mjs` | 조장 화면 — 출결을 DB 에서 한 조 · 한 회차만 읽는가(GAS 0회) · 불러오는 중/실패/다시 시도 · 배경 갱신에도 체크 유지 · `seen`·`changed` · `과제`·`돌봄` 은 읽기 전용 |

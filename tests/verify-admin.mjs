@@ -173,6 +173,46 @@ await page.fill('#memberFilter', '이영희');
 await page.waitForTimeout(400);
 const filtered = await page.$$eval('#membersGrid > *', els => els.length);
 ok('개인별 필터', filtered === 1, `${filtered}명`);
+// 초성 검색 — 'ㅇㅇㅎ' 로 이영희. 예전에는 글자 그대로만 견줘서 0명이었다.
+const memberNames = () => page.$$eval('#membersGrid .member-card-id', els => els.map(e => e.textContent.trim()));
+await page.fill('#memberFilter', 'ㅇㅇㅎ');
+await page.waitForTimeout(300);
+const byInitials = await memberNames();
+ok('개인별 — 초성으로 찾는다 (ㅇㅇㅎ → 이영희)',
+   byInitials.length === 1 && byInitials[0].startsWith('이영희'), byInitials.join(','));
+// 자판이 ㄱ+ㅅ 을 'ㄳ' 한 글자로 합쳐 넣어도 'ㄱㅅ' 로 본다 (최권사 = ㅊㄱㅅ).
+await page.fill('#memberFilter', 'ㄳ');
+await page.waitForTimeout(300);
+const compound = await memberNames();
+ok("개인별 — 자판이 합친 겹자음('ㄳ')도 초성으로",
+   compound.length === 1 && compound[0].startsWith('최권사'), compound.join(',') || '(없음)');
+// 치는 도중의 글자 — 완성 글자 뒤 자음('김ㅊ'), 받침 전('이여'), 받침이 겹친 상태('김첤').
+for (const [q, want] of [['김ㅊ', 2], ['이여', 1], ['김첤', 2]]) {
+  await page.fill('#memberFilter', q);
+  await page.waitForTimeout(250);
+  const got = await memberNames();
+  ok(`개인별 — 치는 도중 '${q}' 도 찾는다`, got.length === want, got.join(',') || '(없음)');
+}
+
+// 규칙 표 — 브라우저가 실제로 받은 hangul.js 로 견준다.
+const HANGUL_CASES = [
+  ['김철수', 'ㄱㅊㅅ', true], ['김철수', '김ㅊ', true], ['김철수', '김처', true],
+  ['김철수', '김첤', true], ['이영희', '이영흐', true], ['최권사', '최궈', true],
+  ['이여옥', '이영', true], ['남1', 'ㄴ', true], ['YF1', 'yf', true],
+  ['김철수', '김영', false], ['이영희', 'ㅇㅇㅊ', false], ['남1', '여', false],
+  ['YF1', 'ym', false], ['', 'ㄱ', false],
+];
+const hangulBad = await page.evaluate(async (cases) => {
+  const v = document.querySelector('script[src*="admin.js"]').src.match(/v=(\d+)/)[1];
+  const { matches } = await import(`./scripts/hangul.js?v=${v}`);
+  return cases.filter(([t, q, want]) => matches(t, q) !== want).map(c => c.join(' / '));
+}, HANGUL_CASES);
+ok(`초성·치는 도중 규칙 ${HANGUL_CASES.length}건`, hangulBad.length === 0, hangulBad.join(' | '));
+
+await page.fill('#memberFilter', 'ㄱㅊㅅ');
+await page.waitForTimeout(300);
+const twinsByInitials = await memberNames();
+ok('개인별 — 초성이 같은 동명이인은 둘 다', twinsByInitials.length === 2, twinsByInitials.join(','));
 await page.fill('#memberFilter', '');
 await page.waitForTimeout(300);
 
@@ -298,6 +338,31 @@ await page.fill('#teamFilter', '이목사');
 await page.waitForTimeout(400);
 const found = await page.$$eval('#teamsGrid .team-card-name', els => els.map(e => e.textContent.trim()));
 ok('교역자 이름으로 검색된다', found.includes('YF1') && found.length < 7, found.join(','));
+
+// 초성 검색 — 제보: '조별 검색에서 자음검색 안 돼'. 예전에는 글자 그대로만 견줬다.
+const teamNames = () => page.$$eval('#teamsGrid .team-card-name', els => els.map(e => e.textContent.trim()));
+await page.fill('#teamFilter', 'ㅇㅁㅅ');
+await page.waitForTimeout(300);
+const pastorInitials = await teamNames();
+ok('조별 — 교역자를 초성으로 (ㅇㅁㅅ → YF1)',
+   pastorInitials.join(',') === 'YF1', pastorInitials.join(',') || '(없음)');
+await page.fill('#teamFilter', 'ㄴ');
+await page.waitForTimeout(300);
+const deptInitial = await teamNames();
+ok('조별 — 조 이름을 초성으로 (ㄴ → 남1)', deptInitial.join(',') === '남1', deptInitial.join(',') || '(없음)');
+await page.fill('#teamFilter', 'ㅇㅅㄹㅎ');
+await page.waitForTimeout(300);
+const locInitials = await teamNames();
+ok('조별 — 위치를 초성으로 (ㅇㅅㄹㅎ → 웨슬리홀 조)',
+   locInitials.length === 2 && locInitials.every(n => n.startsWith('YM')), locInitials.join(',') || '(없음)');
+// 치는 도중 — '남' 을 치면 자판이 'ㄴ' → '나' → '남' 을 차례로 넣는다. 그 사이에도 남아야 한다.
+await page.fill('#teamFilter', '나');
+await page.waitForTimeout(300);
+ok("조별 — 치는 도중의 '나' 도 남1", (await teamNames()).join(',') === '남1', (await teamNames()).join(',') || '(없음)');
+// 영문 조 이름은 대소문자를 안 가린다 (예전과 같다).
+await page.fill('#teamFilter', 'yf');
+await page.waitForTimeout(300);
+ok("조별 — 'yf' 로 YF1", (await teamNames()).join(',') === 'YF1', (await teamNames()).join(','));
 await page.fill('#teamFilter', '');
 await page.waitForTimeout(300);
 

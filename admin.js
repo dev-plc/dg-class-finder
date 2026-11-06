@@ -44,9 +44,12 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=131';
+} from './scripts/members-data.js?v=132';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=131';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=132';
+// 검색칸은 초성으로도 찾는다 ('ㅇㅎㅇ' → 이희옥 · 'ㄴ' → 남1조).
+// 조회 화면의 이름 찾기(findMember)도 이것을 쓴다 — 규칙을 한 곳에 둔다.
+import { matches as hangulMatches } from './scripts/hangul.js?v=132';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -386,12 +389,13 @@ function renderTeamsView(filterText = '') {
 
     allTeams = sortedTeams;
     
-    // 필터링
-    const filteredTeams = filterText 
-        ? sortedTeams.filter(team => 
-            team.name.toLowerCase().includes(filterText.toLowerCase()) ||
-            team.location.toLowerCase().includes(filterText.toLowerCase()) ||
-            (team.pastor && team.pastor.toLowerCase().includes(filterText.toLowerCase()))
+    // 필터링 — 조 이름 · 위치 · 담당교역자. 초성만 치면 초성으로 견준다 (hangul.js).
+    // 예전에는 글자 그대로만 견줘서 'ㅇㅁㅅ' 로는 이목사 조가 안 나왔다.
+    const filteredTeams = filterText
+        ? sortedTeams.filter(team =>
+            hangulMatches(team.name, filterText) ||
+            hangulMatches(team.location, filterText) ||
+            hangulMatches(team.pastor, filterText)
           )
         : sortedTeams;
     
@@ -580,13 +584,13 @@ function renderMembersView(filterText = '') {
         return a.name.localeCompare(b.name, 'ko');
     });
     
-    // 필터링
+    // 필터링 — 이름 · 이름+번호 · 조 · 위치. 초성만 치면 초성으로 견준다 (hangul.js).
     const filteredMembers = filterText
         ? sortedMembers.filter(member =>
-            member.name.toLowerCase().includes(filterText.toLowerCase()) ||
-            (member.name + (member.phone || '')).toLowerCase().includes(filterText.toLowerCase()) ||
-            member.team.toLowerCase().includes(filterText.toLowerCase()) ||
-            member.location.toLowerCase().includes(filterText.toLowerCase())
+            hangulMatches(member.name, filterText) ||
+            hangulMatches(member.name + (member.phone || ''), filterText) ||
+            hangulMatches(member.team, filterText) ||
+            hangulMatches(member.location, filterText)
           )
         : sortedMembers;
     

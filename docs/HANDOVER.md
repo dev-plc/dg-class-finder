@@ -293,7 +293,7 @@ v31 이후:
 
 ## 지금 버전과 검증
 
-**앱 v131 · GAS v32** (저장소 기준 — GAS 배포 여부는 아래 '사용자 쪽 할 일'). 앱 버전은 `?v=` 로 붙고 `npm run bump` 로만 올린다.
+**앱 v132 · GAS v32** (저장소 기준 — GAS 배포 여부는 아래 '사용자 쪽 할 일'). 앱 버전은 `?v=` 로 붙고 `npm run bump` 로만 올린다.
 
 ```
 npm test    # 17개 스위트 (tests/README.md 에 목록)
@@ -358,5 +358,6 @@ npm test    # 17개 스위트 (tests/README.md 에 목록)
 | 출석표 칸 모양 | `scripts/matrix-renderer.js` + `style.css` 의 `.mx-*` |
 | 결석·하차 세는 규칙 | `docs/RULES.md` 를 먼저 → `admin.js` 결석 현황 구역 |
 | 과제 붙이는 키(강의명) | `members-data.js` `normalizeLecture()` — **한 곳뿐이다. 사본을 만들지 말 것** |
+| 검색칸 (초성 · 겹자음 · 치는 도중) | `scripts/hangul.js` `matches()` — 관리자 조별·개인별 검색칸과 조회 화면 이름 찾기가 함께 쓴다. 마지막 글자는 자판으로 친 차례로 견준다('김첤' → 김철수). v132 전까지 관리자 검색칸은 이것을 안 써서 초성으로 안 찾아졌다 |
 | 시트 열이 늘었다 | `scripts/gas/doGet.js` 의 `obj[...]` 목록 + `sync-sheet-to-db.mjs` |
 | 종이 출석부 | `admin.js` 출력 탭 + `admin.css` `@media print` |

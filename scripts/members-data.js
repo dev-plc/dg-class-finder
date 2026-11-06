@@ -14,8 +14,8 @@
 // 고친 칸은 저장할 때 GAS 가 '본 값(seen)' 과 견주어 지킨다 (saveAttendance).
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=131';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=131';
+import { matches as hangulMatches } from './hangul.js?v=132';
+import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=132';
 
 export const MODULE_VERSION = 'dg members-data v2 (Supabase 조회·출석 읽기 + GAS 출석 쓰기)';
 
