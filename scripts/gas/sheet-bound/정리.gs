@@ -1,4 +1,5 @@
 // 출석부(DB) 시트에 **직접 붙은** 스크립트. 배포 대상이 아니다.
+// (dev 계정의 독립 프로젝트 — scripts/gas/doGet.js · 웹앱 v32~ — 와 다른 프로젝트다)
 // 저장소의 사본이므로, 고치면 시트 쪽 GAS 에도 그대로 붙여넣을 것.
 // 자세한 것은 scripts/gas/sheet-bound/README.md
 
