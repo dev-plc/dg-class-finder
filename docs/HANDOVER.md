@@ -302,7 +302,7 @@ v31 이후:
 
 ## 지금 버전과 검증
 
-**앱 v132 · GAS v32** (2026-11-07 배포 확인). 앱 버전은 `?v=` 로 붙고 `npm run bump` 로만 올린다.
+**앱 v133 · GAS v32** (GAS v32 는 2026-11-07 배포 확인). 앱 버전은 `?v=` 로 붙고 `npm run bump` 로만 올린다.
 
 ```
 npm test    # 17개 스위트 (tests/README.md 에 목록)
@@ -370,4 +370,4 @@ npm test    # 17개 스위트 (tests/README.md 에 목록)
 | 과제 붙이는 키(강의명) | `members-data.js` `normalizeLecture()` — **한 곳뿐이다. 사본을 만들지 말 것** |
 | 검색칸 (초성 · 겹자음 · 치는 도중) | `scripts/hangul.js` `matches()` — 관리자 조별·개인별 검색칸과 조회 화면 이름 찾기가 함께 쓴다. 마지막 글자는 자판으로 친 차례로 견준다('김첤' → 김철수). v132 전까지 관리자 검색칸은 이것을 안 써서 초성으로 안 찾아졌다 |
 | 시트 열이 늘었다 | `scripts/gas/doGet.js` 의 `obj[...]` 목록 + `sync-sheet-to-db.mjs` |
-| 종이 출석부 | `admin.js` 출력 탭 + `admin.css` `@media print` |
+| 종이 출석부 | `admin.js` 출력 탭 + `admin.css` `@media print`. 장을 새로 만들면 여는 줄은 **`prSheetOpen()`** 으로 — 빠졌는지(`pr-skip`)와 체크를 같이 그린다. 집계표가 따로 적다가 클래스를 빠뜨려 '풀었는데 출력된다' 가 났다(v133) |

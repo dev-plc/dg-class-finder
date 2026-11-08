@@ -44,12 +44,12 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=132';
+} from './scripts/members-data.js?v=133';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=132';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=133';
 // 검색칸은 초성으로도 찾는다 ('ㅇㅎㅇ' → 이희옥 · 'ㄴ' → 남1조).
 // 조회 화면의 이름 찾기(findMember)도 이것을 쓴다 — 규칙을 한 곳에 둔다.
-import { matches as hangulMatches } from './scripts/hangul.js?v=132';
+import { matches as hangulMatches } from './scripts/hangul.js?v=133';
 
 // 로그인 확인
 if (!sessionStorage.getItem('adminLoggedIn')) {
@@ -2295,12 +2295,7 @@ function renderPrPreview() {
                 ${prCol.memo() ? '<td class="pr-c-memo"></td>' : '<td class="pr-c-fill"></td>'}
             </tr>`).join('');
 
-        return `
-            <div class="pr-sheet${prSkip.has(t.name) ? ' pr-skip' : ''}"
-                 data-team="${attEsc(t.name)}" data-label="${attEsc(t.name)}">
-                <label class="pr-pick">
-                    <input type="checkbox" data-team="${attEsc(t.name)}"${prSkip.has(t.name) ? '' : ' checked'}> 출력
-                </label>
+        return `${prSheetOpen(t.name, t.name)}
                 <section class="pr-page" style="--pr-row: ${rowMm}mm; --pr-note: ${prNoteHeightMm(t.members.length)}mm">
                     <div class="pr-head">
                         <h2 class="pr-title">${attEsc(t.name)}</h2>
@@ -2426,11 +2421,8 @@ function renderPrSummary(key, title, teams, head, showLocation) {
     }, { n: 0, lunch: 0 });
 
     const id = '__summary__:' + key;
-    return `
-        <div class="pr-sheet" data-team="${attEsc(id)}" data-label="집계표 · ${attEsc(title)}">
-            <label class="pr-pick">
-                <input type="checkbox" data-team="${attEsc(id)}"${prSkip.has(id) ? '' : ' checked'}> 출력
-            </label>
+    // data-label 은 prSheetOpen 이 이스케이프한다 — 여기서 미리 하면 두 번 된다.
+    return `${prSheetOpen(id, `집계표 · ${title}`)}
             <!-- 합계 줄도 --pr-row 를 쓰므로 줄 수에 +1 -->
             <section class="pr-page" style="--pr-row: ${prSummaryRowMm(sorted.length + 1)}mm">
                 <div class="pr-head">
@@ -2459,6 +2451,28 @@ function renderPrSummary(key, title, teams, head, showLocation) {
                 </div>
             </section>
         </div>`;
+}
+
+/**
+ * 장 하나를 여는 태그 + '출력' 체크.
+ *
+ * 장이 빠졌는지는 **`pr-skip` 클래스 하나**가 정한다 — 세는 수(updatePrCount) ·
+ * 전체 선택 버튼 · 인쇄(admin.css `@media print`)가 다 그것을 본다. 체크는 그 모양일
+ * 뿐이다. 그래서 둘을 **여기 한 곳에서 같이** 정한다.
+ *
+ * 예전에는 조 장과 집계표 장이 이 줄을 따로 적었고, 집계표 쪽이 클래스를 빠뜨렸다.
+ * 새로 그릴 때마다(새로고침 · 주차 · 칸 토글 · 배경 갱신) 집계표는 체크가 풀린 채로
+ * 보이는데 세는 수와 종이에는 다시 들어갔다 — '체크를 풀었는데 42장 중 42장' 제보.
+ * 여는 `<div>` 는 부르는 쪽이 닫는다.
+ */
+function prSheetOpen(id, label) {
+    const skip = prSkip.has(id);
+    return `
+        <div class="pr-sheet${skip ? ' pr-skip' : ''}"
+             data-team="${attEsc(id)}" data-label="${attEsc(label)}">
+            <label class="pr-pick">
+                <input type="checkbox" data-team="${attEsc(id)}"${skip ? '' : ' checked'}> 출력
+            </label>`;
 }
 
 function updatePrCount() {

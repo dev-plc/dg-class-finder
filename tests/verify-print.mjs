@@ -758,6 +758,69 @@ await page.waitForSelector('.pr-sheet', { timeout: 15000 });
 ok('다시 켠 것도 기억한다',
    await page.$eval('.pr-sheet[data-team="Y1"] .pr-pick input', el => el.checked));
 
+// --- 집계표 장도 뺀 채로 남는가 -----------------------------------------------
+//
+// 제보: 체크를 풀어도 출력되고, 체크가 풀린 채로 '42장 중 42장 출력' 이라고 나온다.
+// 집계표 장은 체크만 기억대로 그리고 **빠졌다는 표시(pr-skip)는 안 달아서**, 새로
+// 그릴 때마다 체크는 풀려 보이는데 세는 수와 인쇄에는 다시 들어갔다.
+// 조 장은 멀쩡해서 위 검증이 못 잡았다 — 체크 모양만 보고 실제로 빠졌는지는 안 봤다.
+const reopenPrint = async () => {
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelectorAll('.team-card').length > 0,
+                             null, { timeout: 20000 });
+  await page.click('.tab-btn[data-tab="print"]');
+  await page.waitForSelector('.pr-sheet', { timeout: 15000 });
+  await page.waitForTimeout(300);
+};
+const sumSkipState = () => page.evaluate(() => {
+  const sheet = document.querySelector('.pr-sheet[data-team="__summary__:__all__"]');
+  const chip = document.querySelector('.pr-pick-chip input[data-team="__summary__:__all__"]');
+  const all = document.querySelectorAll('.pr-sheet').length;
+  const live = document.querySelectorAll('.pr-sheet:not(.pr-skip)').length;
+  return {
+    checked: sheet?.querySelector('.pr-pick input').checked,
+    skipped: sheet?.classList.contains('pr-skip'),
+    chipOn: chip ? chip.checked : null,
+    count: document.getElementById('prCount').textContent.trim(),
+    all, live,
+  };
+});
+await page.check('#prColSummary');
+await page.waitForTimeout(300);
+const sumBefore = await sumSkipState();
+await page.uncheck('.pr-sheet[data-team="__summary__:__all__"] .pr-pick input');
+await page.waitForTimeout(200);
+const sumOff = await sumSkipState();
+ok('집계표 체크를 풀면 빠진다', sumOff.checked === false && sumOff.skipped
+   && sumOff.count === `${sumBefore.all}장 중 ${sumBefore.live - 1}장 출력`,
+   `${sumBefore.count} → ${JSON.stringify(sumOff)}`);
+
+await reopenPrint();
+const sumReload = await sumSkipState();
+ok('새로 열어도 집계표는 빠진 채 (체크 · 표시 · 수가 같다)',
+   sumReload.checked === false && sumReload.skipped && sumReload.count === sumOff.count,
+   JSON.stringify(sumReload));
+ok('장 목록의 칩도 꺼진 채', sumReload.chipOn === false, JSON.stringify(sumReload));
+
+// 칸을 바꾸면 장을 통째로 다시 그린다 — 그때도 빠진 채여야 한다.
+await page.click('#prColMemo');
+await page.waitForTimeout(300);
+const sumRedraw = await sumSkipState();
+ok('다시 그려도 집계표는 빠진 채', sumRedraw.checked === false && sumRedraw.skipped
+   && sumRedraw.live === sumOff.live, JSON.stringify(sumRedraw));
+await page.click('#prColMemo');
+await page.waitForTimeout(300);
+
+// 실제로 종이에 안 나가는가 — 인쇄 화면에서 그 장이 안 보인다.
+await page.emulateMedia({ media: 'print' });
+const sumPrinted = await page.$eval('.pr-sheet[data-team="__summary__:__all__"]',
+  el => getComputedStyle(el).display);
+await page.emulateMedia({ media: 'screen' });
+ok('인쇄에는 안 나간다', sumPrinted === 'none', `display=${sumPrinted}`);
+
+await page.check('.pr-sheet[data-team="__summary__:__all__"] .pr-pick input');
+await page.waitForTimeout(200);
+
 // 원상복구 (다음 실행에 영향 주지 않게)
 await page.evaluate(() => {
   localStorage.removeItem('dg_admin_print_cols_v1');
