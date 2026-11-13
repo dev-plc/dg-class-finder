@@ -1,7 +1,7 @@
 // 관리자 화면 검증 — 검색(동명이인 포함) · 조별 보기 · 개인별 보기 · 필터.
 // Supabase 는 가짜 응답으로 대신한다.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT, asAdmin, publicMemberRows, ADMIN_SESSION_KEY } from './lib/harness.mjs';
 
 const PORT = 8092;
 const server = await serveRepo(PORT);
@@ -79,7 +79,6 @@ const ctx = await browser.newContext();
 // 기억해 둔 조가 **이름이 바뀌어 없어진** 상태로 시작한다 (YM5 → YM1).
 // 없는 조를 붙들고 있으면 빈 명단이 뜨고, 그 상태로 일괄 버튼을 누르면 사고가 난다.
 await ctx.addInitScript(() => {
-  sessionStorage.setItem('adminLoggedIn', 'true');
   localStorage.setItem('dg_admin_att_v1', JSON.stringify({ session: '', team: 'YM5' }));
   localStorage.setItem('dg_admin_print_skip_v1', JSON.stringify(['YM5', 'YM6']));
 });
@@ -91,12 +90,16 @@ page.on('console', m => { if (m.type() === 'error') console.log('   [console.err
 let csvHits = 0;
 await page.route('**/docs.google.com/**', route => { csvHits++; route.abort(); });
 
+const memberSelects = [];
 await page.route('**/rest/v1/**', route => {
   const u = new URL(route.request().url());
   const t = u.pathname.split('/').pop();
   let body = [];
   if (t === 'dg_members') {
-    body = u.searchParams.get('select') === 'cohort_id' ? [{ cohort_id: COHORT }] : M;
+    // 진짜 DB 처럼 나이 · 담당교역자는 표에서 안 준다 (anon 에게 그 열이 안 열려 있다).
+    // 화면에 나이 · 교역자가 뜬다면 관리자 함수(dg_admin_member_extras)로 받은 것이다.
+    memberSelects.push(u.searchParams.get('select') || '');
+    body = u.searchParams.get('select') === 'cohort_id' ? [{ cohort_id: COHORT }] : publicMemberRows(M);
   } else if (t === 'dg_sessions') {
     body = SESSIONS;
   } else if (t === 'dg_attendance') {
@@ -120,6 +123,8 @@ await page.route('**/script.google.com/**', route =>
   route.fulfill({ status: 200, contentType: 'application/json',
                   body: JSON.stringify({ success: true, data: [], sessions: [] }) }));
 
+const adminCalls = [];
+await asAdmin(page, { members: M, calls: adminCalls });
 await page.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
 await page.waitForTimeout(2500);
 
@@ -167,6 +172,26 @@ ok('개인별 보기 — 인원 카드', memberCards === 8, `${memberCards}명`)
 
 const hasAge = await page.evaluate(() => document.getElementById('membersGrid').textContent.includes('28'));
 ok('나이가 표시됨', hasAge);
+
+// --- 나이 · 담당교역자는 관리자 길로만 온다 (v134) ----------------------------
+//
+// 이 둘은 로그인한 관리자에게만 DB 가 준다. 위 가짜 DB 는 진짜처럼 표에서는 안 준다 —
+// 그런데도 화면에 떴다는 것은 관리자 함수로 받았다는 뜻이다.
+ok('나이 · 교역자를 관리자 토큰으로 따로 받는다',
+   adminCalls.some(c => c.kind === 'extras' && /^Bearer /.test(c.auth)),
+   JSON.stringify(adminCalls.filter(c => c.kind === 'extras')));
+// `select=*` 는 잠근 뒤 통째로 거절된다(42501) — 조회 화면이 죽는다. 열 이름을 적어 요청해야 한다.
+const fullSelects = memberSelects.filter(sel => sel !== 'cohort_id');
+ok("명단을 'select=*' 로 읽지 않는다",
+   fullSelects.length > 0 && fullSelects.every(sel => sel !== '*' && !/\bage\b|\bpastor\b/.test(sel)),
+   [...new Set(fullSelects)].join(' | '));
+// 캐시에 남으면 그 브라우저의 다음 사람이 로그인 없이 읽는다.
+const cached = await page.evaluate(() => JSON.parse(localStorage.getItem('dg_members_v1') || '[]'));
+ok('캐시(localStorage)에는 나이 · 교역자를 안 쓴다',
+   cached.length === 8 && cached.every(m => !m.age && !m.pastor),
+   JSON.stringify(cached.filter(m => m.age || m.pastor).map(m => [m.age, m.pastor])));
+ok('서버에 물어 관리자인지 확인한다', adminCalls.some(c => c.kind === 'user'),
+   adminCalls.map(c => c.kind).join(','));
 
 // --- 필터 ------------------------------------------------------------------
 await page.fill('#memberFilter', '이영희');

@@ -1,6 +1,6 @@
 // 조별 출석부 출력 검증 — 사양서 검증 1~8번.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT, asAdmin } from './lib/harness.mjs';
 
 const PORT = 8096;
 const server = await serveRepo(PORT);
@@ -92,7 +92,7 @@ await page.route('**/script.google.com/**', route =>
   route.fulfill({ status: 200, contentType: 'application/json',
                   body: JSON.stringify({ success: true, today: TODAY }) }));
 
-await page.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+await asAdmin(page, { members: MEMBERS });
 await page.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
 await page.waitForFunction(() => document.querySelectorAll('.team-card').length > 0,
                            null, { timeout: 20000 });

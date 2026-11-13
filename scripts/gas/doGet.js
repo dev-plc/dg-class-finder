@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v33)
+// DGfinder — Google Apps Script 전체 코드 (v34)
 //
 // ===========================================================================
 // ⚠️ 붙여넣는 곳: **dev 계정의 독립 Apps Script 프로젝트**
@@ -36,6 +36,20 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v34 — dev 계정 독립 프로젝트
+//   - **동기화 실행과 출석 기록 지우기는 관리자만.** doPost 는 누구나 부를 수 있어서,
+//     주소만 알면 동기화를 돌리고 지난 회차 기록을 빈칸으로 지울 수 있었다.
+//     앱(v134~)이 관리자 로그인 토큰을 body.token 으로 함께 보내고, DG_isAdmin_ 이
+//     그 토큰을 Supabase 에 물어 관리자 표시(app_metadata.dg_admin)를 확인한다.
+//       action:'sync'            → 관리자 토큰이 없으면 code:'admin-required'
+//       빈 값('')이 든 출석 저장  → 관리자 토큰이 없으면 code:'admin-required' (아무것도 안 쓴다)
+//       O/X 만 든 출석 저장       → 예전처럼 토큰 없이도 된다 (조장 화면)
+//     확인 결과는 5분 캐시한다 — 저장마다 왕복이 늘지 않게.
+//   - ⚠️ **O/X 쓰기는 여전히 누구나 할 수 있다.** 조장에게는 계정이 없다. 이것을 닫으려면
+//     조장 확인을 서버로 옮겨야 한다 (docs/HANDOVER.md '알려진 한계').
+//   - ⚠️ 앱 v134 가 사이트에 나간 **뒤에** 배포할 것. v133 은 토큰을 안 보내서, 이 버전을
+//     먼저 올리면 관리자 화면의 동기화 버튼과 '전체 지우기' 가 거절된다.
 //
 // v33 — dev 계정 독립 프로젝트 (2026-11-13 배포)
 //   - **읽기(doGet)에 열쇠를 건다.** 이 주소는 앱 코드에 적혀 있어 누구나 아는데,
@@ -165,7 +179,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 33;
+var DG_VERSION = 34;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -702,6 +716,73 @@ function DG_authorizeAndCheck() {
   return out;
 }
 
+/**
+ * 관리자 로그인 토큰인가 (v34).
+ *
+ * 앱이 Supabase 로그인으로 받은 토큰을 body.token 으로 보낸다. 여기서 **Supabase 에
+ * 물어** 그 토큰이 살아 있고 관리자 표시(app_metadata.dg_admin)가 있는지 본다.
+ * 토큰 안을 여기서 직접 풀어 믿지 않는다 — 서명을 확인할 길이 없다.
+ *
+ * app_metadata 는 사용자가 스스로 못 바꾸는 칸이다 (supabase/dg_admin.sql).
+ *
+ * 맞다는 답만 5분 캐시한다. 아니라는 답은 캐시하지 않는다 — 방금 로그인한 사람을
+ * 5분 동안 막으면 안 된다. 대신 표시를 뗀 계정이 최대 5분 더 통한다.
+ */
+var DG_ADMIN_CACHE_SEC = 300;
+
+function DG_isAdmin_(token) {
+  token = String(token == null ? '' : token).trim();
+  if (!token) return false;
+
+  var url = DG_prop('DG_SUPABASE_URL');
+  var key = DG_prop('DG_SUPABASE_SERVICE_KEY');
+  if (!url || !key) {
+    Logger.log('DG_SUPABASE_URL / DG_SUPABASE_SERVICE_KEY 가 없어 관리자 확인을 못 합니다.');
+    return false;
+  }
+
+  // 캐시 열쇠에 토큰을 그대로 쓰지 않는다 (길이 제한 · 남기지 않으려고). 해시로 줄인다.
+  var cacheKey = '';
+  var cache = null;
+  try {
+    cache = CacheService.getScriptCache();
+    cacheKey = 'dg_admin_' + Utilities.base64Encode(
+      Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token));
+    if (cache.get(cacheKey) === '1') return true;
+  } catch (cacheErr) {
+    cache = null;   // 캐시가 안 되면 매번 묻는다
+  }
+
+  var ok = false;
+  try {
+    var res = UrlFetchApp.fetch(url + '/auth/v1/user', {
+      headers: { apikey: key, Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    if (res.getResponseCode() === 200) {
+      var user = JSON.parse(res.getContentText());
+      ok = !!(user && user.app_metadata && user.app_metadata.dg_admin === true);
+    }
+  } catch (err) {
+    Logger.log('관리자 확인 실패: ' + String(err.message || err));
+    ok = false;
+  }
+
+  if (ok && cache) {
+    try { cache.put(cacheKey, '1', DG_ADMIN_CACHE_SEC); } catch (putErr) { /* 무시 */ }
+  }
+  return ok;
+}
+
+function DG_adminRequired_() {
+  return DG_json({
+    success: false,
+    version: DG_VERSION,
+    code: 'admin-required',
+    message: '관리자 로그인이 필요합니다.'
+  });
+}
+
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
@@ -713,6 +794,8 @@ function doPost(e) {
     // 동기화 요청은 시트를 건드리지 않는다. 잠금을 잡기 전에 끝낸다 —
     // 출석 저장이 진행 중이라고 막힐 이유가 없다.
     if (body && body.action === 'sync') {
+      // 관리자만 (v34). 버튼은 관리자 화면에만 있다.
+      if (!DG_isAdmin_(body.token)) return DG_adminRequired_();
       var sync = DG_requestSync();
       return DG_json({ success: sync.success, version: DG_VERSION, message: sync.message });
     }
@@ -748,6 +831,15 @@ function doPost(e) {
         ? null : String(rawSeen).trim().toUpperCase();
       entries.push({ id: name + phone, status: status, seen: seen });
     }
+
+    // **기록을 지우는 저장(빈 값)은 관리자만** (v34). 조장 화면은 O/X 만 보낸다 —
+    // 빈 값은 관리자 화면의 '전체 지우기' 와 같은 버튼 다시 누르기에서만 나온다.
+    // 하나라도 섞여 있으면 요청 전체를 받지 않는다 (반만 쓰면 화면과 시트가 어긋난다).
+    var erasing = false;
+    for (var ei = 0; ei < entries.length; ei++) {
+      if (entries[ei].status === '') { erasing = true; break; }
+    }
+    if (erasing && !DG_isAdmin_(body.token)) return DG_adminRequired_();
 
     // ---- 잠금 -------------------------------------------------------------
     // 컬럼을 읽고 쓰는 사이에 다른 사람이 저장하면 그 변경이 조용히 사라진다.

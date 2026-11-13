@@ -14,8 +14,9 @@
 // 고친 칸은 저장할 때 GAS 가 '본 값(seen)' 과 견주어 지킨다 (saveAttendance).
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=133';
-import { sbSelect, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=133';
+import { matches as hangulMatches } from './hangul.js?v=134';
+import { sbSelect, sbRpc, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=134';
+import { getAdminToken } from './admin-auth.js?v=134';
 
 export const MODULE_VERSION = 'dg members-data v2 (Supabase 조회·출석 읽기 + GAS 출석 쓰기)';
 
@@ -60,7 +61,9 @@ function readCacheSync() {
       const v = localStorage.getItem(k);
       return v ? JSON.parse(v) : fallback;
     };
-    state.members     = JSON.parse(m);
+    // 캐시에는 나이 · 담당교역자를 안 쓴다 (writeCacheSync). 다만 v133 까지의 앱은 썼으므로
+    // 옛 캐시에 남아 있을 수 있다 — 읽을 때도 비운다. 관리자 값은 늘 서버에서 새로 받는다.
+    state.members     = JSON.parse(m).map(withoutAdminFields);
     state.locationMap = get(CK.locationMap, {});
     state.teamLinks   = get(CK.teamLinks, {});
     state.sessions    = get(CK.sessions, []);
@@ -73,9 +76,19 @@ function readCacheSync() {
   }
 }
 
+/**
+ * 관리자만 볼 수 있는 값(나이 · 담당교역자)을 비운 사본.
+ *
+ * 이 둘은 로그인한 관리자에게만 DB 가 준다. 그것을 localStorage 에 써 두면 그 브라우저를
+ * 쓰는 다음 사람이 로그인 없이 읽는다 — 서버에서 막은 뜻이 없어진다.
+ */
+function withoutAdminFields(m) {
+  return { ...m, age: '', pastor: '' };
+}
+
 function writeCacheSync() {
   try {
-    localStorage.setItem(CK.members,     JSON.stringify(state.members));
+    localStorage.setItem(CK.members,     JSON.stringify(state.members.map(withoutAdminFields)));
     localStorage.setItem(CK.locationMap, JSON.stringify(state.locationMap));
     localStorage.setItem(CK.teamLinks,   JSON.stringify(state.teamLinks));
     localStorage.setItem(CK.sessions,    JSON.stringify(state.sessions));
@@ -128,8 +141,10 @@ function buildMemberRow(m, linkOf, attByMember) {
     sheet_row: m.sheet_row ?? null,
     location: m.location || '',
     role: m.role || '',
-    pastor: m.pastor || '',
-    age: m.age ?? '',
+    // 나이 · 담당교역자는 **표에서 읽지 않는다** — anon 에게 그 열이 안 열려 있다
+    // (supabase/dg_admin_lock.sql). 관리자일 때만 applyAdminExtras 가 채운다.
+    pastor: '',
+    age: '',
     lunch: m.lunch || '',
     telegramLink: linkOf(m.team),
     attendance: attByMember.get(m.id) || '',
@@ -144,11 +159,56 @@ function todayISO() {
   return new Date().toLocaleDateString('sv-SE');
 }
 
+// dg_members 에서 **누구나 읽어도 되는 열.** `select=*` 를 쓰면 안 된다 — 나이 · 담당교역자
+// 열에 권한이 없어서 요청이 통째로 거절되고(42501) 조회 화면이 죽는다.
+// ⚠️ 표에 열을 더해 화면에서 쓰려면 여기에 적고, DB 에서도 anon 에게 그 열을 열어 줘야 한다
+//    (dg_admin_lock.sql 을 다시 실행하면 나이 · 교역자만 빼고 전부 다시 열린다).
+const MEMBER_PUBLIC_COLUMNS =
+  'id,cohort_id,name,phone,team,team_no,sheet_row,location,role,lunch,status';
+
+/**
+ * 관리자만 볼 수 있는 값(나이 · 담당교역자)을 덧붙인다.
+ *
+ * 관리자 세션이 없으면 아무것도 안 한다 (조회 화면은 늘 그렇다 — 요청도 안 나간다).
+ * DB 함수 dg_admin_member_extras 가 토큰의 관리자 표시를 확인하고 준다. 관리자가
+ * 아니면 빈 목록이 온다.
+ *
+ * 실패해도 명단은 그대로 쓴다 — 나이 · 교역자 칸만 빈다. 다만 **조용히 비면 안 되므로**
+ * 상태를 남기고(adminExtrasStatus) 관리자 화면이 그것을 보고 알린다.
+ */
+let adminExtras = 'none';   // 'none' 세션 없음 · 'ok' · 'failed'
+
+async function applyAdminExtras(members, cohortId) {
+  let token = null;
+  try { token = await getAdminToken(); } catch { token = null; }
+  if (!token) { adminExtras = 'none'; return; }
+
+  try {
+    const rows = await sbRpc('dg_admin_member_extras', { p_cohort: cohortId }, token);
+    const byId = new Map((rows || []).map(r => [r.member_id, r]));
+    for (const m of members) {
+      const x = byId.get(m._uuid);
+      if (!x) continue;
+      m.age = x.age ?? '';
+      m.pastor = x.pastor || '';
+    }
+    adminExtras = 'ok';
+  } catch (err) {
+    console.log('관리자 전용 값(나이 · 담당교역자) 조회 실패:', err);
+    adminExtras = 'failed';
+  }
+}
+
+/** 관리자 전용 값을 받아 왔는가 — 'none'(세션 없음) · 'ok' · 'failed'. */
+export function adminExtrasStatus() {
+  return adminExtras;
+}
+
 async function fetchFromServer(cohortId) {
   const enc = encodeURIComponent(cohortId);
 
   const [members, teamLinkRows, locationRows, attendance, sessionRows] = await Promise.all([
-    sbSelect(`dg_members?select=*&cohort_id=eq.${enc}&status=eq.active&order=team,team_no`),
+    sbSelect(`dg_members?select=${MEMBER_PUBLIC_COLUMNS}&cohort_id=eq.${enc}&status=eq.active&order=team,team_no`),
     // order 가 있어야 sbSelect 가 1000행 넘게 나눠 받는다.
     sbSelect(`dg_team_links?select=team,chat_url&cohort_id=eq.${enc}&order=team`),
     sbSelect('dg_locations?select=location,image_url,detail_url&order=location'),
@@ -207,6 +267,8 @@ export async function refresh() {
   const cohortId = await getActiveCohortId();
   const previous = state.cohortId;
   const fresh = await fetchFromServer(cohortId);
+  // 관리자 세션이 있을 때만 나이 · 담당교역자를 덧붙인다. 없으면 요청도 안 나간다.
+  await applyAdminExtras(fresh.members, cohortId);
 
   // 회차별로 읽어 둔 출결(attendanceByDate — loadAttendanceForSession 이 채운다)은
   // 이 응답에 없다. 그대로 갈아끼우면 화면이 붙들고 있던 회차별 값이 통째로 사라진다.
@@ -1151,14 +1213,17 @@ export async function saveAttendance(session, changes) {
   if (!session) throw new Error('회차가 지정되지 않았습니다.');
   if (!changes || !changes.length) return { saved: 0, missing: [] };
 
+  // 관리자 세션이 있으면 토큰을 함께 보낸다. GAS(v34~)는 **기록을 지우는 저장**(빈 값)을
+  // 관리자 토큰이 있을 때만 받는다. O/X 저장은 토큰 없이도 된다 (조장 화면).
+  const token = await adminTokenOrNull();
   const res = await fetch(GAS_API_URL, {
     method: 'POST',
     // application/json 으로 보내면 preflight 때문에 CORS 로 막힌다.
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ session, batch: changes }),
+    body: JSON.stringify({ session, batch: changes, ...(token ? { token } : {}) }),
   });
   const result = await res.json();
-  if (!result.success) throw new Error(result.message || '출결 저장 실패');
+  if (!result.success) throw new Error(gasFailureMessage(result, '출결 저장 실패'));
 
   // 시트에 이미 다른 표기가 있어 두고 온 사람(kept)과, 시트에서 행을 못 찾은
   // 사람(missing)은 실제로 저장되지 않았다. 화면에 반영하면 저장된 것처럼
@@ -1207,14 +1272,36 @@ export async function saveAttendance(session, changes) {
  * 워크플로 실행에는 토큰이 필요하고 그 토큰은 앱에 둘 수 없다. GAS 를 거친다.
  */
 export async function requestSheetSync() {
+  // 동기화 실행은 관리자만 (GAS v34~). 토큰을 함께 보낸다.
+  const token = await adminTokenOrNull();
   const res = await fetch(GAS_API_URL, {
     method: 'POST',
     // application/json 으로 보내면 preflight 때문에 CORS 로 막힌다.
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'sync' }),
+    body: JSON.stringify({ action: 'sync', ...(token ? { token } : {}) }),
   });
   const result = await res.json();
-  return { success: !!result.success, message: result.message || '' };
+  return {
+    success: !!result.success,
+    message: result.success ? (result.message || '') : gasFailureMessage(result, '요청 실패'),
+  };
+}
+
+async function adminTokenOrNull() {
+  try { return await getAdminToken(); } catch { return null; }
+}
+
+/**
+ * GAS 가 거절한 까닭을 화면에 보일 문구로.
+ *
+ * `admin-required` 는 관리자 토큰이 없거나 죽었다는 뜻이다 (GAS v34~). 토큰은 1시간짜리라
+ * 새로 받지 못하면(오래 꺼 둔 탭 등) 이렇게 된다 — 할 일은 다시 로그인하는 것이다.
+ */
+function gasFailureMessage(result, fallback) {
+  if (result && result.code === 'admin-required') {
+    return '관리자 로그인이 만료됐습니다. 다시 로그인해 주세요.';
+  }
+  return (result && result.message) || fallback;
 }
 
 // ============================================================================
@@ -1278,6 +1365,16 @@ let pollUnloadHooked = false;
  *
  * @returns { finishedAt, members, attendance, lunch, homework } | null
  */
+/**
+ * 대상(기수)을 알고 있는가 — 받아 왔거나 지난번 것을 기억하고 있거나.
+ *
+ * 모르는 동안은 '동기화 기록이 없다' 고 말하면 안 된다. **모르는 것이지 없는 것이 아니다.**
+ * 관리자 화면을 처음 여는 브라우저에서 명단이 오기 전 잠깐, 빨간 경고가 떴다 사라졌다.
+ */
+export function knowsCohort() {
+  return !!(state.cohortId || getCachedCohortId());
+}
+
 export async function getLastSync(cohortId) {
   const id = cohortId || getCachedCohortId();
   if (!id) return null;

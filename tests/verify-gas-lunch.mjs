@@ -332,7 +332,7 @@ const callGet = (params) => {
 };
 const KEY = 'k3y+With/odd=chars&1234567890abcdef';
 
-ok('GAS 버전 33', sandbox.DG_VERSION === 33, String(sandbox.DG_VERSION));
+ok('GAS 버전 34', sandbox.DG_VERSION === 34, String(sandbox.DG_VERSION));
 
 // 속성이 없으면 예전처럼 열려 있다 — 배포 순서를 강제하지 않으려는 것.
 delete PROPS.DG_READ_KEY;

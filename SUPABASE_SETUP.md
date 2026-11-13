@@ -72,6 +72,23 @@ Settings → Secrets and variables → Actions
 | `GAS_API_URL` | 기존 GAS `/exec` URL |
 | `GAS_READ_KEY` | GAS 읽기 열쇠 — GAS 스크립트 속성 `DG_READ_KEY` 와 **같은 값** (GAS v33~, `scripts/gas/README.md`). 없으면 열쇠를 안 보낸다 |
 
+## 4-1. 관리자 계정 (v134~)
+
+관리자 화면은 Supabase 로그인으로 들어간다. **계정 · 비밀번호는 대시보드에만 둔다** — 코드 ·
+문서 어디에도 적지 않는다. 자세한 것은 `docs/HANDOVER.md` 함정 6-11.
+
+1. Authentication → Users → **Add user** → Create new user
+   - Email `plc@dgfinder.plch.kr` (실제 메일함일 필요 없다 — 화면에서는 `plc` 만 친다)
+   - Password 직접 정한다 · **Auto Confirm User** 켠다
+2. SQL Editor 에서 **`supabase/dg_admin.sql`** 실행 — 관리자 표시와 관리자 전용 함수.
+   끝의 결과에 한 줄이 나오고 `dg_admin` 이 `true` 여야 한다
+3. (앱 v134 가 사이트에 나간 뒤) **`supabase/dg_admin_lock.sql`** 실행 — 나이 · 담당교역자 열을
+   관리자만 읽게 잠근다. ⚠️ 그 전에 실행하면 조회 화면이 죽는다 (v133 은 `select=*` 로 읽는다)
+4. (권장) Authentication 설정에서 새 가입(Sign up)을 끈다. 켜져 있어도 가입한 사람이 관리자가 될
+   수는 없지만(표시는 사용자가 못 바꾼다) 둘 이유가 없다
+
+비밀번호를 바꾸거나 잊었으면 Authentication → Users 에서 그 계정을 열어 다시 정한다.
+
 ## 5. 동기화 — dry-run 먼저
 
 Actions → **시트 → DB 동기화** → Run workflow

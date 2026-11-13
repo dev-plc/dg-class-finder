@@ -4,7 +4,7 @@
 // 한 번 그런 일이 있으면 아무도 이 화면을 믿지 않는다. 그래서 규칙마다
 // 그 규칙 때문에만 걸리는 사람을 하나씩 심어 두고 확인한다.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT, asAdmin, publicMemberRows } from './lib/harness.mjs';
 
 const PORT = 8099;
 const server = await serveRepo(PORT);
@@ -119,7 +119,6 @@ const { ok, done } = makeReporter('결석 현황');
 
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 1000, height: 900 } });
-await context.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
 const page = await context.newPage();
 await page.clock.setFixedTime(new Date(`${TODAY}T09:00:00Z`));
 const dialogs = [];
@@ -133,7 +132,8 @@ await page.route('**/rest/v1/**', route => {
   const select = url.searchParams.get('select') || '';
   let body = [];
   if (table === 'dg_members') {
-    body = select === 'cohort_id' ? [{ cohort_id: COHORT }] : MEMBERS;
+    // 진짜 DB 처럼 담당교역자 · 나이는 표에서 안 준다 — 관리자 함수로만 온다 (asAdmin).
+    body = select === 'cohort_id' ? [{ cohort_id: COHORT }] : publicMemberRows(MEMBERS);
   } else if (table === 'dg_sessions') {
     body = SESSIONS;
   } else if (table === 'dg_homework') {
@@ -151,6 +151,7 @@ await page.route('**/script.google.com/**', route =>
   route.fulfill({ status: 200, contentType: 'application/json',
                   body: JSON.stringify({ success: true, today: TODAY }) }));
 
+await asAdmin(page, { members: MEMBERS });
 await page.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
 await page.waitForFunction(() => document.querySelectorAll('.team-card').length > 0,
                            null, { timeout: 20000 });

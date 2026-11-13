@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 
-import { serveRepo, launch, makeReporter, ROOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, ROOT, asAdmin, ADMIN_TOKEN } from './lib/harness.mjs';
 
 const PORT = 8095;
 const server = await serveRepo(PORT);
@@ -55,7 +55,7 @@ await page.route('**/script.google.com/**', route => {
                   body: JSON.stringify({ success: true }) });
 });
 
-await page.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+await asAdmin(page);
 await page.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
 await page.waitForFunction(() => document.querySelectorAll('.team-card').length > 0,
                            null, { timeout: 20000 });
@@ -76,8 +76,13 @@ ok('GAS 로 action:sync 를 보낸다', posts[0]?.body?.action === 'sync',
    JSON.stringify(posts[0]?.body));
 ok('CORS preflight 를 피하려 text/plain 으로 보낸다',
    /text\/plain/.test(posts[0]?.contentType || ''), posts[0]?.contentType);
-ok('토큰을 앱에서 보내지 않는다',
-   !JSON.stringify(posts[0]?.body || {}).match(/token|ghp_|github_pat/i),
+// GitHub 토큰은 GAS 의 스크립트 속성에만 있다 — 앱은 그것을 모르고 보내지도 않는다.
+ok('GitHub 토큰을 앱에서 보내지 않는다',
+   !JSON.stringify(posts[0]?.body || {}).match(/ghp_|github_pat/i),
+   JSON.stringify(posts[0]?.body));
+// 앱이 보내는 것은 **관리자 로그인 토큰**이다 (v134). GAS(v34~)가 그것을 Supabase 에
+// 물어 관리자인지 확인한 뒤에만 동기화를 돌린다 — 예전에는 주소만 알면 누구나 돌렸다.
+ok('관리자 로그인 토큰을 함께 보낸다', posts[0]?.body?.token === ADMIN_TOKEN,
    JSON.stringify(posts[0]?.body));
 
 const info1 = await page.$eval('#syncInfo', el => el.textContent.trim());
@@ -117,7 +122,7 @@ await p3.route('**/rest/v1/**', route => {
 await p3.route('**/script.google.com/**', route =>
   route.fulfill({ status: 200, contentType: 'application/json',
                   body: JSON.stringify({ success: true, data: [], sessions: [] }) }));
-await p3.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+await asAdmin(p3);
 await p3.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
 await p3.waitForFunction(
   () => (document.getElementById('syncLast')?.textContent || '').length > 0,
@@ -149,7 +154,7 @@ const lastLineWith = async (row) => {
   await pg.route('**/script.google.com/**', route =>
     route.fulfill({ status: 200, contentType: 'application/json',
                     body: JSON.stringify({ success: true, data: [], sessions: [] }) }));
-  await pg.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+  await asAdmin(pg);
   await pg.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
   await pg.waitForFunction(
     () => (document.getElementById('syncLast')?.textContent || '').length > 0,
@@ -184,6 +189,14 @@ await page.waitForTimeout(600);
 const info2 = await page.$eval('#syncInfo', el => el.textContent.trim());
 const cls2 = await page.$eval('#syncInfo', el => el.className);
 ok('실패 사유를 그대로 보여준다', /워크플로를 찾지 못했습니다/.test(info2), info2);
+
+// GAS 가 관리자 토큰을 거절했다 (만료 · 표시가 떼인 계정). 할 일은 다시 로그인하는 것이다.
+gasReply = { success: false, version: 34, code: 'admin-required', message: '관리자 로그인이 필요합니다.' };
+await page.evaluate(() => { document.getElementById('syncBtn').disabled = false; });
+await page.click('#syncBtn');
+await page.waitForTimeout(600);
+const infoAdmin = await page.$eval('#syncInfo', el => el.textContent.trim());
+ok('관리자 확인에 걸리면 다시 로그인하라고 말한다', /다시 로그인/.test(infoAdmin), infoAdmin);
 ok('실패는 실패로 표시된다', cls2.includes('fail'), cls2);
 
 // --- 화면 새로 고침 --------------------------------------------------------
@@ -218,7 +231,6 @@ ok('정각은 피한다 — GitHub 예약은 정각에 30~45분씩 밀린다',
 // 화면이 틀려도 검증은 통과한다.
 async function syncInfoAt(iso) {
   const ctx = await browser.newContext();
-  await ctx.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
   const p2 = await ctx.newPage();
   await p2.clock.setFixedTime(new Date(iso));
   await p2.route('**/rest/v1/**', route => {
@@ -233,6 +245,7 @@ async function syncInfoAt(iso) {
   await p2.route('**/script.google.com/**', route =>
     route.fulfill({ status: 200, contentType: 'application/json',
                     body: JSON.stringify({ success: true }) }));
+  await asAdmin(p2);
   await p2.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
   await p2.waitForFunction(() => document.getElementById('syncInfo')?.textContent.includes('다음'),
                            null, { timeout: 20000 });
@@ -277,7 +290,6 @@ await page.screenshot({ path: 'tests/.shots/dg-sync-btn.png' });
  */
 async function pollCase({ syncLogStatus = 200, hidden = false } = {}) {
   const ctx = await browser.newContext();
-  await ctx.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
   if (hidden) {
     await ctx.addInitScript(() =>
       Object.defineProperty(document, 'hidden', { get: () => true, configurable: true }));
@@ -322,6 +334,7 @@ async function pollCase({ syncLogStatus = 200, hidden = false } = {}) {
     route.fulfill({ status: 200, contentType: 'application/json',
                     body: JSON.stringify({ success: true, version: 24, message: '요청했습니다.' }) }));
 
+  await asAdmin(p2);
   await p2.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
   await p2.waitForFunction(() => document.querySelectorAll('.team-card').length > 0,
                            null, { timeout: 20000 });

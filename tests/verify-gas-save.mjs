@@ -22,9 +22,41 @@ const Utilities = {
     const y = d.getUTCFullYear(), m = p(d.getUTCMonth() + 1), day = p(d.getUTCDate());
     return fmt === 'yyyy-MM-dd' ? `${y}-${m}-${day}` : `${m}/${day}`;
   },
+  // 관리자 확인(v34)이 캐시 열쇠를 만들 때 쓴다. 진짜 해시일 필요는 없다 — 토큰마다 다르면 된다.
+  DigestAlgorithm: { SHA_256: 'sha256' },
+  computeDigest: (algo, text) => Array.from(Buffer.from(String(text))),
+  base64Encode: (bytes) => Buffer.from(bytes).toString('base64'),
 };
-// 스크립트 속성이 비어 있으면 DB 밀어넣기는 건너뛴다 (dbPushed: false) — 여기서는 시트만 본다.
-const PropertiesService = { getScriptProperties: () => ({ getProperty: () => null }) };
+// 스크립트 속성. 비어 있으면 DB 밀어넣기는 건너뛴다 (dbPushed: false) — 앞쪽 검증은 시트만 본다.
+// 관리자 확인(v34) 검증에서 Supabase 속성을 채운다.
+const PROPS = {};
+const PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => PROPS[k] ?? null }) };
+// Supabase 대역 — /auth/v1/user 에 토큰을 물으면 누구의 것인지 답한다.
+const TOKENS = {
+  'admin-token': { status: 200, user: { app_metadata: { dg_admin: true } } },
+  'guest-token': { status: 200, user: { app_metadata: {} } },            // 로그인은 됐지만 관리자 표시가 없다
+  'fake-meta-token': { status: 200, user: { user_metadata: { dg_admin: true }, app_metadata: {} } },
+};
+const authAsked = [];
+const UrlFetchApp = {
+  fetch(url, opts) {
+    const token = String(opts?.headers?.Authorization || '').replace(/^Bearer /, '');
+    if (/\/auth\/v1\/user$/.test(url)) {
+      authAsked.push(token);
+      const hit = TOKENS[token] || { status: 401, user: { message: 'invalid JWT' } };
+      return { getResponseCode: () => hit.status, getContentText: () => JSON.stringify(hit.user) };
+    }
+    // 그 밖(DB 밀어넣기 등)은 이 검증의 관심사가 아니다.
+    return { getResponseCode: () => 500, getContentText: () => '{}' };
+  },
+};
+const cacheStore = {};
+const CacheService = {
+  getScriptCache: () => ({
+    get: (k) => (k in cacheStore ? cacheStore[k] : null),
+    put: (k, v) => { cacheStore[k] = v; },
+  }),
+};
 const ContentService = {
   MimeType: { JSON: 'json' },
   createTextOutput: (text) => ({ text, setMimeType() { return this; } }),
@@ -69,8 +101,8 @@ const SpreadsheetApp = {
 };
 
 const stubs = { Utilities, PropertiesService, SpreadsheetApp, LockService, ContentService,
-                ScriptApp: {}, UrlFetchApp: {}, Session: { getScriptTimeZone: () => 'Asia/Seoul' },
-                Logger };
+                ScriptApp: {}, UrlFetchApp, CacheService,
+                Session: { getScriptTimeZone: () => 'Asia/Seoul' }, Logger };
 const gas = new Function(...Object.keys(stubs), `
   ${src}
   return { doPost, DG_VERSION };
@@ -79,7 +111,7 @@ const gas = new Function(...Object.keys(stubs), `
 const post = (body) => JSON.parse(gas.doPost({ postData: { contents: JSON.stringify(body) } }).text);
 const cell = (id) => values.find(r => r[0] === id)[3];
 
-ok('GAS 버전 33', gas.DG_VERSION === 33, String(gas.DG_VERSION));
+ok('GAS 버전 34', gas.DG_VERSION === 34, String(gas.DG_VERSION));
 
 // --- 1. 시트 O · 화면은 빈칸으로 봤다 · 보낸 값 X → 덮지 않는다 -------------------
 resetSheet();
@@ -137,5 +169,72 @@ resetSheet();
 values[3][3] = ' o ';
 res = post({ session: S, batch: [{ name: '이조원', phone: '2222', status: 'X', seen: 'O' }] });
 ok("시트의 ' o ' 와 seen 'O' 는 같은 값", cell('이조원2222') === 'X' && res.saved === 1, JSON.stringify(res));
+
+// ==========================================================================
+// 관리자만 할 수 있는 것 (v34) — 동기화 실행 · 기록 지우기
+//
+// doPost 는 누구나 부를 수 있다. 주소만 알면 동기화를 돌리고 지난 회차 기록을 빈칸으로
+// 지울 수 있었다. 앱이 관리자 로그인 토큰을 body.token 으로 보내고, GAS 가 그것을
+// Supabase 에 물어 관리자 표시(app_metadata.dg_admin)를 확인한다.
+// ==========================================================================
+PROPS.DG_SUPABASE_URL = 'https://example.supabase.co';
+PROPS.DG_SUPABASE_SERVICE_KEY = 'service-key-not-real';
+const erase = (extra = {}) => post({ session: S, batch: [
+  { name: '김조장', phone: '1111', status: '', seen: 'O' },
+  { name: '최빈칸', phone: '4444', status: 'X', seen: '' },
+], ...extra });
+
+// --- 기록 지우기 (빈 값) -----------------------------------------------------
+for (const [label, extra] of [['토큰 없음', {}], ['지어낸 토큰', { token: 'made-up' }],
+                              ['관리자 표시 없는 계정', { token: 'guest-token' }],
+                              // user_metadata 는 사용자가 스스로 바꿀 수 있는 칸이다 — 거기 적힌 것은 안 믿는다
+                              ['스스로 붙인 표시(user_metadata)', { token: 'fake-meta-token' }]]) {
+  resetSheet();
+  res = erase(extra);
+  ok(`지우는 저장 — ${label}: 거절한다`, res.success === false && res.code === 'admin-required', JSON.stringify(res));
+  ok(`지우는 저장 — ${label}: 시트를 하나도 안 바꾼다 (O/X 도 같이 안 쓴다)`,
+     writes.length === 0 && cell('김조장1111') === 'O' && cell('최빈칸4444') === '', JSON.stringify(writes));
+}
+ok('거절하고도 잠금을 남기지 않는다', lockHeld === 0, String(lockHeld));
+
+resetSheet();
+res = erase({ token: 'admin-token' });
+ok('지우는 저장 — 관리자 토큰이면 쓴다',
+   res.success === true && cell('김조장1111') === '' && cell('최빈칸4444') === 'X', JSON.stringify(res));
+
+// --- O/X 저장은 토큰 없이도 된다 (조장 화면) ----------------------------------
+resetSheet();
+res = post({ session: S, batch: [{ name: '최빈칸', phone: '4444', status: 'O', seen: '' }] });
+ok('O/X 저장은 토큰 없이도 된다 (조장 화면)', res.success === true && cell('최빈칸4444') === 'O', JSON.stringify(res));
+
+// --- 동기화 실행 -------------------------------------------------------------
+res = post({ action: 'sync' });
+ok('동기화 실행 — 토큰 없이는 거절', res.success === false && res.code === 'admin-required', JSON.stringify(res));
+res = post({ action: 'sync', token: 'guest-token' });
+ok('동기화 실행 — 관리자 표시 없는 계정은 거절', res.code === 'admin-required', JSON.stringify(res));
+res = post({ action: 'sync', token: 'admin-token' });
+// 여기서는 GitHub 토큰 속성이 없어 그 다음 단계에서 멈춘다 — 관리자 확인은 지나갔다는 뜻이다.
+ok('동기화 실행 — 관리자 토큰이면 다음 단계로 간다',
+   res.code !== 'admin-required' && /DG_GH_TOKEN/.test(res.message || ''), JSON.stringify(res));
+
+// --- 확인 결과 캐시 -----------------------------------------------------------
+// 저장할 때마다 Supabase 에 묻지 않는다 (맞다는 답만 5분). 아니라는 답은 매번 다시 묻는다 —
+// 방금 로그인한 사람을 5분 동안 막으면 안 된다.
+authAsked.length = 0;
+post({ action: 'sync', token: 'admin-token' });
+post({ action: 'sync', token: 'admin-token' });
+ok('맞다는 답은 캐시한다 (다시 안 묻는다)', authAsked.length === 0, `${authAsked.length}회 물음`);
+post({ action: 'sync', token: 'guest-token' });
+post({ action: 'sync', token: 'guest-token' });
+ok('아니라는 답은 캐시하지 않는다', authAsked.length === 2, `${authAsked.length}회 물음`);
+ok('캐시 열쇠에 토큰을 그대로 쓰지 않는다',
+   Object.keys(cacheStore).length > 0 && Object.keys(cacheStore).every(k => !k.includes('admin-token')),
+   Object.keys(cacheStore).join(','));
+
+// --- Supabase 속성이 없으면 확인할 길이 없다 → 거절 (열어 두지 않는다) -----------
+delete PROPS.DG_SUPABASE_URL;
+for (const k of Object.keys(cacheStore)) delete cacheStore[k];
+res = post({ action: 'sync', token: 'admin-token' });
+ok('확인할 길이 없으면 거절한다 (열어 두지 않는다)', res.code === 'admin-required', JSON.stringify(res));
 
 done();

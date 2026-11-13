@@ -1,7 +1,7 @@
 // 관리자 화면 모바일 레이아웃 검증.
 // 좁은 폭에서 글자가 세로로 쪼개지거나 상자를 넘치지 않는지 본다.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT, asAdmin } from './lib/harness.mjs';
 
 const PORT = 8097;
 const server = await serveRepo(PORT);
@@ -40,7 +40,7 @@ await page.route('**/rest/v1/**', route => {
 await page.route('**/script.google.com/**', route =>
   route.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' }));
 
-await page.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+await asAdmin(page, { members: MEMBERS });
 await page.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
 await page.waitForFunction(() => document.querySelectorAll('.team-card').length > 0,
                            null, { timeout: 20000 });

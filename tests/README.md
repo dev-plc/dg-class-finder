@@ -23,7 +23,7 @@ node tests/verify-print.mjs       # 하나만
 | `verify-attendance.mjs` | 조장 화면 — 출결을 DB 에서 한 조 · 한 회차만 읽는가(GAS 0회) · 불러오는 중/실패/다시 시도 · 배경 갱신에도 체크 유지 · `seen`·`changed` · `과제`·`돌봄` 은 읽기 전용 |
 | `verify-matrix.mjs` | 전체 출석표 — 조원 × 회차, 🍙 · 📝, 시트발/앱발 `과제` 가 같은 모양인가 |
 | `verify-myatt.mjs` | 내 출석 현황 · 안 낸 과제(첫 기록 이후만) · 종류가 모자란 제출 |
-| `verify-login.mjs` | 관리자 로그인 — 맞으면 바로, 틀렸을 때만 알림 |
+| `verify-login.mjs` | 관리자 로그인(Supabase) — 맞으면 바로, 틀렸을 때만 알림 · 옛 뒷문/가짜 토큰/관리자 표시 없는 계정은 못 들어감 · 토큰 새로 받기 · **저장소에 옛 비밀번호 글자가 없는가** |
 | `verify-links.mjs` | 안내방 버튼 — 조 방·부서 방, 대소문자가 어긋난 링크 키 |
 | `verify-mobile.mjs` | 폰 크기에서 버튼·표가 깨지지 않는가 |
 | `verify-sync-btn.mjs` | 시트 동기화 버튼 · 자동 새로고침(`dg_sync_log` 끝 표시) |

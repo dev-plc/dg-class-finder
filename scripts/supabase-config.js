@@ -6,6 +6,8 @@
 //
 // anon 키는 공개돼도 안전하다 — RLS 정책이 실제 접근을 제어한다.
 // dg_* 테이블은 select 만 열려 있고 쓰기 정책이 없어 이 키로는 아무것도 못 쓴다.
+// dg_members 의 나이 · 담당교역자 열은 anon 에게 안 열려 있다 (supabase/dg_admin_lock.sql) —
+// 그래서 `select=*` 를 쓰면 통째로 거절된다. 열 이름을 적어 요청할 것.
 //
 // service_role 키는 여기에 넣지 않는다. GitHub Secrets 에만 둔다.
 
@@ -73,6 +75,30 @@ export async function sbSelect(path) {
     if (rows.length < PAGE_SIZE) return out;
     offset += PAGE_SIZE;
   }
+}
+
+/**
+ * DB 함수(RPC) 부르기 — **관리자 토큰으로.**
+ *
+ * 표 조회(sbSelect)는 늘 anon 키로 한다. 관리자만 볼 수 있는 값(나이 · 담당교역자)은
+ * 표에서 열 권한을 뺐고, 관리자 표시가 든 토큰을 확인하는 함수로만 나온다
+ * (supabase/dg_admin.sql). 그 함수를 부를 때만 이것을 쓴다.
+ */
+export async function sbRpc(name, args, token) {
+  const res = await fetch(`${REST}/rpc/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(args || {}),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Supabase 함수 실패 (${res.status}): ${body.slice(0, 200)}`);
+  }
+  return res.json();
 }
 
 export function getCachedCohortId() {

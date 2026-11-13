@@ -16,6 +16,8 @@
 // 쓰기는 DB 로 곧장 가지 않는다. 출결의 원본은 시트이고, 바뀐 사람만 모아
 // GAS 로 보내면 GAS 가 시트에 쓴 뒤 DB 에 밀어넣는다 (members-data.js 참고).
 import {
+    adminExtrasStatus,
+    knowsCohort,
     compareMemberOrder,
     ensureLoaded,
     getAttendanceHistory,
@@ -44,16 +46,28 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=133';
+} from './scripts/members-data.js?v=134';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=133';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=134';
 // 검색칸은 초성으로도 찾는다 ('ㅇㅎㅇ' → 이희옥 · 'ㄴ' → 남1조).
 // 조회 화면의 이름 찾기(findMember)도 이것을 쓴다 — 규칙을 한 곳에 둔다.
-import { matches as hangulMatches } from './scripts/hangul.js?v=133';
+import { matches as hangulMatches } from './scripts/hangul.js?v=134';
+import { hasAdminSession, verifyAdmin, adminSignOut } from './scripts/admin-auth.js?v=134';
 
 // 로그인 확인
-if (!sessionStorage.getItem('adminLoggedIn')) {
-    window.location.href = 'index.html';
+//
+// 세션이 아예 없으면 바로 내보낸다. 있으면 화면을 그리면서 **서버에 물어** 확인한다.
+//
+// ⚠️ 이 줄이 막는 것은 없다 — 브라우저 코드는 누구나 고쳐 쓸 수 있다. 실제로 막는 것은
+// DB(나이 · 담당교역자)와 GAS(동기화 실행 · 기록 지우기)다 (docs/HANDOVER.md).
+// 예전에는 `sessionStorage.adminLoggedIn` 이 **있기만 하면** 들여보냈다 — 그 뒷문은 없앴다.
+if (!hasAdminSession()) {
+    window.location.replace('index.html');
+} else {
+    verifyAdmin().then((state) => {
+        // 'unknown'(연결 실패)이면 내보내지 않는다. 잠깐 끊긴 것으로 쫓아내면 하던 일을 잃는다.
+        if (state === 'denied') window.location.replace('index.html');
+    });
 }
 
 // 데이터 저장 변수
@@ -89,10 +103,22 @@ async function loadData() {
 
         renderTeamsView();
         renderMembersView();
+        warnAdminExtras();
     } catch (error) {
         console.log('❌ 데이터 로드 실패:', error);
         alert('데이터를 불러오는 중 오류가 발생했습니다. 인터넷 연결을 확인해주세요.');
     }
+}
+
+/**
+ * 나이 · 담당교역자를 못 받아 왔으면 말한다.
+ *
+ * 이 둘은 로그인한 관리자에게만 DB 가 준다. 못 받으면 카드의 나이 줄과 조 카드의 교역자가
+ * **그냥 빈다** — 오류가 안 나서, 값이 원래 없는 것으로 읽힌다. 그래서 알린다.
+ */
+function warnAdminExtras() {
+    if (adminExtrasStatus() !== 'failed') return;
+    setSyncInfo('나이 · 담당교역자를 불러오지 못했습니다. 로그아웃한 뒤 다시 로그인해 보세요.', 'fail');
 }
 
 // 캐시로 먼저 그렸다면 갱신이 끝났을 때 다시 그려야 한다.
@@ -102,6 +128,7 @@ subscribe((event) => {
     memberData = getMembers();
     renderTeamsView(teamFilter ? teamFilter.value : '');
     renderMembersView(memberFilter ? memberFilter.value : '');
+    warnAdminExtras();
 
     // 결석 현황도 받아 둔 값이다. 새로 가져왔으면 다시 센다.
     if (abHistory) { abHistory = null; loadAbsence(); }
@@ -141,10 +168,8 @@ themeToggle.addEventListener('click', () => {
 if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
         if (confirm("로그아웃 하시겠습니까?")) {
-            // 세션 정보 삭제
-            sessionStorage.removeItem('adminLoggedIn');
-            // 로그인 페이지(index.html)로 이동
-            window.location.href = 'index.html';
+            // 세션을 지우고(서버에도 알린다) 로그인 페이지로. 서버가 답이 없어도 나간다.
+            adminSignOut().finally(() => { window.location.href = 'index.html'; });
         }
     });
 }
@@ -229,6 +254,9 @@ setSyncInfo(syncIdleMessage());
 async function renderLastSync() {
     const el = document.getElementById('syncLast');
     if (!el) return;
+    // 대상(기수)을 아직 모르면 아무 말도 하지 않는다. 명단이 오면(refresh) 다시 불린다.
+    // 여기서 '기록이 없습니다' 라고 하면, 처음 여는 브라우저에서 빨간 경고가 떴다 사라진다.
+    if (!knowsCohort()) return;
     let last = null;
     try { last = await getLastSync(); } catch { /* 아래에서 '기록 없음' 으로 */ }
 

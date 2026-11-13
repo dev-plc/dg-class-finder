@@ -1,7 +1,7 @@
 // 관리자 출석 관리 화면 검증 — 사양서 검증 1~8번.
 // Supabase / GAS 는 가짜 응답으로 대신한다 (컨테이너 밖으로 못 나간다).
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT, asAdmin, ADMIN_TOKEN } from './lib/harness.mjs';
 
 const PORT = 8094;
 const server = await serveRepo(PORT);
@@ -142,7 +142,7 @@ await page.route('**/script.google.com/**', route => {
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(gasPayload()) });
 });
 
-await page.addInitScript(() => sessionStorage.setItem('adminLoggedIn', '1'));
+await asAdmin(page, { members: MEMBERS });
 await page.goto(`http://localhost:${PORT}/admin.html`, { waitUntil: 'load' });
 // 조별 탭은 숨어 있으므로 '보일 때까지' 가 아니라 '생길 때까지' 기다린다
 await page.waitForFunction(() => document.querySelectorAll('.team-card').length > 0,
@@ -325,6 +325,8 @@ await page.waitForTimeout(800);
 const st3 = Object.fromEntries((posted[0]?.batch || []).map(b => [b.name, b.status]));
 ok('3. 일부러 지운 칸은 빈 값으로 전송', st3['김조장'] === '',
    JSON.stringify(posted[0]?.batch));
+// 기록을 지우는 저장은 관리자만 할 수 있다 (GAS v34). 앱이 로그인 토큰을 함께 보낸다.
+ok('3. 지우는 저장에 관리자 토큰이 실린다', posted[0]?.token === ADMIN_TOKEN, JSON.stringify(Object.keys(posted[0] || {})));
 ok('3. 시트에서 기록이 지워짐', ATT['김조장1001']['2026-08-09'] === '',
    JSON.stringify(ATT['김조장1001']));
 

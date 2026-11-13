@@ -28,9 +28,10 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=133';
+} from './scripts/members-data.js?v=134';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=133';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=134';
+import { adminSignIn } from './scripts/admin-auth.js?v=134';
 
 // 1-1. 내 정보 기억
 //
@@ -1252,24 +1253,38 @@ function initEventListeners() {
     elements.themeToggle.addEventListener('click', () => { document.body.classList.toggle('dark-mode'); });
     elements.adminBtn.addEventListener('click', () => { elements.adminModal.classList.add('active'); });
     elements.adminClose.addEventListener('click', () => { elements.adminModal.classList.remove('active'); });
-    elements.adminForm.addEventListener('submit', (e) => {
+    // 관리자 로그인 — Supabase 가 확인한다 (scripts/admin-auth.js).
+    //
+    // 예전에는 여기서 아이디 · 비밀번호를 글자로 견줬다. 비밀번호가 공개 코드에 그대로
+    // 있었고, 맞든 틀리든 서버는 아무것도 몰랐다. 지금은 계정도 비밀번호도 여기 없다.
+    elements.adminForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = document.getElementById('adminId').value;
         const pw = document.getElementById('adminPassword').value;
         const errorElement = document.getElementById('adminLoginError');
+        const submitBtn = elements.adminForm.querySelector('button[type="submit"]');
+        if (submitBtn?.disabled) return;   // 확인 중에 한 번 더 누른 것
 
-        // 맞으면 그냥 들여보낸다. '로그인 성공!' 을 한 번 더 누르게 할 이유가 없다.
-        // 알림은 틀렸을 때만 — 그때만 사람이 할 일이 남는다.
-        if (id === 'plc' && pw === 'plc1234') {
-            sessionStorage.setItem('adminLoggedIn', 'true');
+        const prevText = submitBtn?.textContent;
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '확인 중…'; }
+        try {
+            await adminSignIn(id, pw);
+            // 맞으면 그냥 들여보낸다. '로그인 성공!' 을 한 번 더 누르게 할 이유가 없다.
+            // 알림은 틀렸을 때만 — 그때만 사람이 할 일이 남는다.
             window.location.href = 'admin.html';
             return;
+        } catch (err) {
+            if (errorElement) {
+                errorElement.style.display = 'block';
+                // AdminAuthError 의 문구는 화면에 그대로 보여도 되는 것이다
+                // (틀렸다 · 권한이 없다 · 연결이 안 된다).
+                errorElement.textContent = err?.name === 'AdminAuthError'
+                    ? err.message
+                    : '로그인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+            }
+            if (err?.name !== 'AdminAuthError') console.log('관리자 로그인 실패:', err);
         }
-
-        if (errorElement) {
-            errorElement.style.display = 'block';
-            errorElement.textContent = '아이디 또는 비밀번호가 틀렸습니다.';
-        }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = prevText; }
     });
 
     // 다시 입력하기 시작하면 빨간 글씨를 지운다. 고치는 중에도 남아 있으면
