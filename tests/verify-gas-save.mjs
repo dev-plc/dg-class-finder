@@ -79,7 +79,7 @@ const gas = new Function(...Object.keys(stubs), `
 const post = (body) => JSON.parse(gas.doPost({ postData: { contents: JSON.stringify(body) } }).text);
 const cell = (id) => values.find(r => r[0] === id)[3];
 
-ok('GAS 버전 32', gas.DG_VERSION === 32, String(gas.DG_VERSION));
+ok('GAS 버전 33', gas.DG_VERSION === 33, String(gas.DG_VERSION));
 
 // --- 1. 시트 O · 화면은 빈칸으로 봤다 · 보낸 값 X → 덮지 않는다 -------------------
 resetSheet();

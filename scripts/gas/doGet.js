@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v32)
+// DGfinder — Google Apps Script 전체 코드 (v33)
 //
 // ===========================================================================
 // ⚠️ 붙여넣는 곳: **dev 계정의 독립 Apps Script 프로젝트**
@@ -36,6 +36,19 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v33 — dev 계정 독립 프로젝트
+//   - **읽기(doGet)에 열쇠를 건다.** 이 주소는 앱 코드에 적혀 있어 누구나 아는데,
+//     열쇠 없이 부르면 명단 · 전 회차 출결 · 김밥 · 과제 내용이 통째로 나왔다.
+//     앱은 v131 부터 doGet 을 부르지 않는다(출결을 DB 에서 읽는다) — 부르는 것은
+//     GitHub 동기화 하나뿐이라, 그쪽만 열쇠를 들고 오면 된다.
+//       스크립트 속성 DG_READ_KEY  =  GitHub Secret GAS_READ_KEY  (같은 값)
+//     ?key=… 가 속성과 같을 때만 읽어 준다. 시트를 열기 **전에** 본다.
+//   - **속성이 없으면 예전처럼 열려 있다.** 배포 순서를 강제하지 않으려는 것이다 —
+//     v33 을 먼저 올려도, Secret 을 먼저 넣어도 동기화가 안 깨진다.
+//     **잠기는 것은 DG_READ_KEY 를 넣는 순간**이다 (재배포 필요 없음).
+//     DG_authorizeAndCheck 가 지금 잠겨 있는지 알려 준다.
+//   - doPost(출석 저장 · 동기화 실행)는 그대로다 — 앱이 쓰는 길이라 열쇠를 걸 수 없다.
 //
 // v32 — dev 계정 독립 프로젝트 (2026-11-07 배포)
 //   - **시트를 먼저 고친 칸을 덮지 않는다** — 저장 요청의 사람마다 seen(앱 화면에
@@ -152,7 +165,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 32;
+var DG_VERSION = 33;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -678,6 +691,11 @@ function DG_authorizeAndCheck() {
       lines.push('GitHub 저장소  : ❌ ' + c1);
     }
   }
+
+  // 읽기 열쇠 (v33). 없으면 doGet 주소만으로 명단이 통째로 나간다.
+  lines.push('읽기 열쇠      : ' + (DG_prop('DG_READ_KEY')
+    ? '✅ 설정됨 — 열쇠가 맞아야 읽힌다'
+    : '⚠️ 없음 — 주소만 알면 누구나 읽을 수 있다 (스크립트 속성 DG_READ_KEY)'));
 
   var out = lines.join('\n');
   Logger.log(out);
@@ -1300,7 +1318,32 @@ function DG_addMenu(ui) {
 // ===========================================================================
 // 명단·링크·배치도·출결 읽기 (GET)
 // ===========================================================================
+/**
+ * 읽어 줘도 되는 요청인가 (v33).
+ *
+ * 스크립트 속성 DG_READ_KEY 가 **없으면 연다** — 예전 동작 그대로다. 있으면
+ * ?key= 가 같을 때만 연다. GAS 웹앱은 요청 헤더를 못 읽어서 주소에 싣는다.
+ *
+ * ⚠️ 열쇠를 응답 · 로그 어디에도 되돌려 적지 않는다. 저장소도 Actions 로그도 공개다.
+ */
+function DG_readAllowed_(e) {
+  var want = DG_prop('DG_READ_KEY');
+  if (!want) return true;
+  var got = (e && e.parameter && e.parameter.key != null) ? String(e.parameter.key) : '';
+  return got === want;
+}
+
 function doGet(e) {
+  // 시트를 열기 **전에** 본다. 안 맞으면 아무것도 읽지 않고 돌려보낸다.
+  if (!DG_readAllowed_(e)) {
+    return DG_json({
+      success: false,
+      version: DG_VERSION,
+      code: 'read-key',
+      message: '읽기 열쇠가 맞지 않습니다.'
+    });
+  }
+
   try {
     var ss = SpreadsheetApp.openById(DG_SHEET_ID);
     var tz = Session.getScriptTimeZone();

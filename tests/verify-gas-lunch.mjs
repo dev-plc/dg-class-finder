@@ -21,8 +21,10 @@ const Utilities = {
     return fmt === 'yyyy-MM-dd' ? `${y}-${m}-${day}` : `${m}/${day}`;
   },
 };
+// 스크립트 속성 대역. 읽기 열쇠(DG_READ_KEY) 검증에서 값을 바꿔 가며 쓴다.
+const PROPS = {};
 const PropertiesService = {
-  getScriptProperties: () => ({ getProperty: () => null }),
+  getScriptProperties: () => ({ getProperty: (k) => PROPS[k] ?? null }),
 };
 // 시트 대역. '과제 아이디 점검' 은 시트를 읽고 시트에 쓰므로 여기까지 필요하다.
 const SHEETS = {};
@@ -44,25 +46,37 @@ function fakeSheet(name, values) {
     autoResizeColumns() {},
   };
 }
+// 시트를 몇 번 열었는지 센다 — 읽기 열쇠가 안 맞으면 **한 번도 열면 안 된다.**
+let opened = 0;
 const SpreadsheetAppStub = {
-  openById: () => ({
-    getSheetByName: (n) => SHEETS[n] || null,
-    insertSheet: (n) => (SHEETS[n] = fakeSheet(n, [])),
-  }),
+  openById: () => {
+    opened++;
+    return {
+      getSheetByName: (n) => SHEETS[n] || null,
+      insertSheet: (n) => (SHEETS[n] = fakeSheet(n, [])),
+    };
+  },
   // 메뉴가 아니라 편집기에서 돌리면 UI 가 없다 — 그 길도 지나가 본다
   getUi: () => { throw new Error('no ui'); },
 };
 const Logger = { log: () => {} };
 
+// doGet 이 응답을 만들 때 쓴다 (verify-gas-save 와 같은 대역).
+const ContentService = {
+  MimeType: { JSON: 'json' },
+  createTextOutput: (text) => ({ text, setMimeType() { return this; } }),
+};
+
 const stubs = { Utilities, PropertiesService, SpreadsheetApp: SpreadsheetAppStub,
-                LockService: {}, ScriptApp: {}, UrlFetchApp: {}, ContentService: {},
+                LockService: {}, ScriptApp: {}, UrlFetchApp: {}, ContentService,
                 Session: { getScriptTimeZone: () => 'Asia/Seoul' }, Logger };
 
 const sandbox = new Function(...Object.keys(stubs), `
   ${src}
   return { DG_isLunchApplied, DG_readLunchByDate, DG_normalizeId_, DG_TAB_LUNCH,
            DG_checkHomeworkIds, DG_TAB_ROSTER, DG_TAB_HOMEWORK,
-           DG_findHeaderRow, DG_buildSessions };
+           DG_findHeaderRow, DG_buildSessions,
+           doGet, DG_readAllowed_, DG_authorizeAndCheck, DG_VERSION };
 `)(...Object.values(stubs));
 
 // --- 신청인가 아닌가 -------------------------------------------------------
@@ -305,5 +319,55 @@ ok('다시 돌리면 지난 결과를 지우고 쓴다',
 
 // 메뉴에 없으면 아무도 못 쓴다
 ok('메뉴에서 부를 수 있다', /addItem\('과제 아이디 점검', 'DG_checkHomeworkIds'\)/.test(src));
+
+// --- 읽기 열쇠 (v33) --------------------------------------------------------
+//
+// doGet 주소는 앱 코드에 적혀 있어 누구나 안다. 열쇠 없이 부르면 명단 · 전 회차 출결 ·
+// 김밥 · 과제 내용이 통째로 나왔다. 스크립트 속성 DG_READ_KEY 가 있으면 ?key= 가 같을
+// 때만 읽어 준다. 부르는 것은 GitHub 동기화 하나뿐이다 (앱은 v131 부터 DB 를 읽는다).
+const callGet = (params) => {
+  opened = 0;
+  const out = sandbox.doGet(params === undefined ? undefined : { parameter: params });
+  return { res: JSON.parse(out.text), opened };
+};
+const KEY = 'k3y+With/odd=chars&1234567890abcdef';
+
+ok('GAS 버전 33', sandbox.DG_VERSION === 33, String(sandbox.DG_VERSION));
+
+// 속성이 없으면 예전처럼 열려 있다 — 배포 순서를 강제하지 않으려는 것.
+delete PROPS.DG_READ_KEY;
+const open1 = callGet({});
+ok('속성이 없으면 열쇠 없이도 읽는다 (하위 호환)',
+   open1.res.code !== 'read-key' && open1.opened >= 1, JSON.stringify(open1).slice(0, 120));
+ok('속성이 없으면 열쇠를 보내도 그냥 읽는다 (Secret 을 먼저 넣어도 안 깨진다)',
+   callGet({ key: KEY }).res.code !== 'read-key');
+
+PROPS.DG_READ_KEY = KEY;
+for (const [label, params] of [['열쇠 없음', {}], ['틀린 열쇠', { key: 'nope' }],
+                               ['앞부분만 같은 열쇠', { key: KEY.slice(0, -1) }],
+                               ['e 가 없는 호출', undefined]]) {
+  const r = callGet(params);
+  ok(`잠겼을 때 — ${label}: 거절하고 시트를 열지 않는다`,
+     r.res.success === false && r.res.code === 'read-key' && r.opened === 0,
+     JSON.stringify(r));
+  ok(`잠겼을 때 — ${label}: 응답에 명단도 열쇠도 없다`,
+     !('data' in r.res) && !('sessions' in r.res) && !JSON.stringify(r.res).includes(KEY),
+     Object.keys(r.res).join(','));
+}
+const good = callGet({ key: KEY });
+ok('맞는 열쇠면 시트 읽기로 넘어간다', good.res.code !== 'read-key' && good.opened >= 1,
+   JSON.stringify(good).slice(0, 120));
+
+// 편집기에서 돌리는 점검이 지금 잠겨 있는지 말해 준다.
+ok('점검이 잠긴 상태를 알려 준다', /읽기 열쇠\s*: ✅ 설정됨/.test(sandbox.DG_authorizeAndCheck()));
+delete PROPS.DG_READ_KEY;
+const unlocked = sandbox.DG_authorizeAndCheck();
+ok('점검이 열려 있는 상태를 경고한다',
+   /읽기 열쇠\s*: ⚠️ 없음/.test(unlocked) && /DG_READ_KEY/.test(unlocked),
+   unlocked.split('\n').pop());
+
+// 쓰기(doPost)에는 열쇠를 걸지 않았다 — 앱이 쓰는 길이다. 실수로 같이 잠그면 저장이 전부 막힌다.
+ok('doPost 는 읽기 열쇠를 보지 않는다',
+   !/DG_readAllowed_/.test(src.slice(src.indexOf('function doPost'), src.indexOf('function DG_pushRows'))));
 
 done();

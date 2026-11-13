@@ -62,6 +62,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GAS_API_URL: ${{ secrets.GAS_API_URL }}
+          # GAS 읽기 열쇠 (v33~). GAS 스크립트 속성 DG_READ_KEY 와 같은 값.
+          # Secret 이 없으면 빈 값이 가고, 스크립트는 열쇠를 안 보낸다.
+          GAS_READ_KEY: ${{ secrets.GAS_READ_KEY }}
           COHORT_ID: ${{ github.event.inputs.cohort }}
           START_YEAR: ${{ github.event.inputs.start_year }}
         run: |

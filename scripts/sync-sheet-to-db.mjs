@@ -6,6 +6,7 @@
 //   node scripts/sync-sheet-to-db.mjs --cohort=DG-2026
 //
 // 환경변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GAS_API_URL
+//           GAS_READ_KEY (선택) — GAS 의 읽기 열쇠. 스크립트 속성 DG_READ_KEY 와 같은 값
 //
 // 대체로 upsert 만 한다. 시트에서 지운 행은 DB 에 남는다.
 // 인원은 지우지 않고 status='inactive' 로 내린다 — 이력을 잃지 않으려는 것.
@@ -42,6 +43,22 @@ for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: S
 // URL 은 로그에 그대로 남기지 않는다 (배포 ID 가 드러난다).
 const maskGas = (url) => String(url).replace(/\/s\/[^/]+\//, '/s/***/');
 
+// 읽기 열쇠 (GAS v33~). GAS 의 doGet 은 주소만 알면 명단을 통째로 주던 것이라,
+// 스크립트 속성 DG_READ_KEY 가 있으면 ?key= 가 같을 때만 읽어 준다.
+// 없으면 안 보낸다 — GAS 쪽 속성이 없는 동안은 그래도 읽힌다 (켜는 순서를 강제하지 않는다).
+//
+// ⚠️ **값을 로그에 찍지 않는다.** Actions 로그는 공개다. 보냈는지 여부만 말한다.
+const GAS_READ_KEY = (process.env.GAS_READ_KEY || '').trim();
+const gasReadUrl = () => `${GAS_API_URL}?t=${Date.now()}`
+  + (GAS_READ_KEY ? `&key=${encodeURIComponent(GAS_READ_KEY)}` : '');
+// 오류 문구에 주소가 섞여 나와도 열쇠는 가린다.
+const scrubKey = (text) => {
+  let out = String(text);
+  if (!GAS_READ_KEY) return out;
+  for (const k of [GAS_READ_KEY, encodeURIComponent(GAS_READ_KEY)]) out = out.split(k).join('***');
+  return out;
+};
+
 const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false },
 });
@@ -54,7 +71,8 @@ const toInt = (v) => {
 };
 
 console.log(`🔧 mode: ${DRY_RUN ? 'DRY RUN (쓰기 없음)' : 'LIVE'}`);
-console.log(`🔗 GAS:  ${maskGas(GAS_API_URL)}\n`);
+console.log(`🔗 GAS:  ${maskGas(GAS_API_URL)}`);
+console.log(`🔑 읽기 열쇠: ${GAS_READ_KEY ? '보냄' : '없음'}\n`);
 
 // ---------------------------------------------------------------- 시트 읽기
 //
@@ -73,14 +91,14 @@ async function readSheet() {
   for (let attempt = 0; ; attempt++) {
     const label = attempt ? ` (${attempt + 1}번째 시도)` : '';
     try {
-      const res = await fetch(`${GAS_API_URL}?t=${Date.now()}`, { redirect: 'follow' });
+      const res = await fetch(gasReadUrl(), { redirect: 'follow' });
       if (res.ok) {
         if (attempt) console.log(`   다시 시도해서 받았습니다${label}.`);
         return await res.json();
       }
       console.log(`   ⚠️ GAS 응답 ${res.status}${label}`);
     } catch (err) {
-      console.log(`   ⚠️ GAS 요청 실패${label}: ${err.message}`);
+      console.log(`   ⚠️ GAS 요청 실패${label}: ${scrubKey(err.message)}`);
     }
 
     const wait = RETRY_WAITS_MS[attempt];
@@ -100,7 +118,13 @@ if (!gas) {
   process.exit(1);
 }
 if (!gas.success) {
-  console.log(`❌ GAS 오류: ${gas.message}`);
+  console.log(`❌ GAS 오류: ${scrubKey(gas.message)}`);
+  // 읽기 열쇠가 안 맞는다 (GAS v33~). 시트를 못 읽었으니 DB 는 건드리지 않고 멈춘다.
+  if (gas.code === 'read-key') {
+    console.log(`   GAS 가 읽기 열쇠를 요구하는데, 이 실행은 열쇠를 ${GAS_READ_KEY ? '보냈지만 값이 다릅니다' : '보내지 않았습니다'}.`);
+    console.log('   GitHub Secret GAS_READ_KEY 와 GAS 스크립트 속성 DG_READ_KEY 가 같은 값인지 확인하세요.');
+    console.log('   (GAS 쪽은 dev 계정 독립 프로젝트 → 프로젝트 설정 → 스크립트 속성. 재배포는 필요 없습니다)');
+  }
   process.exit(1);
 }
 

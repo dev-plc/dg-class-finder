@@ -70,6 +70,7 @@ Settings → Secrets and variables → Actions
 | `SUPABASE_URL` | 새 DG 프로젝트 URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | 새 DG 프로젝트의 `service_role` 키 |
 | `GAS_API_URL` | 기존 GAS `/exec` URL |
+| `GAS_READ_KEY` | GAS 읽기 열쇠 — GAS 스크립트 속성 `DG_READ_KEY` 와 **같은 값** (GAS v33~, `scripts/gas/README.md`). 없으면 열쇠를 안 보낸다 |
 
 ## 5. 동기화 — dry-run 먼저
 
