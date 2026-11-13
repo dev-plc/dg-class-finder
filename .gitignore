@@ -4,7 +4,9 @@ node_modules/
 !.env.example
 
 # 명단 원본 — 실명·전화번호가 들어 있다. 저장소가 public 이므로 커밋 금지.
+# (저장소는 GitHub Pages 로 그대로 나간다 — 올리면 사이트에서 내려받아진다)
 *.csv
+/data.json
 
 # 검증이 남기는 스크린샷 (확인용 산출물, 커밋 대상 아님)
 tests/.shots/
