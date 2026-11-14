@@ -19,9 +19,10 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js?v=134';
 
 const AUTH = `${SUPABASE_URL}/auth/v1`;
 const SESSION_KEY = 'dg_admin_session_v1';
-// 화면에서는 'plc' 만 친다. '@' 가 없으면 이 도메인을 붙여 Supabase 계정으로 본다.
-// 실제 메일함일 필요는 없다 (대시보드에서 Auto Confirm 으로 만든다).
-export const ADMIN_EMAIL_DOMAIN = 'dgfinder.plch.kr';
+// 화면에서는 아이디만 쳐도 된다. '@' 가 없으면 이 도메인을 붙여 Supabase 계정(메일)으로 본다.
+// 메일을 통째로 쳐도 된다 — 다른 도메인의 계정도 그렇게 들어온다.
+// 어떤 계정이 관리자인지는 여기 적지 않는다 (대시보드 Authentication → Users).
+export const ADMIN_EMAIL_DOMAIN = 'plch.or.kr';
 // 토큰은 1시간짜리다. 만료 이만큼 전부터는 새로 받는다 — 출석부를 오래 띄워 두는 화면이다.
 const REFRESH_MARGIN_MS = 60 * 1000;
 

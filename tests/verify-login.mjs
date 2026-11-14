@@ -26,8 +26,8 @@ const GOOD_PW = 'correct-horse-battery-9';
 const GOOD_TOKEN = 'good-access-token';
 const REFRESHED_TOKEN = 'refreshed-access-token';
 const ACCOUNTS = {
-  'plc@dgfinder.plch.kr':   { app_metadata: { dg_admin: true } },
-  'guest@dgfinder.plch.kr': { app_metadata: {} },               // 로그인은 되지만 관리자 표시가 없다
+  'tester@plch.or.kr':   { app_metadata: { dg_admin: true } },
+  'guest@plch.or.kr': { app_metadata: {} },               // 로그인은 되지만 관리자 표시가 없다
 };
 const SESSION_KEY = 'dg_admin_session_v1';
 
@@ -63,7 +63,7 @@ async function newPage() {
     if (grant === 'refresh_token') {
       if (body.refresh_token !== 'good-refresh') return json(route, 400, { error: 'invalid_grant' });
       return json(route, 200, { access_token: REFRESHED_TOKEN, refresh_token: 'good-refresh',
-                                expires_in: 3600, user: ACCOUNTS['plc@dgfinder.plch.kr'] });
+                                expires_in: 3600, user: ACCOUNTS['tester@plch.or.kr'] });
     }
     const user = ACCOUNTS[body.email];
     if (!user || body.password !== GOOD_PW) {
@@ -76,7 +76,7 @@ async function newPage() {
     const auth = route.request().headers().authorization || '';
     authCalls.push({ kind: 'user', auth });
     if (auth === `Bearer ${GOOD_TOKEN}` || auth === `Bearer ${REFRESHED_TOKEN}`) {
-      return json(route, 200, ACCOUNTS['plc@dgfinder.plch.kr']);
+      return json(route, 200, ACCOUNTS['tester@plch.or.kr']);
     }
     return json(route, 401, { message: 'invalid JWT' });
   });
@@ -109,7 +109,7 @@ await page.waitForTimeout(1500);
 
 // --- 틀렸을 때 ------------------------------------------------------------
 await openLogin(page);
-await page.fill('#adminId', 'plc');
+await page.fill('#adminId', 'tester');
 await page.fill('#adminPassword', '틀린비번');
 await page.click('.admin-login-btn');
 await page.waitForFunction(() => getComputedStyle(document.getElementById('adminLoginError')).display !== 'none',
@@ -125,9 +125,20 @@ ok('버튼이 다시 눌린다 (확인 중에서 풀린다)',
 
 // 비밀번호는 **서버가** 확인한다. 앱은 친 것을 그대로 보낼 뿐이다.
 const sent = authCalls.find(c => c.kind === 'token');
-ok("'plc' 만 쳐도 Supabase 계정(메일 꼴)으로 보낸다", sent?.email === 'plc@dgfinder.plch.kr', JSON.stringify(sent));
+ok("아이디만 쳐도 Supabase 계정(메일 꼴)으로 보낸다 — '@plch.or.kr' 를 붙인다",
+   sent?.email === 'tester@plch.or.kr', JSON.stringify(sent));
 ok('공개 키(anon)로 부른다 — service_role 키가 아니다',
    !!sent?.apikey && JSON.parse(Buffer.from(sent.apikey.split('.')[1], 'base64').toString()).role === 'anon');
+
+// 메일을 통째로 치면 그대로 보낸다 — 다른 도메인의 계정도 그렇게 들어온다.
+authCalls.length = 0;
+await page.fill('#adminId', 'someone@example.org');
+await page.fill('#adminPassword', '틀린비번');
+await page.click('.admin-login-btn');
+await page.waitForTimeout(500);
+ok('메일을 통째로 치면 도메인을 덧붙이지 않는다',
+   authCalls.find(c => c.kind === 'token')?.email === 'someone@example.org',
+   JSON.stringify(authCalls.find(c => c.kind === 'token')));
 
 // 다시 치기 시작하면 빨간 글씨를 지운다 — 고치는 중에도 남아 있으면
 // 방금 친 것이 또 틀린 줄 안다.
@@ -149,7 +160,7 @@ ok('그 계정의 토큰은 버린다', (await sessionOf(page)) === null);
 
 // --- 로그인 서버에 닿지 못할 때 ------------------------------------------------
 tokenDown = true;
-await page.fill('#adminId', 'plc');
+await page.fill('#adminId', 'tester');
 await page.fill('#adminPassword', GOOD_PW);
 await page.click('.admin-login-btn');
 await page.waitForFunction(() => /연결/.test(document.getElementById('adminLoginError').textContent),
@@ -161,7 +172,7 @@ tokenDown = false;
 
 // --- 맞았을 때 ------------------------------------------------------------
 a.dialogs.length = 0;
-await page.fill('#adminId', 'plc');
+await page.fill('#adminId', 'tester');
 await page.fill('#adminPassword', GOOD_PW);
 await Promise.all([
   page.waitForURL(/admin\.html/, { timeout: 10000 }),

@@ -329,8 +329,11 @@ v133 까지는 `script.js` 가 비밀번호를 글자로 견줬고(공개 저장
 | 나이 · 담당교역자 읽기 | **DB** — 열 권한을 뺐고, 관리자 토큰을 확인하는 함수로만 준다 | `dg_admin_lock.sql` · `dg_admin_member_extras` |
 | 동기화 실행 · 출석 기록 지우기(빈 값 저장) | **GAS** — 토큰을 Supabase 에 물어 확인 (5분 캐시) | `doGet.js` `DG_isAdmin_` |
 
-- 화면에서는 `plc` 만 친다. `@` 가 없으면 `@dgfinder.plch.kr` 를 붙인다(`ADMIN_EMAIL_DOMAIN`).
-  **계정 · 비밀번호는 Supabase 대시보드에만 있다** — 코드 · 문서 · 채팅에 적지 않는다
+- 화면에서는 아이디만 쳐도 된다. `@` 가 없으면 `@plch.or.kr` 를 붙인다(`ADMIN_EMAIL_DOMAIN`).
+  **어떤 계정이 관리자인지 · 비밀번호는 Supabase 대시보드에만 있다**(Authentication → Users) —
+  코드 · 문서에 적지 않는다. `dg_admin.sql` 의 `v_email` 도 고쳐서 실행만 하고 커밋하지 않는다
+- ⚠️ `dg_admin.sql` 3번은 메일이 틀리면 **오류로 멈춘다.** 처음에는 `update` 가 조용히 0줄을 고치고
+  성공으로 끝나, 표시가 안 붙은 줄 모르고 넘어갈 뻔했다
 - 관리자를 더 두려면: 대시보드에서 계정을 만들고 `dg_admin.sql` 3번을 그 메일로 한 번 더
 - 세션은 `sessionStorage`(탭을 닫으면 로그아웃). 토큰은 1시간짜리라 만료 1분 전에 새로 받는다
 - **비밀번호를 잊었으면** 대시보드 Authentication → Users 에서 다시 정한다
@@ -416,9 +419,10 @@ npm test    # 17개 스위트 (tests/README.md 에 목록)
 ### 사용자 쪽 할 일
 
 - **관리자 로그인 켜기 (v134 · GAS v34 · 함정 6-11)** — 이 차례로, 단계마다 확인하며.
-  1. Supabase 대시보드: Authentication → Users → Add user — `plc@dgfinder.plch.kr` · 새 비밀번호 ·
-     **Auto Confirm User**. 그다음 SQL Editor 에서 `supabase/dg_admin.sql` 실행
-     (끝에 한 줄이 나오고 `dg_admin` 이 `true` 여야 한다)
+  1. Supabase 대시보드: Authentication → Users → Add user — 관리자 메일 · 새 비밀번호 ·
+     **Auto Confirm User** (✅ 계정은 만들었다, 2026-11-14). 그다음 SQL Editor 에서
+     `supabase/dg_admin.sql` 의 `v_email` 을 그 메일로 고쳐 실행
+     (끝에 그 메일이 나오고 `dg_admin` · `confirmed` 가 `true` 여야 한다)
   2. 앱 v134 를 `main` 에 올린다 → 새 비밀번호로 로그인되는지 · 나이 · 교역자가 보이는지
   3. `supabase/dg_admin_lock.sql` 실행 → 조회 화면이 그대로 되는지 · 관리자 화면 나이 · 교역자가 그대로인지
   4. **dev 계정 독립 GAS 프로젝트**에 v34 붙여넣기 → 배포 관리 → ✏️ → 새 버전 →

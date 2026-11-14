@@ -178,7 +178,7 @@ export async function asAdmin(page, { members = [], admin = true, calls = null }
     }
   }, [ADMIN_SESSION_KEY, session]);
 
-  const user = { id: 'admin-uuid', email: 'plc@dgfinder.plch.kr',
+  const user = { id: 'admin-uuid', email: 'tester@plch.or.kr',
                  app_metadata: admin ? { dg_admin: true } : {} };
   const json = (route, status, body) =>
     route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });

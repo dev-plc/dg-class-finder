@@ -78,10 +78,12 @@ Settings → Secrets and variables → Actions
 문서 어디에도 적지 않는다. 자세한 것은 `docs/HANDOVER.md` 함정 6-11.
 
 1. Authentication → Users → **Add user** → Create new user
-   - Email `plc@dgfinder.plch.kr` (실제 메일함일 필요 없다 — 화면에서는 `plc` 만 친다)
+   - Email 관리자 메일. `@plch.or.kr` 계정이면 로그인 화면에서 `@` 앞 아이디만 쳐도 된다
+     (다른 도메인이면 메일을 통째로 친다). **어떤 메일인지는 이 저장소에 적지 않는다**
    - Password 직접 정한다 · **Auto Confirm User** 켠다
 2. SQL Editor 에서 **`supabase/dg_admin.sql`** 실행 — 관리자 표시와 관리자 전용 함수.
-   끝의 결과에 한 줄이 나오고 `dg_admin` 이 `true` 여야 한다
+   3번의 `v_email` 을 방금 만든 메일로 고쳐서 실행한다 (고친 것은 커밋하지 않는다).
+   메일이 틀리면 오류로 멈춘다. 끝의 결과에 그 메일이 나오고 `dg_admin` · `confirmed` 가 `true` 여야 한다
 3. (앱 v134 가 사이트에 나간 뒤) **`supabase/dg_admin_lock.sql`** 실행 — 나이 · 담당교역자 열을
    관리자만 읽게 잠근다. ⚠️ 그 전에 실행하면 조회 화면이 죽는다 (v133 은 `select=*` 로 읽는다)
 4. (권장) Authentication 설정에서 새 가입(Sign up)을 끈다. 켜져 있어도 가입한 사람이 관리자가 될
