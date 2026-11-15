@@ -31,10 +31,19 @@ begin
 
   -- 표 전체 읽기 권한을 거두면 열 단위 권한도 함께 거둬진다. 그 위에 허용할 열만 다시 준다.
   revoke select on table public.dg_members from anon, authenticated;
-  execute format('grant select (%s) on table public.dg_members to anon, authenticated', cols);
+  execute format('grant select (%s) on table public.dg_members to authenticated', cols);
+
+  -- anon 에게는 **표가 아직 공개일 때만** 다시 준다. 3단계 잠금(dg_lookup_lock.sql)을 한 뒤에는
+  -- 조회 화면이 표를 직접 읽지 않으므로(dg_lookup 함수만 부른다) anon 에게 열 것이 없다.
+  -- 이 파일을 나중에 다시 실행해도 그 잠금이 풀리지 않게 한다.
+  if not exists (select 1 from pg_policy p
+                 where p.polrelid = 'public.dg_members'::regclass and p.polname = 'admin read dg_members') then
+    execute format('grant select (%s) on table public.dg_members to anon', cols);
+  end if;
 end $$;
 
 -- 확인 — age · pastor 만 false, 나머지는 true 여야 한다.
+-- (3단계 잠금 뒤에 다시 실행했다면 전부 false 가 맞다 — anon 은 이 표를 아예 못 읽는다)
 select column_name,
        has_column_privilege('anon', 'public.dg_members', column_name, 'select') as anon_can_read
 from information_schema.columns
