@@ -22,10 +22,27 @@ const ACTIVE_COHORT_KEY = 'dg_active_cohort';
 
 const REST = `${SUPABASE_URL}/rest/v1`;
 
-const baseHeaders = {
+const anonHeaders = {
   apikey: SUPABASE_ANON_KEY,
   Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
 };
+
+// 표 조회에 실을 로그인 토큰을 주는 함수. **관리자 화면만** 건다 (members-data.js setDataMode).
+//
+// 명단 · 출결 · 김밥 · 과제 표는 관리자 표시가 든 토큰에만 읽힌다 (supabase/dg_lookup_lock.sql).
+// 조회 화면은 이것을 걸지 않는다 — 표를 직접 읽지 않고 dg_lookup 함수만 부른다.
+let tokenProvider = null;
+export function setAuthTokenProvider(fn) {
+  tokenProvider = typeof fn === 'function' ? fn : null;
+}
+
+async function requestHeaders() {
+  if (!tokenProvider) return anonHeaders;
+  let token = null;
+  try { token = await tokenProvider(); } catch { token = null; }
+  // 토큰을 못 받았으면(만료 · 로그아웃) 공개 키로 보낸다 — 잠긴 표는 거절되고, 호출부가 그 오류를 본다.
+  return token ? { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } : anonHeaders;
+}
 
 const PAGE_SIZE = 1000;
 
@@ -46,9 +63,10 @@ export async function sbSelect(path) {
   // 여기서 알 수 없으므로 (dg_attendance 에는 id 가 없다) 호출부가 정한다.
   // limit 을 직접 지정했다면 호출부의 뜻을 존중해 한 번만 받는다.
   const paginate = /[?&]order=/.test(path) && !/[?&]limit=/.test(path);
+  const headers = await requestHeaders();
 
   if (!paginate) {
-    const res = await fetch(`${REST}/${path}`, { headers: baseHeaders });
+    const res = await fetch(`${REST}/${path}`, { headers });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`Supabase 조회 실패 (${res.status}): ${body.slice(0, 200)}`);
@@ -65,7 +83,7 @@ export async function sbSelect(path) {
   let offset = 0;
   for (;;) {
     const res = await fetch(`${REST}/${path}&limit=${PAGE_SIZE}&offset=${offset}`,
-                            { headers: baseHeaders });
+                            { headers });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`Supabase 조회 실패 (${res.status}): ${body.slice(0, 200)}`);
@@ -78,18 +96,18 @@ export async function sbSelect(path) {
 }
 
 /**
- * DB 함수(RPC) 부르기 — **관리자 토큰으로.**
+ * DB 함수(RPC) 부르기.
  *
- * 표 조회(sbSelect)는 늘 anon 키로 한다. 관리자만 볼 수 있는 값(나이 · 담당교역자)은
- * 표에서 열 권한을 뺐고, 관리자 표시가 든 토큰을 확인하는 함수로만 나온다
- * (supabase/dg_admin.sql). 그 함수를 부를 때만 이것을 쓴다.
+ * `token` 을 주면 그 로그인으로, 안 주면 공개 키(anon)로 부른다.
+ *   · dg_admin_member_extras — 관리자 토큰으로. 나이 · 담당교역자 (supabase/dg_admin.sql)
+ *   · dg_lookup              — 토큰 없이. 이름+뒤 4자리를 함수가 확인한다 (supabase/dg_lookup.sql)
  */
 export async function sbRpc(name, args, token) {
   const res = await fetch(`${REST}/rpc/${name}`, {
     method: 'POST',
     headers: {
       apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${token || SUPABASE_ANON_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(args || {}),

@@ -7,6 +7,11 @@
 //   조회(명단·조·위치·배치도·안내방)  Supabase 가 원본. 시트에서 일 1회 동기화된다.
 //   출석                              시트가 원본. 쓰기는 GAS 로 가고, DB 는 비추기만 한다.
 //
+// **누가 무엇을 읽는가 (v135)** — 아래 '두 가지 모드' 참고.
+//   조회 화면  표를 직접 읽지 않는다. 이름+뒤 4자리를 서버 함수(dg_lookup)가 확인하고
+//              본인 것(조장이면 자기 조 것)만 준다. 명단을 브라우저에 저장하지도 않는다.
+//   관리자 화면 표를 읽되 로그인 토큰으로. 표는 관리자만 읽게 잠겨 있다.
+//
 // 출석 **읽기**도 DB 다 (v131). 예전에는 조장이 조원 명단을 열 때 GAS 로 시트
 // 전체를 읽었는데(refreshAttendance), 한 번에 11~102초가 걸렸다. DB 가 뒤처지는
 // 폭은 정해져 있다 — 앱에서 저장한 것은 GAS 가 그 자리에서 DB 에 밀고, 시트를
@@ -14,8 +19,7 @@
 // 고친 칸은 저장할 때 GAS 가 '본 값(seen)' 과 견주어 지킨다 (saveAttendance).
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { matches as hangulMatches } from './hangul.js?v=134';
-import { sbSelect, sbRpc, getActiveCohortId, getCachedCohortId } from './supabase-config.js?v=134';
+import { sbSelect, sbRpc, getActiveCohortId, getCachedCohortId, setAuthTokenProvider } from './supabase-config.js?v=134';
 import { getAdminToken } from './admin-auth.js?v=134';
 
 export const MODULE_VERSION = 'dg members-data v2 (Supabase 조회·출석 읽기 + GAS 출석 쓰기)';
@@ -25,16 +29,42 @@ const GAS_API_URL =
   'https://script.google.com/macros/s/AKfycbz1tpAmZB0NEHX0TppV-wrq7ud4IG5PmwukVNuZNT5y46tucKpSyRDnfjLosAyno90r2A/exec';
 
 // ============================================================================
-// 캐시
+// 두 가지 모드 — 조회 화면(public)과 관리자 화면(admin)
+//
+// **조회 화면은 명단을 받지 않는다** (v135). 예전에는 열릴 때 전원의 이름 · 뒤 4자리 · 조 ·
+// 역할을 받아 브라우저 안에서 찾았다 — 사이트를 여는 누구나 전 명단을 갖게 됐다.
+// 지금은 이름+뒤 4자리를 서버 함수(dg_lookup)가 확인하고 **본인 것만** 준다.
+// 조장 · 서브튜터 · 관리자 역할이면 자기 조 것까지 온다.
+//
+//   public  조회 화면. 표를 직접 읽지 않는다. lookupMember() 가 받은 묶음에서 전부 답한다.
+//   admin   관리자 화면. 표를 읽되 **관리자 토큰으로** (표는 관리자만 읽게 잠겨 있다).
+//
+// 화면이 쓰는 함수 이름은 두 모드가 같다. 어디서 답이 오는지만 다르다.
 // ============================================================================
-const CACHE_VERSION = 1;
-const CK = {
-  members:     `dg_members_v${CACHE_VERSION}`,
-  locationMap: `dg_location_map_v${CACHE_VERSION}`,
-  teamLinks:   `dg_team_links_v${CACHE_VERSION}`,
-  sessions:    `dg_sessions_v${CACHE_VERSION}`,
-  cohort:      `dg_cohort_v${CACHE_VERSION}`,
-};
+let dataMode = 'public';
+
+/** 관리자 화면이 맨 먼저 부른다. 조회 화면은 부르지 않는다 (기본이 public). */
+export function setDataMode(mode) {
+  dataMode = mode === 'admin' ? 'admin' : 'public';
+  // 관리자 화면에서만 표 조회에 로그인 토큰을 싣는다.
+  setAuthTokenProvider(dataMode === 'admin' ? getAdminToken : null);
+}
+
+const isPublic = () => dataMode === 'public';
+
+// **명단을 브라우저에 저장하지 않는다.** v134 까지는 전 명단을 localStorage 에 써 두고
+// 다음에 열 때 바로 그렸다. 그 브라우저를 쓰는 다음 사람이 그대로 읽는다 — 표를 잠근 뜻이
+// 없어진다. 옛 저장분이 남아 있으면 지운다. ('마지막으로 조회한 이름 · 번호' 는 script.js 가
+// 따로 기억한다 — 본인 것 한 줄이라 그대로 둔다.)
+const LEGACY_CACHE_KEYS = [
+  'dg_members_v1', 'dg_location_map_v1', 'dg_team_links_v1', 'dg_sessions_v1', 'dg_cohort_v1',
+];
+function purgeLegacyCache() {
+  for (const k of LEGACY_CACHE_KEYS) {
+    try { localStorage.removeItem(k); } catch { /* 무시 */ }
+  }
+}
+purgeLegacyCache();
 
 const state = {
   cohortId: null,
@@ -44,57 +74,17 @@ const state = {
   sessions: [],     // [{ key:'11/02', date:'2025-11-02' }] — 연도는 GAS 가 확정한다
   session: '',      // 지금 보고 있는 회차 (YYYY-MM-DD). ensureSession() 이 채운다
   loaded: false,
+  // 조회 화면에서 마지막으로 받은 묶음 (public 모드). 없으면 null.
+  //   { name, phone }  다시 조회할 때 쓸 입력 · selfId 본인 uuid
+  //   lunch · homework 본인 것 (dg_lookup 이 준 행 그대로)
+  //   team             조장일 때만 { lunch, homework } — 조원 것
+  lookup: null,
 };
 const subscribers = new Set();
 
 function notify(event) {
   for (const cb of subscribers) {
     try { cb(event); } catch (e) { console.log('subscriber error', e); }
-  }
-}
-
-function readCacheSync() {
-  try {
-    const m = localStorage.getItem(CK.members);
-    if (!m) return false;
-    const get = (k, fallback) => {
-      const v = localStorage.getItem(k);
-      return v ? JSON.parse(v) : fallback;
-    };
-    // 캐시에는 나이 · 담당교역자를 안 쓴다 (writeCacheSync). 다만 v133 까지의 앱은 썼으므로
-    // 옛 캐시에 남아 있을 수 있다 — 읽을 때도 비운다. 관리자 값은 늘 서버에서 새로 받는다.
-    state.members     = JSON.parse(m).map(withoutAdminFields);
-    state.locationMap = get(CK.locationMap, {});
-    state.teamLinks   = get(CK.teamLinks, {});
-    state.sessions    = get(CK.sessions, []);
-    state.cohortId    = localStorage.getItem(CK.cohort) || getCachedCohortId();
-    state.loaded = true;
-    return true;
-  } catch (e) {
-    console.log('캐시 읽기 실패, 무시:', e);
-    return false;
-  }
-}
-
-/**
- * 관리자만 볼 수 있는 값(나이 · 담당교역자)을 비운 사본.
- *
- * 이 둘은 로그인한 관리자에게만 DB 가 준다. 그것을 localStorage 에 써 두면 그 브라우저를
- * 쓰는 다음 사람이 로그인 없이 읽는다 — 서버에서 막은 뜻이 없어진다.
- */
-function withoutAdminFields(m) {
-  return { ...m, age: '', pastor: '' };
-}
-
-function writeCacheSync() {
-  try {
-    localStorage.setItem(CK.members,     JSON.stringify(state.members.map(withoutAdminFields)));
-    localStorage.setItem(CK.locationMap, JSON.stringify(state.locationMap));
-    localStorage.setItem(CK.teamLinks,   JSON.stringify(state.teamLinks));
-    localStorage.setItem(CK.sessions,    JSON.stringify(state.sessions));
-    if (state.cohortId) localStorage.setItem(CK.cohort, state.cohortId);
-  } catch (e) {
-    console.log('캐시 쓰기 실패, 무시:', e);
   }
 }
 
@@ -259,11 +249,155 @@ async function fetchFromServer(cohortId) {
 // 공개 API — 조회
 // ============================================================================
 
-export function loadCache() {
-  return readCacheSync();
+// ----------------------------------------------------------------------------
+// 조회 화면 — 서버가 확인하고 본인 것만 준다 (dg_lookup)
+// ----------------------------------------------------------------------------
+
+/** 조회가 안 된 까닭. code: 'limited'(틀린 시도가 너무 많다) · 'network'(연결 · 서버) */
+export class LookupError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = 'LookupError';
+    this.code = code;
+  }
+}
+
+// 폰 자판에서 전각 숫자('５３２６') · 전각 영문이 들어오는 일이 있다. 서버도 번호는 다듬지만
+// 이름에 섞인 전각 영문 · 숫자는 여기서 맞춘다.
+function cleanLookupInput(name, phone) {
+  const half = (v) => String(v || '').replace(/[Ａ-Ｚａ-ｚ０-９]/g,
+    (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  return {
+    name: half(name).trim().replace(/\s/g, '').normalize('NFC'),
+    phone: half(phone).trim().replace(/[^0-9]/g, ''),
+  };
+}
+
+/**
+ * dg_lookup 이 준 묶음을 화면이 쓰는 꼴로 펼친다.
+ *
+ * 본인 한 명, 조장이면 자기 조 전원이 state.members 가 된다 — **그 밖의 사람은 여기 없다.**
+ * 출결은 예전처럼 각 사람의 attendanceByDate 에 넣는다 (화면 · 저장이 그 자리를 본다).
+ */
+function applyLookupBundle(bundle, cred) {
+  const teamLinks = {};
+  for (const l of bundle.links || []) if (l.team) teamLinks[l.team] = l.chat_url || '';
+  const linkOf = makeTeamLinkLookup(teamLinks);
+
+  const locationMap = {};
+  const loc = bundle.location;
+  if (loc && loc.location) {
+    locationMap[loc.location] = loc.image_url || '';
+    if (loc.detail_url) locationMap[`${loc.location}링크`] = loc.detail_url;
+  }
+
+  const sessions = (bundle.sessions || []).map(s => ({
+    date: s.session_date,
+    key: s.label || String(s.session_date).slice(5).replace('-', '/'),
+    name: s.name || '',
+  }));
+
+  const none = new Map();
+  const rows = bundle.team ? bundle.team.members : [bundle.member];
+  const members = rows.map(m => buildMemberRow(m, linkOf, none));
+  // 조 명단에 본인이 없을 리는 없지만(같은 조 · 활성), 없으면 따로 넣어 둔다.
+  if (!members.some(m => m._uuid === bundle.member.id)) {
+    members.push(buildMemberRow(bundle.member, linkOf, none));
+  }
+
+  const byUuid = new Map(members.map(m => [m._uuid, m]));
+  for (const m of members) m.attendanceByDate = {};
+  const self = byUuid.get(bundle.member.id);
+  for (const a of bundle.attendance || []) self.attendanceByDate[a.session_date] = a.status ?? '';
+  for (const a of bundle.team?.attendance || []) {
+    const m = byUuid.get(a.member_id);
+    if (m) m.attendanceByDate[a.session_date] = a.status ?? '';
+  }
+
+  const previousCohort = state.cohortId;
+  Object.assign(state, {
+    cohortId: bundle.cohort || state.cohortId,
+    members, teamLinks, locationMap, sessions, loaded: true,
+    lookup: {
+      name: cred.name, phone: cred.phone, selfId: bundle.member.id,
+      lunch: bundle.lunch || [],
+      homework: bundle.homework || [],
+      team: bundle.team ? { lunch: bundle.team.lunch || [], homework: bundle.team.homework || [] } : null,
+    },
+  });
+  // 보고 있던 회차가 있으면 그 회차 값으로 맞춘다 (없으면 ensureSession 이 정한다).
+  if (state.session) for (const m of members) m.attendance = m.attendanceByDate[state.session] || '';
+
+  if (previousCohort && state.cohortId && previousCohort !== state.cohortId) {
+    notify({ type: 'cohort-changed', from: previousCohort, to: state.cohortId });
+  }
+  return self;
+}
+
+async function callLookup(cred) {
+  let bundle;
+  try {
+    bundle = await sbRpc('dg_lookup', { p_name: cred.name, p_phone: cred.phone });
+  } catch (err) {
+    console.log('조회 실패:', err);
+    throw new LookupError('조회 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.', 'network');
+  }
+  if (bundle && bundle.limited) {
+    throw new LookupError('조회를 너무 여러 번 시도했습니다. 잠시 후 다시 시도해 주세요.', 'limited');
+  }
+  return bundle && bundle.found ? bundle : null;
+}
+
+/**
+ * 이름 + 전화 뒷 4자리로 조회한다 (조회 화면).
+ *
+ * **서버가 확인한다.** 이름은 정확히 맞아야 한다 — 일부만 치거나 초성만 쳐서는 안 나온다.
+ * (그렇게 받으면 뒤 4자리를 차례로 넣어 보는 것만으로 명단을 긁어 갈 수 있다.)
+ *
+ * @returns 본인 행. 못 찾으면 null
+ * @throws {LookupError} 틀린 시도가 너무 많거나(limited) 연결이 안 될 때(network)
+ */
+export async function lookupMember(name, phone) {
+  const cred = cleanLookupInput(name, phone);
+  if (!cred.name || !cred.phone) return null;
+  const bundle = await callLookup(cred);
+  if (!bundle) return null;
+  return applyLookupBundle(bundle, cred);
+}
+
+/**
+ * 지금 보고 있는 사람을 서버에서 다시 받는다 (같은 이름 · 번호로).
+ *
+ * 회차를 바꾼 뒤 · 배경 갱신 때 부른다. 화면은 이미 받은 묶음으로 먼저 그리고,
+ * 이것이 끝나면 새 값으로 다시 그린다.
+ *
+ * @returns 새 본인 행. 볼 사람이 없거나 그새 명단에서 빠졌으면 null
+ */
+export async function refreshLookup() {
+  const cur = state.lookup;
+  if (!cur) return null;
+  const bundle = await callLookup({ name: cur.name, phone: cur.phone });
+  // 그새 다른 사람을 조회했으면 이 답은 버린다.
+  if (state.lookup !== cur) return getCurrentMember();
+  if (!bundle) return null;
+  return applyLookupBundle(bundle, { name: cur.name, phone: cur.phone });
+}
+
+/** 지금 조회돼 있는 본인 행 (조회 화면). 없으면 null. */
+export function getCurrentMember() {
+  const cur = state.lookup;
+  return cur ? (state.members.find(m => m._uuid === cur.selfId) || null) : null;
 }
 
 export async function refresh() {
+  // 조회 화면: 표를 읽지 않는다. 보고 있는 사람이 있으면 그 사람만 다시 받는다.
+  if (isPublic()) {
+    if (state.lookup) await refreshLookup();
+    state.loaded = true;
+    notify({ type: 'refresh' });
+    return true;
+  }
+
   const cohortId = await getActiveCohortId();
   const previous = state.cohortId;
   const fresh = await fetchFromServer(cohortId);
@@ -294,7 +428,6 @@ export async function refresh() {
   // 과제는 여기서 받아오지 않지만, 시트에서 새로 가져온 뒤라면 그것도 옛것이다.
   // 버려 두면 다음에 필요할 때 다시 받는다.
   homeworkAllCache = null;
-  writeCacheSync();
 
   if (previous && previous !== cohortId) {
     console.log(`대상 전환 감지: ${previous} → ${cohortId}`);
@@ -305,17 +438,21 @@ export async function refresh() {
 }
 
 /**
- * 캐시가 있으면 즉시 쓰고 뒤에서 갱신한다. 없으면 받아올 때까지 기다린다.
+ * 화면을 열 때 한 번 부른다.
+ *
+ *   조회 화면  받을 것이 없다 — 바로 끝난다. 명단은 조회할 때 본인 것만 받는다.
+ *   관리자 화면 전 명단을 받는다 (관리자 토큰으로).
+ *
+ * 예전에는 localStorage 에 둔 명단으로 먼저 그리고 뒤에서 새로 받았다. 명단을 브라우저에
+ * 저장하지 않게 되면서 그 길은 없앴다 (cacheHit 은 늘 false — 호출부 호환용으로 남긴다).
+ *
+ * @param {boolean} forceRefresh 조회 화면에서도 보고 있는 사람을 다시 받는다 (자동 새로고침)
  */
-export async function ensureLoaded({ forceRefresh = false, onBackgroundRefreshError } = {}) {
-  const cacheHit = !forceRefresh && loadCache();
-  if (cacheHit) {
-    notify({ type: 'cache-hit' });
-    refresh().catch(err => {
-      console.log('백그라운드 refresh 실패:', err);
-      onBackgroundRefreshError?.(err);
-    });
-    return { cacheHit: true, backgroundRefreshing: true };
+export async function ensureLoaded({ forceRefresh = false } = {}) {
+  if (isPublic()) {
+    if (forceRefresh) await refresh();
+    state.loaded = true;
+    return { cacheHit: false, backgroundRefreshing: false };
   }
   await refresh();
   return { cacheHit: false, backgroundRefreshing: false };
@@ -327,26 +464,6 @@ export function getMembers() {
 
 export function getCohortId() {
   return state.cohortId;
-}
-
-/**
- * (name, phone) 로 단일 인원 조회.
- * 정확 매칭 우선, 실패하면 초성·부분 매칭 (전화번호는 정확 일치 필수).
- */
-export function findMember(name, phone) {
-  // 폰 자판에서 전각 숫자('５３２６')가 들어오는 일이 있다. 그대로 두면
-  // 숫자가 아니라고 지워져 '번호를 안 넣었다' 는 오류가 난다.
-  const half = (v) => String(v || '').replace(/[Ａ-Ｚａ-ｚ０-９]/g,
-    (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
-  const cleanName = half(name).trim().replace(/\s/g, '').normalize('NFC');
-  const cleanPhone = half(phone).trim().replace(/[^0-9]/g, '');
-  if (!cleanName || !cleanPhone) return null;
-
-  const target = cleanName + cleanPhone;
-  const exact = state.members.find(m => m.id === target || (m.name + m.phone) === target);
-  if (exact) return exact;
-
-  return state.members.find(m => m.phone === cleanPhone && hangulMatches(m.name, cleanName)) || null;
 }
 
 export function getTeamMembers(teamName) {
@@ -381,17 +498,40 @@ export function getTeamLink(teamName) {
  *
  * @returns [{ date, key, status }] — 지나간 회차만, 오래된 것부터
  */
-export async function getMyAttendance(member) {
-  if (!member || !member._uuid) return [];
-
+/**
+ * 한 사람의 출결 · 김밥 · 과제 행.
+ *
+ *   조회 화면  **본인 것만** — 조회할 때 받은 묶음에서. 다른 사람 것은 여기 없다(서버가 안 준다).
+ *   관리자 화면 표에서 (관리자 토큰으로). 개인 상세가 아무나 열어 볼 때 쓴다.
+ */
+async function ownRecords(member) {
+  if (isPublic()) {
+    const cur = state.lookup;
+    const self = getCurrentMember();
+    if (!cur || !self || member._uuid !== cur.selfId) return { attRows: [], lunchRows: [], hwRows: [] };
+    return {
+      // 묶음이 아니라 지금 값에서 — 방금 저장한 출결이 들어 있다.
+      attRows: Object.entries(self.attendanceByDate || {})
+        .map(([session_date, status]) => ({ session_date, status })),
+      lunchRows: cur.lunch,
+      hwRows: cur.homework,
+    };
+  }
   const [attRows, lunchRows, hwRows] = await Promise.all([
     sbSelect(`dg_attendance?select=session_date,status&member_id=eq.${member._uuid}&order=session_date`),
     sbSelect(`dg_lunch?select=session_date,applied&member_id=eq.${member._uuid}&order=session_date`)
       .catch(() => []),
     // kind 까지 받는다. 과제만 낸 것과 과제+소감문을 낸 것은 다른 이야기다.
-    sbSelect(`dg_homework?select=lecture,kind&member_id=eq.${member._uuid}&order=lecture`)
+    sbSelect(`dg_homework?select=lecture,kind,content,submitted_at&member_id=eq.${member._uuid}&order=lecture`)
       .catch(() => []),
   ]);
+  return { attRows, lunchRows, hwRows };
+}
+
+export async function getMyAttendance(member) {
+  if (!member || !member._uuid) return [];
+
+  const { attRows, lunchRows, hwRows } = await ownRecords(member);
 
   const byDate = new Map(attRows.map(r => [r.session_date, r.status ?? '']));
   const lunchSet = new Set(lunchRows.filter(r => r.applied).map(r => r.session_date));
@@ -453,11 +593,20 @@ export async function getUpcomingLunches(member) {
   if (!member || !member._uuid) return [];
   const today = todayISO();
 
-  const rows = await sbSelect(
-    `dg_lunch?select=session_date&member_id=eq.${member._uuid}` +
-    `&applied=is.true&session_date=gt.${encodeURIComponent(today)}` +
-    '&order=session_date'
-  ).catch(() => []);
+  let rows;
+  if (isPublic()) {
+    // 본인 김밥은 조회할 때 받은 묶음에 다 있다 (다가오는 것까지).
+    const cur = state.lookup;
+    rows = (cur && member._uuid === cur.selfId ? cur.lunch : [])
+      .filter(r => r.applied && r.session_date > today)
+      .sort((a, b) => String(a.session_date).localeCompare(String(b.session_date)));
+  } else {
+    rows = await sbSelect(
+      `dg_lunch?select=session_date&member_id=eq.${member._uuid}` +
+      `&applied=is.true&session_date=gt.${encodeURIComponent(today)}` +
+      '&order=session_date'
+    ).catch(() => []);
+  }
 
   // 회차 이름은 dg_sessions 가 안다. 김밥 탭에만 있는 날짜면 날짜로 적는다.
   return rows.map(r => {
@@ -503,12 +652,15 @@ export async function getTeamExtras(members) {
 
   const list = `(${ids.join(',')})`;
 
-  const [lunchRows, hwRows] = await Promise.all([
-    sbSelect(`dg_lunch?select=member_id,session_date&member_id=in.${list}` +
-             `&applied=is.true&order=member_id,session_date`).catch(() => []),
-    sbSelect(`dg_homework?select=member_id,lecture,kind&member_id=in.${list}` +
-             `&order=member_id,lecture`).catch(() => []),
-  ]);
+  // 조회 화면: 조장이 받은 묶음에 조원의 김밥 · 과제(몇 강 · 종류)가 있다. 조장이 아니면 비어 있다.
+  const [lunchRows, hwRows] = isPublic()
+    ? [state.lookup?.team?.lunch || [], state.lookup?.team?.homework || []]
+    : await Promise.all([
+        sbSelect(`dg_lunch?select=member_id,session_date&member_id=in.${list}` +
+                 `&applied=is.true&order=member_id,session_date`).catch(() => []),
+        sbSelect(`dg_homework?select=member_id,lecture,kind&member_id=in.${list}` +
+                 `&order=member_id,lecture`).catch(() => []),
+      ]);
 
   const lunch = new Map();
   for (const r of lunchRows) {
@@ -796,10 +948,13 @@ function nearbyLectures(rows, lectureName) {
 export async function getMyHomework(member) {
   if (!member || !member._uuid) return [];
 
-  const rows = await sbSelect(
-    `dg_homework?select=lecture,kind,content,submitted_at` +
-    // 시각이 비어 있는 건이 섞여도 순서가 흔들리지 않게 lecture 를 보조로 둔다.
-    `&member_id=eq.${member._uuid}&order=submitted_at.desc.nullslast,lecture.desc`);
+  // 조회 화면: 본인 과제는 묶음에 있다 (제출 링크까지 — 자기 것만). 차례는 아래에서 다시 세운다.
+  const rows = isPublic()
+    ? (state.lookup && member._uuid === state.lookup.selfId ? state.lookup.homework : [])
+    : await sbSelect(
+        `dg_homework?select=lecture,kind,content,submitted_at` +
+        // 시각이 비어 있는 건이 섞여도 순서가 흔들리지 않게 lecture 를 보조로 둔다.
+        `&member_id=eq.${member._uuid}&order=submitted_at.desc.nullslast,lecture.desc`);
 
   // 강 번호가 큰 것부터. DB 정렬만으로는 어긋난다 — 문자열로 견주면 '9강' 이
   // '19강' 보다 뒤로 가고, 제출 시각이 비어 있는 건이 섞이면 그 사이에서
@@ -966,6 +1121,19 @@ export function isPastSession(date) {
 export async function loadAttendanceForSession(date, { members } = {}) {
   if (!date) return new Map();
 
+  // 조회 화면: 조회할 때 받은 묶음에 자기 조의 **전 회차**가 들어 있다 — 서버에 다시 묻지 않는다.
+  // (회차를 바꾸면 바로 그려지는 까닭이다. 새 값은 refreshLookup 이 뒤에서 받아 온다.)
+  if (isPublic()) {
+    const out = new Map();
+    for (const m of state.members) {
+      const v = (m.attendanceByDate || {})[date] ?? '';
+      out.set(m._uuid, v);
+      if (date === state.session) m.attendance = v || '';
+    }
+    notify({ type: 'session-attendance-loaded', session: date });
+    return out;
+  }
+
   const ids = members ? members.map(m => m._uuid).filter(Boolean) : null;
   if (ids && !ids.length) return new Map();
   const only = ids ? `&member_id=in.(${ids.join(',')})` : '';
@@ -1000,6 +1168,17 @@ export async function getTeamAttendance(members) {
   const out = new Map();
   const ids = (members || []).map(m => m._uuid).filter(Boolean);
   if (!ids.length) return out;
+
+  // 조회 화면: 묶음으로 받은 값(과 그 뒤 저장한 값)이 각 사람의 attendanceByDate 에 있다.
+  if (isPublic()) {
+    const want = new Set(ids);
+    for (const m of state.members) {
+      if (!want.has(m._uuid)) continue;
+      out.set(m._uuid, new Map(Object.entries(m.attendanceByDate || {})
+        .map(([d, v]) => [d, String(v ?? '').trim()])));
+    }
+    return out;
+  }
 
   const rows = await sbSelect(
     `dg_attendance?select=member_id,session_date,status&member_id=in.(${ids.join(',')})` +
@@ -1216,11 +1395,16 @@ export async function saveAttendance(session, changes) {
   // 관리자 세션이 있으면 토큰을 함께 보낸다. GAS(v34~)는 **기록을 지우는 저장**(빈 값)을
   // 관리자 토큰이 있을 때만 받는다. O/X 저장은 토큰 없이도 된다 (조장 화면).
   const token = await adminTokenOrNull();
+  // 조회 화면에서는 **누가 저장하는지**를 함께 보낸다 — 조회한 그 사람(이름+뒤 4자리).
+  // GAS(v35~)가 시트 명단에서 그 사람이 조장 · 서브튜터 · 관리자인지, 저장하려는 사람이
+  // 전부 그 사람의 조인지 확인한 뒤에만 쓴다. 예전에는 주소만 알면 누구나 O/X 를 썼다.
+  const by = isPublic() && state.lookup
+    ? { name: state.lookup.name, phone: state.lookup.phone } : null;
   const res = await fetch(GAS_API_URL, {
     method: 'POST',
     // application/json 으로 보내면 preflight 때문에 CORS 로 막힌다.
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ session, batch: changes, ...(token ? { token } : {}) }),
+    body: JSON.stringify({ session, batch: changes, ...(by ? { by } : {}), ...(token ? { token } : {}) }),
   });
   const result = await res.json();
   if (!result.success) throw new Error(gasFailureMessage(result, '출결 저장 실패'));
@@ -1249,7 +1433,6 @@ export async function saveAttendance(session, changes) {
     }
     put(m, c.status);
   }
-  writeCacheSync();
 
   return {
     saved: result.saved || 0,
@@ -1301,6 +1484,11 @@ function gasFailureMessage(result, fallback) {
   if (result && result.code === 'admin-required') {
     return '관리자 로그인이 만료됐습니다. 다시 로그인해 주세요.';
   }
+  // 조장으로 확인되지 않았다 (GAS v35~). 시트 명단의 역할 · 조와 다르다는 뜻이다.
+  if (result && result.code === 'not-tutor') {
+    return '조장으로 확인되지 않아 저장하지 못했습니다. 다시 조회한 뒤 시도해 주세요. '
+         + '계속되면 관리자에게 알려 주세요.';
+  }
   return (result && result.message) || fallback;
 }
 
@@ -1311,21 +1499,6 @@ function gasFailureMessage(result, fallback) {
 export function subscribe(callback) {
   subscribers.add(callback);
   return () => subscribers.delete(callback);
-}
-
-export function getCacheInfo() {
-  return {
-    loaded: state.loaded,
-    cohortId: state.cohortId,
-    memberCount: state.members.length,
-    version: MODULE_VERSION,
-  };
-}
-
-export function clearCache() {
-  for (const k of Object.values(CK)) {
-    try { localStorage.removeItem(k); } catch { /* 무시 */ }
-  }
 }
 
 // ============================================================================
@@ -1414,6 +1587,8 @@ async function fetchSyncMark(cohortId) {
   } catch {
     // 표가 없다(404). 아래로.
   }
+  // 조회 화면은 출결 표를 읽을 수 없다 (관리자만). 물러날 곳이 없으면 쉰다.
+  if (isPublic()) return null;
   try {
     const rows = await sbSelect(
       'dg_attendance?select=updated_at,dg_members!inner(cohort_id)' +
@@ -1455,7 +1630,8 @@ export function startAutoRefresh(opts = {}) {
       if (typeof document !== 'undefined' && document.hidden) return;
       if (pollBusy) return;
 
-      const cohortId = state.cohortId || await getActiveCohortId();
+      // 조회 화면은 조회한 뒤에야 대상(기수)을 안다. 아직 아무도 안 봤으면 볼 것도 없다.
+      const cohortId = state.cohortId || (isPublic() ? null : await getActiveCohortId());
       if (!cohortId) return;
 
       const mark = await fetchSyncMark(cohortId);

@@ -70,7 +70,8 @@ const LockService = {
 };
 const Logger = { log: () => {} };
 
-// 출석부 탭 — 머리글: id · 이름 · 회차 둘 (날짜 값 칸). 지난 회차라야 쓸 수 있다.
+// 출석부 탭 — 머리글: id · 이름 · team · role · 회차 둘 (날짜 값 칸). 지난 회차라야 쓸 수 있다.
+// team · role 은 조장 확인(v35)이 본다. Y1 의 조장은 김조장, Y2 의 조장은 다른조장이다.
 const D1 = new Date(Date.UTC(2026, 9, 25));   // 2026-10-25
 const D2 = new Date(Date.UTC(2026, 10, 1));   // 2026-11-01
 const S = '2026-11-01';
@@ -79,13 +80,16 @@ const writes = [];
 function resetSheet() {
   writes.length = 0;
   values = [
-    ['DG-2026', '', '', ''],
-    ['id', '이름', D1, D2],
-    ['김조장1111', '김조장', 'O', 'O'],
-    ['이조원2222', '이조원', 'O', 'O'],    // 시트에 손으로 O — DB 에는 아직 없다
-    ['박돌봄3333', '박돌봄', 'O', '돌봄'],
-    ['최빈칸4444', '최빈칸', 'O', ''],
-    ['정엑스5555', '정엑스', 'O', 'X'],
+    ['DG-2026', '', '', '', '', ''],
+    ['id', '이름', 'Team', 'Role', D1, D2],
+    ['김조장1111', '김조장', 'Y1', '조장', 'O', 'O'],
+    ['이조원2222', '이조원', 'Y1', '조원', 'O', 'O'],    // 시트에 손으로 O — DB 에는 아직 없다
+    ['박돌봄3333', '박돌봄', 'Y1', '조원', 'O', '돌봄'],
+    ['최빈칸4444', '최빈칸', 'Y1', '',     'O', ''],
+    ['정엑스5555', '정엑스', 'Y1', '조원', 'O', 'X'],
+    ['다른조장6666', '다른조장', 'Y2', '조장', 'O', ''],
+    ['다른조원7777', '다른조원', 'Y2', '조원', 'O', ''],
+    ['정서브8888', '정서브', 'Y2', '서브튜터', 'O', ''],
   ];
 }
 const SpreadsheetApp = {
@@ -108,10 +112,17 @@ const gas = new Function(...Object.keys(stubs), `
   return { doPost, DG_VERSION };
 `)(...Object.values(stubs));
 
-const post = (body) => JSON.parse(gas.doPost({ postData: { contents: JSON.stringify(body) } }).text);
-const cell = (id) => values.find(r => r[0] === id)[3];
+// 저장하는 사람(by)을 안 적으면 Y1 의 조장 김조장으로 보낸다 — 앞쪽 검증(seen 등)은
+// '조장이 자기 조를 저장한다' 는 평소 상황을 본다. `by: null` 을 주면 아예 안 보낸다.
+const TUTOR = { name: '김조장', phone: '1111' };
+const post = (body) => {
+  const full = body.action || 'by' in body ? { ...body } : { ...body, by: TUTOR };
+  if (full.by === null) delete full.by;
+  return JSON.parse(gas.doPost({ postData: { contents: JSON.stringify(full) } }).text);
+};
+const cell = (id) => values.find(r => r[0] === id)[5];
 
-ok('GAS 버전 34', gas.DG_VERSION === 34, String(gas.DG_VERSION));
+ok('GAS 버전 35', gas.DG_VERSION === 35, String(gas.DG_VERSION));
 
 // --- 1. 시트 O · 화면은 빈칸으로 봤다 · 보낸 값 X → 덮지 않는다 -------------------
 resetSheet();
@@ -166,7 +177,7 @@ ok('돌봄 칸은 kept — seen 과 상관없다',
 
 // --- 7. 대소문자 · 공백은 같은 값으로 본다 ----------------------------------
 resetSheet();
-values[3][3] = ' o ';
+values[3][5] = ' o ';
 res = post({ session: S, batch: [{ name: '이조원', phone: '2222', status: 'X', seen: 'O' }] });
 ok("시트의 ' o ' 와 seen 'O' 는 같은 값", cell('이조원2222') === 'X' && res.saved === 1, JSON.stringify(res));
 
@@ -230,6 +241,77 @@ ok('아니라는 답은 캐시하지 않는다', authAsked.length === 2, `${auth
 ok('캐시 열쇠에 토큰을 그대로 쓰지 않는다',
    Object.keys(cacheStore).length > 0 && Object.keys(cacheStore).every(k => !k.includes('admin-token')),
    Object.keys(cacheStore).join(','));
+
+// ==========================================================================
+// 조장만, 자기 조만 (v35)
+//
+// 예전에는 이름+뒤 4자리만 맞으면 누구의 출석이든 O/X 로 쓸 수 있었다 (명단이 공개여서
+// 그 값은 누구나 알았다). 앱이 저장하는 사람을 body.by 로 보내고, GAS 가 시트 명단에서
+// 그 사람의 역할과 조를 본다.
+// ==========================================================================
+const oneX = (who, extra = {}) => post({ session: S, batch: [
+  { name: who.name, phone: who.phone, status: 'X', seen: who.seen ?? '' }], ...extra });
+const BLANK_Y1 = { name: '최빈칸', phone: '4444', seen: '' };
+const BLANK_Y2 = { name: '다른조원', phone: '7777', seen: '' };
+
+for (const [label, extra, target] of [
+  ['저장하는 사람을 안 보냄 (옛 화면 · 주소를 직접 부름)', { by: null }, BLANK_Y1],
+  ['명단에 없는 사람', { by: { name: '없는사람', phone: '0000' } }, BLANK_Y1],
+  ['번호가 다른 사람', { by: { name: '김조장', phone: '1112' } }, BLANK_Y1],
+  ['조원 (역할이 조원)', { by: { name: '이조원', phone: '2222' } }, BLANK_Y1],
+  ['역할이 빈 사람', { by: { name: '최빈칸', phone: '4444' } }, BLANK_Y1],
+  ['다른 조의 조장', { by: { name: '다른조장', phone: '6666' } }, BLANK_Y1],
+  ['조장이 남의 조 사람을', { by: TUTOR }, BLANK_Y2],
+]) {
+  resetSheet();
+  res = oneX(target, extra);
+  ok(`조장 확인 — ${label}: 거절한다`, res.success === false && res.code === 'not-tutor', JSON.stringify(res));
+  ok(`조장 확인 — ${label}: 시트를 안 바꾼다`, writes.length === 0, JSON.stringify(writes));
+}
+ok('거절하고도 잠금을 남기지 않는다 (조장 확인)', lockHeld === 0, String(lockHeld));
+
+// 자기 조 사람과 남의 조 사람이 섞이면 **전부** 안 쓴다 (반만 쓰면 화면과 시트가 어긋난다).
+resetSheet();
+res = post({ session: S, batch: [
+  { name: '최빈칸', phone: '4444', status: 'X', seen: '' },
+  { name: '다른조원', phone: '7777', status: 'X', seen: '' }] });
+ok('남의 조 사람이 하나라도 섞이면 전부 안 쓴다',
+   res.code === 'not-tutor' && writes.length === 0 && cell('최빈칸4444') === '', JSON.stringify(res));
+
+resetSheet();
+res = oneX(BLANK_Y1);
+ok('조장이 자기 조 사람을 저장한다', res.success === true && cell('최빈칸4444') === 'X', JSON.stringify(res));
+resetSheet();
+res = oneX(BLANK_Y2, { by: { name: '정서브', phone: '8888' } });
+ok('서브튜터도 자기 조를 저장한다', res.success === true && cell('다른조원7777') === 'X', JSON.stringify(res));
+resetSheet();
+res = oneX(BLANK_Y2, { by: { name: ' 다른 조장 ', phone: '６６６６'.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)) } });
+ok('이름의 공백은 다듬어 본다', res.success === true, JSON.stringify(res));
+// 명단에 없는 사람이 섞인 것은 예전처럼 missing 으로 돌려준다 (거절이 아니다).
+resetSheet();
+res = post({ session: S, batch: [
+  { name: '최빈칸', phone: '4444', status: 'X', seen: '' },
+  { name: '유령', phone: '0001', status: 'X', seen: '' }] });
+ok('명단에 없는 사람은 missing 으로 (나머지는 쓴다)',
+   res.success === true && res.saved === 1 && res.missing.length === 1, JSON.stringify(res));
+
+// 관리자 토큰이 있으면 조와 상관없이 쓴다 (관리자 화면 — by 를 안 보낸다).
+resetSheet();
+res = post({ session: S, token: 'admin-token', by: null, batch: [
+  { name: '최빈칸', phone: '4444', status: 'X', seen: '' },
+  { name: '다른조원', phone: '7777', status: 'O', seen: '' }] });
+ok('관리자 토큰이면 조와 상관없이 쓴다',
+   res.success === true && cell('최빈칸4444') === 'X' && cell('다른조원7777') === 'O', JSON.stringify(res));
+resetSheet();
+res = oneX(BLANK_Y1, { by: null, token: 'guest-token' });
+ok('관리자 표시 없는 토큰은 조장 확인을 건너뛰지 못한다', res.code === 'not-tutor' && writes.length === 0, JSON.stringify(res));
+
+// team · role 열을 못 찾으면 확인할 길이 없다 → 거절 (열어 두지 않는다).
+resetSheet();
+values[1][2] = '조';          // 머리글이 'team' 이 아니다
+res = oneX(BLANK_Y1);
+ok('team · role 열이 없으면 거절한다 (열어 두지 않는다)',
+   res.code === 'not-tutor' && /team/.test(res.message) && writes.length === 0, JSON.stringify(res));
 
 // --- Supabase 속성이 없으면 확인할 길이 없다 → 거절 (열어 두지 않는다) -----------
 delete PROPS.DG_SUPABASE_URL;

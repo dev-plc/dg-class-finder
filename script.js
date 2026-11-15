@@ -3,7 +3,9 @@
 // 화면은 아래 함수들만 쓴다. 어디서 데이터가 오는지(Supabase·시트)는 알지 못한다.
 import {
     ensureLoaded,
-    findMember,
+    lookupMember,
+    refreshLookup,
+    getCurrentMember,
     getTeamMembers,
     getLocationImage,
     getTeamLink,
@@ -102,30 +104,25 @@ const elements = {
 
 // 3. 데이터 로드
 //
-// 캐시가 있으면 즉시 버튼을 열고 뒤에서 갱신한다.
-// 처음 들어온 사람만 받아올 때까지 기다린다.
+// **열 때 받을 것이 없다** (v135). 예전에는 전원의 명단을 받아야 조회 버튼이 열렸다 —
+// 사이트를 여는 누구나 전 명단을 갖게 됐다. 지금은 조회할 때 서버가 이름+번호를 확인하고
+// 본인 것만 준다. 버튼은 바로 열린다.
+const SEARCH_BTN_TEXT = '조 확인하기';
+
 async function loadData() {
-    try {
-        elements.searchBtn.disabled = true;
-        if (elements.searchBtnText) elements.searchBtnText.textContent = "로딩중...";
-
-        const { cacheHit } = await ensureLoaded({
-            onBackgroundRefreshError: (err) => console.log("백그라운드 갱신 실패:", err),
-        });
-
-        console.log(cacheHit ? "⚡ 캐시로 즉시 활성화" : "✅ 최신 데이터 로드 완료");
-
-        elements.searchBtn.disabled = false;
-        if (elements.searchBtnText) elements.searchBtnText.textContent = "조 확인하기";
-    } catch (error) {
-        console.log("❌ 데이터 로드 실패:", error);
-        alert("데이터를 불러오는 중 오류가 발생했습니다. 인터넷 연결을 확인해주세요.");
-        if (elements.searchBtnText) elements.searchBtnText.textContent = "오류 발생";
-    }
+    await ensureLoaded();
+    elements.searchBtn.disabled = false;
+    if (elements.searchBtnText) elements.searchBtnText.textContent = SEARCH_BTN_TEXT;
 }
 
 // 4. 검색 로직
-function searchMember() {
+//
+// 서버에 한 번 다녀온다. 그동안 버튼은 '확인 중…' — 눌린 줄 모르고 또 누르지 않게.
+// 이름은 **정확히** 쳐야 한다. 일부만 치거나 초성만 쳐서는 안 나온다 (서버가 그렇게 본다.
+// 그렇게 받으면 뒤 4자리를 차례로 넣어 보는 것만으로 명단을 긁어 갈 수 있다).
+let searchSeq = 0;
+
+async function searchMember() {
     // 폰 자판에서 전각 숫자·영문이 들어오는 일이 있다 ('１１１１').
     // 여기서 반각으로 바꾸지 않으면 아래에서 숫자가 아니라고 통째로 지워져,
     // 번호를 분명히 넣었는데 '번호를 입력해주세요' 가 뜬다.
@@ -139,15 +136,36 @@ function searchMember() {
         return;
     }
 
-    const member = findMember(name, phone);
+    if (elements.searchBtn.disabled) return;   // 확인 중에 한 번 더 누른 것
+    const seq = ++searchSeq;
+    elements.searchBtn.disabled = true;
+    if (elements.searchBtnText) elements.searchBtnText.textContent = '확인 중…';
 
-    if (member) {
-        // 찾은 경우에만 기억한다. 오타를 기억해 두면 다음에도 못 찾는다.
-        saveLastSearch(name, phone);
-        if (elements.clearRememberedBtn) elements.clearRememberedBtn.style.display = 'block';
-        displayResult(member);
-    } else {
-        showError("일치하는 정보를 찾을 수 없습니다.<br>입력 내용을 확인해주세요.");
+    try {
+        const member = await lookupMember(name, phone);
+        if (seq !== searchSeq) return;
+
+        if (member) {
+            // 찾은 경우에만 기억한다. 오타를 기억해 두면 다음에도 못 찾는다.
+            saveLastSearch(name, phone);
+            if (elements.clearRememberedBtn) elements.clearRememberedBtn.style.display = 'block';
+            displayResult(member);
+        } else {
+            showError("일치하는 정보를 찾을 수 없습니다.<br>이름 전체와 번호 4자리를 정확히 입력해주세요.");
+        }
+    } catch (err) {
+        if (seq !== searchSeq) return;
+        // LookupError 의 문구는 화면에 그대로 보여도 되는 것이다 (시도가 너무 많다 · 연결이 안 된다).
+        // '못 찾았다' 와 갈라 말한다 — 연결이 안 된 것을 오타로 알면 헛되이 다시 친다.
+        showError(err?.name === 'LookupError'
+            ? err.message
+            : '조회하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        if (err?.name !== 'LookupError') console.log('조회 실패:', err);
+    } finally {
+        if (seq === searchSeq) {
+            elements.searchBtn.disabled = false;
+            if (elements.searchBtnText) elements.searchBtnText.textContent = SEARCH_BTN_TEXT;
+        }
     }
 }
 
@@ -1322,8 +1340,19 @@ function initEventListeners() {
                 return;
             }
             setSession(e.target.value);
-            // 그 회차를 DB 에서 읽는다 (이 페이지에서 이미 읽었으면 바로 그린다).
+            // 조회할 때 자기 조의 전 회차를 이미 받았다 — 바로 그린다.
             if (shownMember) showTeamAttendance();
+            // 그리고 뒤에서 새로 받아 맞춘다. 화면을 오래 열어 둔 조장이 옛 값을 보지 않게.
+            // (체크해 둔 것은 다시 그려도 남는다 — pendingChecks.)
+            const session = e.target.value;
+            const who = shownMember;
+            refreshLookup()
+                .then((self) => {
+                    if (!self || shownMember !== who || getSession() !== session) return;
+                    shownMember = self;
+                    renderTeamMembers(getTeamMembers(self.team), self.team, self.role);
+                })
+                .catch(err => console.log('회차 새로 받기 실패 — 받은 값 그대로 둡니다:', err));
         });
     }
 
@@ -1501,8 +1530,10 @@ registerServiceWorker();
 function rerenderShown() {
     if (!shownMember || elements.resultContainer.style.display === 'none') return;
 
-    // 갱신된 목록에서 같은 사람을 다시 찾는다 (조·역할이 바뀌었을 수 있다).
-    const fresh = findMember(shownMember.name, shownMember.phone) || shownMember;
+    // 방금 서버에서 다시 받은 본인 행으로 그린다 (조·역할이 바뀌었을 수 있다).
+    // 명단에서 빠졌으면(null) 받아 둔 것을 그대로 둔다.
+    const fresh = getCurrentMember();
+    if (!fresh) return;
     displayResult(fresh);
 }
 

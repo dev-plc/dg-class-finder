@@ -1,4 +1,4 @@
-// DGfinder — Google Apps Script 전체 코드 (v34)
+// DGfinder — Google Apps Script 전체 코드 (v35)
 //
 // ===========================================================================
 // ⚠️ 붙여넣는 곳: **dev 계정의 독립 Apps Script 프로젝트**
@@ -36,6 +36,21 @@
 // 두 곳에서 쓰면 어느 쪽이 최신인지 판단할 근거가 사라진다. 그래서 쓰기는
 // 언제나 시트로 모으고, DB 는 비추기만 한다. 어긋나도 다음 밀어넣기가 맞춘다.
 // ---------------------------------------------------------------------------
+//
+// v35 — dev 계정 독립 프로젝트
+//   - **출석 저장은 조장만, 자기 조만.** 예전에는 이름+뒤 4자리만 맞으면 누구의 출석이든
+//     O/X 로 쓸 수 있었다 (명단이 공개여서 그 값은 누구나 알았다).
+//     앱(v135~)이 **저장하는 사람**을 body.by = { name, phone } 으로 보낸다. 시트 명단에서
+//       · 그 사람이 있고, role 에 조장 · 서브튜터 · 관리자가 들고 (DG_isTutorRole_)
+//       · 저장하려는 사람이 **전부 그 사람과 같은 team** 일 때만 쓴다.
+//     아니면 code:'not-tutor' 로 돌려보내고 아무것도 안 쓴다.
+//     관리자 로그인 토큰(v34)이 있으면 조와 상관없이 쓴다 (관리자 화면).
+//   - 이미 읽어 둔 시트 값(잠금 안)에서 team · role 열을 본다 — 왕복이 늘지 않는다.
+//     그 두 열을 못 찾으면 확인할 길이 없으므로 **거절한다** (열어 두지 않는다).
+//   - ⚠️ 조장 확인은 이름+뒤 4자리뿐이다 (비밀번호를 따로 두지 않기로 했다). 조장의 이름과
+//     번호를 **아는 사람**은 그 조장처럼 저장할 수 있다. 막는 것은 명단을 모르는 바깥 사람이다.
+//   - ⚠️ 앱 v135 가 사이트에 나간 **뒤에** 배포할 것. v134 는 by 를 안 보내서, 이 버전을
+//     먼저 올리면 조장 화면의 저장이 전부 거절된다.
 //
 // v34 — dev 계정 독립 프로젝트 (2026-11-15 배포)
 //   - **동기화 실행과 출석 기록 지우기는 관리자만.** doPost 는 누구나 부를 수 있어서,
@@ -179,7 +194,7 @@
 //    둘이면 하나가 조용히 진다. 메뉴가 필요하면 기존 onOpen 안에서
 //    DG_addMenu(ui) 를 부르게 한다.
 
-var DG_VERSION = 34;
+var DG_VERSION = 35;
 
 var DG_SHEET_ID = "1esF3oBjGq1PPMHae__LZNRgEvlwxVmNW4Ciz-qjM0zE";
 var DG_TAB_ROSTER = "출석부(DB)";
@@ -774,6 +789,16 @@ function DG_isAdmin_(token) {
   return ok;
 }
 
+/**
+ * 조원 명단을 보고 출석을 저장할 수 있는 역할인가 (v35).
+ *
+ * 앱(script.js 의 isTutor) · DB(dg_is_tutor_role)와 **같은 규칙**이다 — 글자에 조장 ·
+ * 서브튜터 · 관리자가 드는가. 한쪽만 바꾸면 화면은 조장으로 보여 주는데 저장은 거절된다.
+ */
+function DG_isTutorRole_(role) {
+  return /조장|서브튜터|관리자/.test(String(role == null ? '' : role));
+}
+
 function DG_adminRequired_() {
   return DG_json({
     success: false,
@@ -835,11 +860,18 @@ function doPost(e) {
     // **기록을 지우는 저장(빈 값)은 관리자만** (v34). 조장 화면은 O/X 만 보낸다 —
     // 빈 값은 관리자 화면의 '전체 지우기' 와 같은 버튼 다시 누르기에서만 나온다.
     // 하나라도 섞여 있으면 요청 전체를 받지 않는다 (반만 쓰면 화면과 시트가 어긋난다).
+    // 관리자인가는 한 번만 묻는다 (지우기 확인 · 아래 조장 확인이 함께 쓴다).
+    var isAdmin = body.token ? DG_isAdmin_(body.token) : false;
+
     var erasing = false;
     for (var ei = 0; ei < entries.length; ei++) {
       if (entries[ei].status === '') { erasing = true; break; }
     }
-    if (erasing && !DG_isAdmin_(body.token)) return DG_adminRequired_();
+    if (erasing && !isAdmin) return DG_adminRequired_();
+
+    // 저장하는 사람 (v35). 관리자가 아니면 이 사람이 조장인지 · 자기 조인지 아래에서 확인한다.
+    var by = (body.by && typeof body.by === 'object') ? body.by : {};
+    var byId = DG_normalizeId_(by.name) + String(by.phone == null ? '' : by.phone).replace(/[^0-9]/g, '');
 
     // ---- 잠금 -------------------------------------------------------------
     // 컬럼을 읽고 쓰는 사이에 다른 사람이 저장하면 그 변경이 조용히 사라진다.
@@ -887,6 +919,44 @@ function doPost(e) {
       for (var r = headerRowIdx + 1; r < values.length; r++) {
         var rawId = DG_normalizeId_(values[r][idIdx]);
         if (rawId) rowOf[rawId] = r;
+      }
+
+      // ---- 조장 확인 (v35) -------------------------------------------------
+      // 관리자가 아니면: 저장하는 사람이 시트 명단의 조장 · 서브튜터 · 관리자이고,
+      // 저장하려는 사람이 전부 그 사람의 조여야 한다. 하나라도 어긋나면 **아무것도 안 쓴다**
+      // (반만 쓰면 화면과 시트가 어긋난다).
+      if (!isAdmin) {
+        var loweredHead = headerRow.map(function (h) { return String(h).trim().toLowerCase(); });
+        var teamIdx = loweredHead.indexOf('team');
+        var roleIdx = loweredHead.indexOf('role');
+        var cellText = function (r, c) { return String(values[r][c] == null ? '' : values[r][c]).trim(); };
+        var deny = '';
+
+        if (teamIdx === -1 || roleIdx === -1) {
+          deny = "시트에서 'team' · 'role' 열을 찾지 못해 조장인지 확인할 수 없습니다.";
+        } else if (!DG_normalizeId_(by.name) || rowOf[byId] === undefined) {
+          deny = '저장하는 사람을 명단에서 찾지 못했습니다.';
+        } else if (!DG_isTutorRole_(cellText(rowOf[byId], roleIdx))) {
+          deny = '조장 · 서브튜터만 출석을 저장할 수 있습니다.';
+        } else {
+          var byTeam = cellText(rowOf[byId], teamIdx);
+          if (!byTeam) {
+            deny = '저장하는 사람의 조를 알 수 없습니다.';
+          } else {
+            for (var ti2 = 0; ti2 < entries.length; ti2++) {
+              var tr2 = rowOf[entries[ti2].id];
+              // 명단에 없는 사람은 아래에서 missing 으로 돌려준다 — 어차피 쓰지 않는다.
+              if (tr2 !== undefined && cellText(tr2, teamIdx) !== byTeam) {
+                deny = '자기 조가 아닌 사람이 섞여 있습니다.';
+                break;
+              }
+            }
+          }
+        }
+
+        if (deny) {
+          return DG_json({ success: false, version: DG_VERSION, code: 'not-tutor', message: deny });
+        }
       }
 
       // ---- 쓰기 (① 원본) ---------------------------------------------------

@@ -17,6 +17,7 @@
 // GAS 로 보내면 GAS 가 시트에 쓴 뒤 DB 에 밀어넣는다 (members-data.js 참고).
 import {
     adminExtrasStatus,
+    setDataMode,
     knowsCohort,
     compareMemberOrder,
     ensureLoaded,
@@ -53,6 +54,10 @@ import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.
 // 조회 화면의 이름 찾기(findMember)도 이것을 쓴다 — 규칙을 한 곳에 둔다.
 import { matches as hangulMatches } from './scripts/hangul.js?v=134';
 import { hasAdminSession, verifyAdmin, adminSignOut } from './scripts/admin-auth.js?v=134';
+
+// 관리자 화면은 표를 **관리자 토큰으로** 읽는다 (표는 관리자만 읽게 잠겨 있다 — v135).
+// 데이터를 부르기 전에 맨 먼저 정한다. 조회 화면은 이것을 부르지 않는다.
+setDataMode('admin');
 
 // 로그인 확인
 //
@@ -93,10 +98,8 @@ const memberFilter = document.getElementById('memberFilter');
 
 async function loadData() {
     try {
-        // 캐시가 있으면 즉시 그리고 뒤에서 갱신한다.
-        await ensureLoaded({
-            onBackgroundRefreshError: (err) => console.log('백그라운드 갱신 실패:', err),
-        });
+        // 전 명단을 받는다 (관리자 토큰으로). 명단을 브라우저에 저장해 두지 않으므로 늘 새로 받는다.
+        await ensureLoaded();
 
         memberData = getMembers();
         console.log('✅ 데이터 로드 완료:', memberData.length, '명');
