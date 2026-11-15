@@ -89,7 +89,9 @@ Settings → Secrets and variables → Actions
 4. (권장) Authentication 설정에서 새 가입(Sign up)을 끈다. 켜져 있어도 가입한 사람이 관리자가 될
    수는 없지만(표시는 사용자가 못 바꾼다) 둘 이유가 없다
 
-비밀번호를 바꾸거나 잊었으면 Authentication → Users 에서 그 계정을 열어 다시 정한다.
+**비밀번호를 바꾸거나 잊었으면** 재설정 메일을 보내지 말고(이 앱에 그 링크를 받는 화면이 없다)
+Authentication → Users 에서 **계정을 지우고 같은 메일로 다시 만든다.** 그다음 `dg_admin.sql` 3번을
+다시 실행한다 — 새로 만든 계정에는 관리자 표시가 없다.
 
 ## 5. 동기화 — dry-run 먼저
 
