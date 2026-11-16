@@ -93,6 +93,19 @@ Settings → Secrets and variables → Actions
 Authentication → Users 에서 **계정을 지우고 같은 메일로 다시 만든다.** 그다음 `dg_admin.sql` 3번을
 다시 실행한다 — 새로 만든 계정에는 관리자 표시가 없다.
 
+## 4-2. 조회를 서버로 (v135~)
+
+조회 화면은 표를 직접 읽지 않고 DB 함수 `dg_lookup` 만 부른다. 명단 · 출결 · 김밥 · 과제 · 안내방 표는
+관리자만 읽는다. 자세한 것은 `docs/HANDOVER.md` 함정 6-12.
+
+1. SQL Editor 에서 **`supabase/dg_lookup.sql`** 실행 — 조회 함수와 틀린 시도 기록 표. 아무것도 안 막는다.
+   `dg_admin.sql` 을 먼저 실행해 두어야 한다
+2. (앱 v135 가 사이트에 나간 뒤) **`supabase/dg_lookup_lock.sql`** 실행 — 다섯 표를 관리자만 읽게 잠근다.
+   ⚠️ 그 전에 실행하면 조회 화면이 죽는다 (v134 는 표를 직접 읽는다). 되돌리는 SQL 은 파일 끝에
+3. GAS v35 재배포 (`scripts/gas/README.md`) — 조장만 · 자기 조만 저장
+
+이 SQL 들은 `npm test` 의 `verify-db` 가 이 기계의 Postgres 로 실제로 돌려 본다.
+
 ## 5. 동기화 — dry-run 먼저
 
 Actions → **시트 → DB 동기화** → Run workflow

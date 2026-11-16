@@ -79,6 +79,11 @@ const ctx = await browser.newContext();
 // 기억해 둔 조가 **이름이 바뀌어 없어진** 상태로 시작한다 (YM5 → YM1).
 // 없는 조를 붙들고 있으면 빈 명단이 뜨고, 그 상태로 일괄 버튼을 누르면 사고가 난다.
 await ctx.addInitScript(() => {
+  // v134 까지의 앱이 남긴 명단 저장분 — v135 는 열자마자 지워야 한다.
+  if (!sessionStorage.getItem('__legacySeeded')) {
+    sessionStorage.setItem('__legacySeeded', '1');
+    localStorage.setItem('dg_members_v1', JSON.stringify([{ name: '김철수', phone: '1111' }]));
+  }
   localStorage.setItem('dg_admin_att_v1', JSON.stringify({ session: '', team: 'YM5' }));
   localStorage.setItem('dg_admin_print_skip_v1', JSON.stringify(['YM5', 'YM6']));
 });
@@ -91,8 +96,10 @@ let csvHits = 0;
 await page.route('**/docs.google.com/**', route => { csvHits++; route.abort(); });
 
 const memberSelects = [];
+const tableAuths = [];
 await page.route('**/rest/v1/**', route => {
   const u = new URL(route.request().url());
+  if (!u.pathname.includes('/rpc/')) tableAuths.push(route.request().headers().authorization || '');
   const t = u.pathname.split('/').pop();
   let body = [];
   if (t === 'dg_members') {
@@ -185,11 +192,15 @@ const fullSelects = memberSelects.filter(sel => sel !== 'cohort_id');
 ok("명단을 'select=*' 로 읽지 않는다",
    fullSelects.length > 0 && fullSelects.every(sel => sel !== '*' && !/\bage\b|\bpastor\b/.test(sel)),
    [...new Set(fullSelects)].join(' | '));
-// 캐시에 남으면 그 브라우저의 다음 사람이 로그인 없이 읽는다.
-const cached = await page.evaluate(() => JSON.parse(localStorage.getItem('dg_members_v1') || '[]'));
-ok('캐시(localStorage)에는 나이 · 교역자를 안 쓴다',
-   cached.length === 8 && cached.every(m => !m.age && !m.pastor),
-   JSON.stringify(cached.filter(m => m.age || m.pastor).map(m => [m.age, m.pastor])));
+// 명단을 브라우저에 저장하지 않는다 (v135) — 그 브라우저를 쓰는 다음 사람이 로그인 없이 읽는다.
+// 관리자 화면도 마찬가지다. 옛 저장분(v134 까지)은 지운다 (아래 ctx.addInitScript 가 심어 둔 것).
+const stored = await page.evaluate(() => ({ ...localStorage }));
+ok('명단을 브라우저에 저장하지 않는다 (옛 저장분도 지운다)',
+   !('dg_members_v1' in stored) && !/이영희|김철수/.test(JSON.stringify(stored)),
+   Object.keys(stored).join(','));
+// 표는 관리자만 읽게 잠겨 있다 — 관리자 화면의 표 요청에는 로그인 토큰이 실려야 한다.
+ok('표 요청에 관리자 토큰이 실린다', tableAuths.length > 0 && tableAuths.every(a => a === 'Bearer test-admin-token'),
+   [...new Set(tableAuths)].join(' | '));
 ok('서버에 물어 관리자인지 확인한다', adminCalls.some(c => c.kind === 'user'),
    adminCalls.map(c => c.kind).join(','));
 

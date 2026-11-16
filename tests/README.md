@@ -20,7 +20,7 @@ node tests/verify-print.mjs       # 하나만
 | `verify-admin.mjs` | 관리자 화면 — 검색(초성 · 겹자음 포함)·조별·개인별, 조 차례(YF · YM · C · 남 · 여) |
 | `verify-admin-att.mjs` | 출석 관리 — 스냅숏·일괄 버튼·보호값(◎ − 돌봄)·빈칸→결석 |
 | `verify-absence.mjs` | 결석 현황 — 이 주차 결석자(`과제` 포함), 2회 이상, 하차 검토와 완화 대상(원칙 5), 교역자별 정렬 |
-| `verify-attendance.mjs` | 조장 화면 — 출결을 DB 에서 한 조 · 한 회차만 읽는가(GAS 0회) · 불러오는 중/실패/다시 시도 · 배경 갱신에도 체크 유지 · `seen`·`changed` · `과제`·`돌봄` 은 읽기 전용 |
+| `verify-attendance.mjs` | 조장 화면 — 열 때 받는 것이 없다 · 조회는 서버(`dg_lookup`)가 확인 · 이름 일부/초성으로는 못 찾음 · 확인 중/시도 제한/연결 실패 문구 · **잠긴 표를 한 번도 안 읽는다** · 명단을 브라우저에 안 남긴다 · 저장에 `by` · 배경 갱신에도 체크 유지 · `seen`·`changed` · `과제`·`돌봄` 은 읽기 전용 |
 | `verify-matrix.mjs` | 전체 출석표 — 조원 × 회차, 🍙 · 📝, 시트발/앱발 `과제` 가 같은 모양인가 |
 | `verify-myatt.mjs` | 내 출석 현황 · 안 낸 과제(첫 기록 이후만) · 종류가 모자란 제출 |
 | `verify-login.mjs` | 관리자 로그인(Supabase) — 맞으면 바로, 틀렸을 때만 알림 · 옛 뒷문/가짜 토큰/관리자 표시 없는 계정은 못 들어감 · 토큰 새로 받기 · **저장소에 옛 비밀번호 글자가 없는가** |
@@ -32,7 +32,8 @@ node tests/verify-print.mjs       # 하나만
 | `verify-sync-report.mjs` | 동기화 기록 — 공개 로그에 실명이 새지 않는가 · 안 맞는 아이디 갈래 |
 | `verify-sw.mjs` | Service Worker 자동 갱신 (배포 → 재배포 → 탭 복귀) |
 | `verify-gas-lunch.mjs` | GAS 읽기 — 김밥 X 를 신청으로 세지 않는가 · **읽기 열쇠**(`DG_READ_KEY`)가 안 맞으면 시트를 열지 않는가 |
-| `verify-gas-save.mjs` | GAS 저장(`doPost`) — 시트를 먼저 고친 칸을 덮지 않는가 (`seen` → `changed`) · 옛 화면 하위 호환 · 돌봄은 kept |
+| `verify-gas-save.mjs` | GAS 저장(`doPost`) — 시트를 먼저 고친 칸을 덮지 않는가 (`seen` → `changed`) · 돌봄은 kept · 지우기 · 동기화는 관리자만(v34) · **조장만 · 자기 조만**(v35) |
+| `verify-db.mjs` | **실제 Postgres** 로 `supabase/*.sql` 을 돌린다 — `dg_lookup`(정확한 이름만 · 본인 것만 · 조장은 자기 조만 · 시도 제한 · 속도) · 잠근 뒤 anon/로그인/관리자/service_role 이 각각 무엇을 읽는가 · 관리자 표시 SQL. Postgres 가 없으면 건너뛰고 크게 말한다 |
 
 ## 환경변수
 

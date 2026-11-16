@@ -15,7 +15,7 @@
 //
 // 계정 · 비밀번호는 Supabase 대시보드에만 있다. 코드 · 문서 · 채팅에 적지 않는다.
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js?v=134';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js?v=135';
 
 const AUTH = `${SUPABASE_URL}/auth/v1`;
 const SESSION_KEY = 'dg_admin_session_v1';

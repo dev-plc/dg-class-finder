@@ -1,7 +1,7 @@
 // 전체 출석표에 김밥(🍙) · 과제(📝) 가 붙는지 검증.
 // Supabase / GAS 는 가짜 응답으로 대신한다 (컨테이너 밖으로 못 나간다).
 
-import { serveRepo, launch, makeReporter, SHOT, filterAttendance, attendanceRowsFrom } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT, attendanceRowsFrom, routePublicSupabase } from './lib/harness.mjs';
 
 const PORT = 8093;
 const server = await serveRepo(PORT);
@@ -86,24 +86,10 @@ page.on('console', m => { if (m.type() === 'error') console.log('   [console.err
 page.on('pageerror', e => console.log('   [pageerror] ' + e.message));
 
 const ATT_ROWS = attendanceRowsFrom(MEMBERS, ATT_BY_DATE);
-const restCalls = [];
-await page.route('**/rest/v1/**', route => {
-  const url = new URL(route.request().url());
-  const table = url.pathname.split('/').pop();
-  restCalls.push(url.pathname.split('/').pop() + '?' + url.search.slice(1));
-  let body = [];
-  if (table === 'dg_members') {
-    body = url.searchParams.get('select') === 'cohort_id' ? [{ cohort_id: COHORT }] : MEMBERS;
-  } else if (table === 'dg_sessions') {
-    body = SESSIONS;
-  } else if (table === 'dg_attendance') {
-    body = filterAttendance(url, ATT_ROWS);
-  } else if (table === 'dg_lunch') {
-    body = LUNCH.filter(r => r.applied !== false || !url.search.includes('applied=is.true'));
-  } else if (table === 'dg_homework') {
-    body = HOMEWORK;
-  }
-  route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+// 조회 화면은 표를 읽지 않는다 (v135) — 조장이 조회하면 dg_lookup 이 자기 조의 전 회차 ·
+// 김밥 · 과제(몇 강 · 종류)를 한 번에 준다. 전체 출석표는 그 답으로 그린다.
+const db = await routePublicSupabase(page, {
+  members: MEMBERS, sessions: SESSIONS, attendance: ATT_ROWS, lunch: LUNCH, homework: HOMEWORK,
 });
 
 // 출결 읽기는 DB 다. GAS(시트 전체)를 읽으면 실패로 센다 — 11~102초 걸리던 길이다.
@@ -141,9 +127,9 @@ ok('출결을 GAS(시트 전체)로 읽지 않는다', gasGets === 0, `${gasGets
 const filledCols = await page.$$eval('.matrix-table tbody tr:first-child td', els =>
   els.filter(e => /\b(present|absent|makeup)\b/.test(e.className)).length);
 ok('전체 출석표가 여러 회차 열을 채운다 (한 열만 차면 실패)', filledCols >= 5, `${filledCols}열`);
-const teamAttQ = restCalls.filter(c => c.startsWith('dg_attendance') && c.includes('member_id=in.'));
-ok('전 회차는 조원만 한 번에 묻는다', teamAttQ.some(c => !c.includes('session_date=')),
-   teamAttQ.join(' | '));
+// 조장이 조회할 때 받은 답(자기 조의 전 회차)으로 그린다 — 표를 따로 읽지 않는다.
+ok('전체 출석표를 열어도 표를 따로 읽지 않는다', db.privateReads.length === 0, db.privateReads.join(' | '));
+ok('조회는 한 번뿐 (조원 30명의 전 회차가 그 답에)', db.lookups.length === 1, String(db.lookups.length));
 
 const heads = await page.$$eval('.matrix-table thead th', els =>
   els.map(e => ({
@@ -313,10 +299,8 @@ ok("'자유교재' → 자유교제 칸에 📝", r4[1].badges === '📝', JSON.
 
 // --- 요청 횟수 — 조원 수만큼 왕복이 늘면 안 된다 ---------------------------
 // 본인 그리드(1) + 본인 과제(1) + 조 전체(1) 까지가 정상.
-const lunchCalls = restCalls.filter(c => c.startsWith('dg_lunch')).length;
-const hwCalls = restCalls.filter(c => c.startsWith('dg_homework')).length;
-ok('30명이어도 김밥 요청이 몇 건뿐', lunchCalls <= 3, `${lunchCalls}회`);
-ok('30명이어도 과제 요청이 몇 건뿐', hwCalls <= 3, `${hwCalls}회`);
+ok('30명이어도 서버에는 조회 한 번 · 잠긴 표 읽기 0', db.lookups.length === 1 && db.privateReads.length === 0,
+   `조회 ${db.lookups.length} · 표 ${db.privateReads.length}`);
 
 // --- 스크롤 고정 -----------------------------------------------------------
 const stick = await page.evaluate(() => {

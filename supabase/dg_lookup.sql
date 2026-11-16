@@ -189,13 +189,17 @@ begin
       'id', v_me.id, 'name', v_me.name, 'phone', v_me.phone, 'team', v_me.team,
       'team_no', v_me.team_no, 'sheet_row', v_me.sheet_row, 'location', v_me.location,
       'role', v_me.role, 'lunch', v_me.lunch),
-    -- 안내방: 자기 조 방 + 부서 방(조 이름이 아닌 줄). 다른 조 방은 안 준다.
+    -- 안내방: 자기 조 방 + 부서 방. 다른 조 방은 안 준다.
+    --   부서 방 = 이름이 부서 이름인 줄(아래 목록 — script.js GROUP_PREFIX_MAP 의 key · label 과
+    --   같아야 한다) 또는 어느 조 이름도 아닌 줄. 부서 이름과 같은 조가 명단에 있어도('온라인')
+    --   부서 방으로 준다 — 그 부서 사람이 다 쓰는 방이다.
     -- 조 이름은 명단과 링크 탭에서 따로 손으로 적어 'o1' · 'O 1' 처럼 어긋난다 — 다듬어 견준다.
     'links', coalesce((
       select jsonb_agg(jsonb_build_object('team', k.team, 'chat_url', k.chat_url) order by k.team)
       from public.dg_team_links k
       where k.cohort_id = v_cohort
         and ( upper(regexp_replace(k.team, '\s', '', 'g')) = upper(regexp_replace(coalesce(v_me.team, ''), '\s', '', 'g'))
+           or regexp_replace(k.team, '\s', '', 'g') in ('청년부', '온라인', '온라인DG', '청년부부', '남장년부', '여장년부')
            or not exists (
                 select 1 from public.dg_members t
                 where t.cohort_id = v_cohort and t.status = 'active'

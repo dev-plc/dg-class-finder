@@ -4,7 +4,7 @@
 // 각각 손으로 적기 때문에 'o1' 과 'O1' 처럼 어긋나기 쉽다. 어긋나면 버튼이
 // 조용히 사라지는데, 오류가 안 나서 아무도 알아채지 못한다.
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT, routePublicSupabase } from './lib/harness.mjs';
 
 const PORT = 8089;
 const server = await serveRepo(PORT);
@@ -33,17 +33,8 @@ const context = await browser.newContext({ viewport: { width: 420, height: 900 }
 const page = await context.newPage();
 page.on('pageerror', e => console.log('   [pageerror] ' + e.message));
 
-await page.route('**/rest/v1/**', route => {
-  const url = new URL(route.request().url());
-  const table = url.pathname.split('/').pop();
-  let body = [];
-  if (table === 'dg_members') {
-    body = url.searchParams.get('select') === 'cohort_id' ? [{ cohort_id: COHORT }] : MEMBERS;
-  } else if (table === 'dg_team_links') {
-    body = LINKS;
-  }
-  route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-});
+// 조회 화면은 표를 읽지 않는다 (v135) — 조회한 사람에게 dg_lookup 이 자기 조 방과 부서 방만 준다.
+const db = await routePublicSupabase(page, { members: MEMBERS, teamLinks: LINKS });
 await page.route('**/script.google.com/**', route =>
   route.fulfill({ status: 200, contentType: 'application/json',
                   body: JSON.stringify({ success: true, data: [], sessions: [] }) }));
@@ -151,6 +142,13 @@ ok('보이는 버전이 실제로 받아 온 것과 같다', foot.version === `v
 // 실제로 어떻게 보이는지 한 장 남긴다
 await lookup('온라인원', '1001');
 await page.locator('.result-card').screenshot({ path: `${SHOT}/dg-rooms.png` });
+
+// 남의 조 방 링크는 조회한 사람에게 안 간다 — 서버가 자기 조 방 · 부서 방만 준다.
+ok('조회 화면이 잠긴 표(안내방 표 포함)를 읽지 않는다', db.privateReads.length === 0, db.privateReads.join(' | '));
+await lookup('청년원', '1002');   // YF1 — 자기 조 방이 없다
+const linksInPage = await page.evaluate(() => [...document.querySelectorAll('a[href*="t.me"]')].map(a => a.href));
+ok('조 방이 없는 사람의 화면에 남의 조(O1) 방 주소가 없다',
+   !linksInPage.some(h => /o1room/.test(h)), linksInPage.join(' | '));
 
 await browser.close();
 server.close();

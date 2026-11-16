@@ -215,3 +215,138 @@ export async function asAdmin(page, { members = [], admin = true, calls = null }
 export function publicMemberRows(members) {
   return members.map(({ age, pastor, ...rest }) => rest);
 }
+
+// ============================================================================
+// 가짜 dg_lookup (v135~) — 조회 화면이 부르는 서버 함수
+//
+// 조회 화면은 표를 직접 읽지 않는다. 이름+뒤 4자리를 dg_lookup 에 보내면 서버가 확인하고
+// 본인 것(조장이면 자기 조 것까지)만 준다. 화면 검증은 그 답을 **표 가짜에서 만들어** 준다 —
+// supabase/dg_lookup.sql 과 같은 규칙으로. (SQL 자체는 verify-db 가 실제 Postgres 로 본다.)
+// ============================================================================
+
+const normName = (v) => String(v ?? '').replace(/\s/g, '').normalize('NFC');
+const normPhone = (v) => String(v ?? '')
+  .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[^0-9]/g, '');
+const normTeam = (v) => String(v ?? '').replace(/\s/g, '').toUpperCase();
+export const isTutorRole = (role) => /조장|서브튜터|관리자/.test(String(role ?? ''));
+
+/**
+ * dg_lookup 의 답을 표 가짜에서 만든다.
+ *
+ * @param {object} fx
+ *   members     dg_members 행 (id · cohort_id · name · phone · team · team_no · location · role · lunch · status)
+ *   sessions    dg_sessions 행 (session_date · label · name)
+ *   attendance  dg_attendance 행 (member_id · session_date · status)
+ *   lunch       dg_lunch 행 (member_id · session_date · applied)
+ *   homework    dg_homework 행 (member_id · lecture · kind · content · submitted_at)
+ *   teamLinks   dg_team_links 행 (team · chat_url)
+ *   locations   dg_locations 행 (location · image_url · detail_url)
+ */
+export function lookupBundle(fx, name, phone) {
+  const n = normName(name);
+  const p = normPhone(phone);
+  if (!n || p.length !== 4) return { found: false };
+
+  const active = (fx.members || []).filter(m => (m.status ?? 'active') === 'active');
+  const cohort = active[0]?.cohort_id || 'DG-2026';
+  const me = active.find(m => m.cohort_id === cohort && String(m.phone ?? '') === p && normName(m.name) === n);
+  if (!me) return { found: false };
+
+  const pick = (m) => ({
+    id: m.id, name: m.name, phone: m.phone ?? '', team: m.team ?? '', team_no: m.team_no ?? null,
+    sheet_row: m.sheet_row ?? null, location: m.location ?? '', role: m.role ?? '', lunch: m.lunch ?? '',
+  });
+  const att = fx.attendance || [];
+  const lunch = fx.lunch || [];
+  const hw = fx.homework || [];
+
+  let team = null;
+  if (isTutorRole(me.role) && me.team) {
+    const mates = active.filter(m => m.cohort_id === cohort && m.team === me.team)
+      .sort((a, b) => (a.team_no ?? 0) - (b.team_no ?? 0) || String(a.name).localeCompare(String(b.name)));
+    const ids = new Set(mates.map(m => m.id));
+    team = {
+      members: mates.map(pick),
+      attendance: att.filter(r => ids.has(r.member_id))
+        .map(r => ({ member_id: r.member_id, session_date: r.session_date, status: r.status })),
+      lunch: lunch.filter(r => ids.has(r.member_id) && r.applied !== false)
+        .map(r => ({ member_id: r.member_id, session_date: r.session_date })),
+      // 조원의 과제는 몇 강 · 종류만 — 내용은 조장에게도 안 준다.
+      homework: hw.filter(r => ids.has(r.member_id))
+        .map(r => ({ member_id: r.member_id, lecture: r.lecture ?? '', kind: r.kind ?? '' })),
+    };
+  }
+
+  const memberTeams = new Set(active.filter(m => m.cohort_id === cohort).map(m => normTeam(m.team)));
+  const DEPTS = new Set(['청년부', '온라인', '온라인DG', '청년부부', '남장년부', '여장년부'].map(normTeam));
+  const links = (fx.teamLinks || [])
+    .filter(l => normTeam(l.team) === normTeam(me.team) || DEPTS.has(normTeam(l.team))
+              || !memberTeams.has(normTeam(l.team)))
+    .map(l => ({ team: l.team, chat_url: l.chat_url ?? '' }));
+  const loc = (fx.locations || []).find(l => l.location === String(me.location ?? '').trim()) || null;
+
+  return {
+    found: true,
+    cohort,
+    member: pick(me),
+    links,
+    location: loc ? { location: loc.location, image_url: loc.image_url ?? '', detail_url: loc.detail_url ?? null } : null,
+    sessions: (fx.sessions || []).map(s => ({ session_date: s.session_date, label: s.label ?? null, name: s.name ?? null })),
+    attendance: att.filter(r => r.member_id === me.id).map(r => ({ session_date: r.session_date, status: r.status })),
+    lunch: lunch.filter(r => r.member_id === me.id).map(r => ({ session_date: r.session_date, applied: r.applied !== false })),
+    homework: hw.filter(r => r.member_id === me.id).map(r => ({
+      lecture: r.lecture ?? '', kind: r.kind ?? '', content: r.content ?? '', submitted_at: r.submitted_at ?? null })),
+    team,
+  };
+}
+
+// 조회 화면이 읽어도 되는 표 — 개인정보가 아니라 공개로 둔 것 (supabase/dg_lookup_lock.sql).
+export const PUBLIC_TABLES = new Set(['dg_sessions', 'dg_locations', 'dg_sync_log']);
+
+/**
+ * 조회 화면용 가짜 Supabase 를 건다 — dg_lookup 답 + 공개 표 셋.
+ *
+ * 잠긴 표(명단 · 출결 · 김밥 · 과제 · 안내방)를 읽으려 들면 **진짜처럼 거절하고 기록한다.**
+ * 검증이 `privateReads` 가 비었는지 본다 — 조회 화면이 표를 직접 읽으면 실패다.
+ *
+ * @param page
+ * @param {object|() => object} fx  lookupBundle 의 자료 (함수면 부를 때마다 새로 읽는다)
+ * @param {object} [opts]
+ *   delayMs   dg_lookup 을 늦게 준다 (number 또는 () => number)
+ *   fail      dg_lookup 을 500 으로 (boolean 또는 () => boolean)
+ *   limited   dg_lookup 이 '틀린 시도가 너무 많다' 로 (같은 꼴)
+ * @returns {{ lookups: Array<{name, phone}>, privateReads: string[] }}
+ */
+export async function routePublicSupabase(page, fx, opts = {}) {
+  const log = { lookups: [], privateReads: [] };
+  const val = (v) => (typeof v === 'function' ? v() : v);
+  const data = () => (typeof fx === 'function' ? fx() : fx);
+  const json = (route, status, body) =>
+    route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }).catch(() => {});
+
+  await page.route('**/rest/v1/**', async (route) => {
+    const url = new URL(route.request().url());
+    const name = url.pathname.split('/').pop();
+
+    if (url.pathname.endsWith('/rpc/dg_lookup')) {
+      const args = JSON.parse(route.request().postData() || '{}');
+      log.lookups.push({ name: args.p_name, phone: args.p_phone });
+      const delay = val(opts.delayMs) || 0;
+      if (delay) await new Promise(r => setTimeout(r, delay));
+      if (val(opts.fail)) return json(route, 500, { message: 'boom' });
+      if (val(opts.limited)) return json(route, 200, { found: false, limited: true });
+      return json(route, 200, lookupBundle(data(), args.p_name, args.p_phone));
+    }
+    if (PUBLIC_TABLES.has(name)) {
+      const d = data();
+      const body = name === 'dg_sessions' ? (d.sessions || [])
+                 : name === 'dg_locations' ? (d.locations || [])
+                 : (d.syncLog || []);
+      return json(route, 200, body);
+    }
+    // 잠긴 표 — 진짜 DB 처럼 거절한다.
+    log.privateReads.push(name + url.search);
+    return json(route, 401, { code: '42501', message: `permission denied for table ${name}` });
+  });
+  return log;
+}

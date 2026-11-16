@@ -5,8 +5,12 @@
 // 시트 전체를 읽어 11~102초가 걸렸고, 그동안 로딩 표시가 없어 조장이 체크한 것이
 // 응답이 오면 말없이 사라졌다. 회차도 그 응답이 와야 정해져 '회차를 알 수 없어'
 // 가 떴다. 여기서 그 셋과 '시트를 먼저 고친 칸'(seen · changed)을 본다.
+//
+// v135 — 조회 화면은 **표를 직접 읽지 않는다.** 이름+뒤 4자리를 서버 함수(dg_lookup)가 확인하고
+// 본인 것(조장이면 자기 조의 전 회차)만 준다. 가짜 서버도 그렇게 답한다 (harness
+// routePublicSupabase) — 잠긴 표를 읽으려 들면 거절하고 기록한다.
 
-import { serveRepo, launch, makeReporter, filterAttendance, attendanceRowsFrom, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, attendanceRowsFrom, routePublicSupabase, SHOT } from './lib/harness.mjs';
 
 const PORT = 8091;
 const server = await serveRepo(PORT);
@@ -43,12 +47,13 @@ const ATT_BY_DATE = {
 
 const ATT_ROWS = attendanceRowsFrom(MEMBERS, ATT_BY_DATE);
 
+const FX = { members: MEMBERS, sessions: SESSIONS, attendance: ATT_ROWS };
+
 const posted = [];
 // 가짜 GAS 저장 응답. 검증마다 갈아 끼운다.
 let postReply = (body) => ({ success: true, saved: body.batch.length, missing: [] });
-// 가짜 DB 출결 응답 — 늦게 주기 · 실패시키기
-const attMode = { delayMs: 0, fail: false };
-const attQueries = [];
+// 가짜 조회(dg_lookup) 응답 — 늦게 주기 · 실패시키기 · '시도가 너무 많다'
+const lookupMode = { delayMs: 0, fail: false, limited: false };
 let gasGets = 0;
 
 const { ok, done } = makeReporter('회차·출결 저장');
@@ -69,31 +74,10 @@ page.on('dialog', d => {
 });
 page.on('console', m => { if (m.type() === 'error') console.log('   [console.error] ' + m.text()); });
 
-await page.route('**/rest/v1/**', async route => {
-  const url = new URL(route.request().url());
-  const table = url.pathname.split('/').pop();
-  let body = [];
-  if (table === 'dg_members') {
-    body = url.searchParams.get('select') === 'cohort_id'
-      ? [{ cohort_id: COHORT }]
-      : MEMBERS;
-  } else if (table === 'dg_sessions') {
-    body = SESSIONS;
-  } else if (table === 'dg_attendance') {
-    // '오늘 출결'(dg_members!inner) 은 화면 로드 때, 본인 이력(member_id=eq.) 은 내 출석
-    // 현황이 묻는 것 — 조원 명단 조회와 따로 센다.
-    if (!url.search.includes('inner') && !url.search.includes('member_id=eq.')) {
-      attQueries.push(url.search);
-      if (attMode.delayMs) await new Promise(r => setTimeout(r, attMode.delayMs));
-      if (attMode.fail) {
-        return route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"boom"}' })
-          .catch(() => {});
-      }
-    }
-    body = filterAttendance(url, ATT_ROWS);
-  }
-  route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
-    .catch(() => {});
+const db = await routePublicSupabase(page, FX, {
+  delayMs: () => lookupMode.delayMs,
+  fail: () => lookupMode.fail,
+  limited: () => lookupMode.limited,
 });
 
 await page.route('**/script.google.com/**', route => {
@@ -112,49 +96,43 @@ await page.route('**/script.google.com/**', route => {
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 await page.waitForFunction(() => !document.getElementById('searchBtn').disabled, null, { timeout: 20000 });
 
-// --- 조장으로 조회 — DB 가 늦게 와도 '불러오는 중' 이라고 말한다 ------------
+// --- 화면을 열 때 받는 것이 없다 ---------------------------------------------
 //
-// 예전에는 응답을 기다리는 동안 아무 표시가 없어서 조장이 빈 명단에 체크했고,
-// 응답이 오면 명단을 다시 그리면서 그 체크가 사라졌다. 요약 카드는 '오늘'
-// (수업 없는 날)을 세어 0 · 0 · 그 외 7 이었다.
-attMode.delayMs = 1500;
-attQueries.length = 0;
+// 예전에는 전원의 명단을 받아야 조회 버튼이 열렸다 — 사이트를 여는 누구나 전 명단을 가졌다.
+ok('화면을 열 때 조회도 표 읽기도 없다', db.lookups.length === 0 && db.privateReads.length === 0,
+   JSON.stringify(db));
+ok('조회 버튼이 바로 열린다',
+   await page.$eval('#searchBtn', el => !el.disabled && /조 확인하기/.test(el.textContent)));
+
+// --- 조장으로 조회 — 서버가 늦게 와도 '확인 중' 이라고 말한다 --------------------
+lookupMode.delayMs = 1500;
 await page.fill('#name', '김조장');
 await page.fill('#phone', '1111');
 await page.click('#searchBtn');
+await page.waitForTimeout(400);
+const waiting = await page.evaluate(() => ({
+  btn: document.getElementById('searchBtn').textContent.trim(),
+  disabled: document.getElementById('searchBtn').disabled,
+  shown: getComputedStyle(document.getElementById('resultContainer')).display !== 'none',
+}));
+ok("기다리는 동안 버튼이 '확인 중…' 으로 막혀 있다", waiting.disabled && /확인 중/.test(waiting.btn), JSON.stringify(waiting));
+ok('받기 전에는 결과를 그리지 않는다 (빈 명단에 체크하는 일이 없다)', !waiting.shown);
 
 await page.waitForSelector('#teamMemberList .team-member-item', { timeout: 10000 });
 ok('조장 조회 → 조원 명단 표시', true);
-
-const loadingState = await page.evaluate(() => ({
-  disabled: [...document.querySelectorAll('.attendance-check')].map(cb => cb.disabled),
-  checked: [...document.querySelectorAll('.attendance-check')].some(cb => cb.checked),
-  dim: document.getElementById('teamMemberList').classList.contains('loading'),
-  btn: document.getElementById('saveAttendanceBtn').textContent.trim(),
-  btnDisabled: document.getElementById('saveAttendanceBtn').disabled,
-  summary: document.getElementById('teamSummaryCard').textContent.replace(/\s+/g, ' ').trim(),
+const ready = await page.evaluate(() => ({
+  disabled: [...document.querySelectorAll('.attendance-check')].some(cb => cb.disabled),
   picker: document.getElementById('sessionPicker').value,
+  btn: document.getElementById('searchBtn').textContent.trim(),
 }));
+ok('명단이 뜨면 바로 체크할 수 있다 (조 전 회차가 조회 답에 들어 있다)', !ready.disabled, JSON.stringify(ready));
+ok('회차가 정해져 있다 (11/09)', ready.picker === '2025-11-09', ready.picker);
+ok('버튼이 원래대로', /조 확인하기/.test(ready.btn), ready.btn);
+ok('서버에 이름 · 번호를 한 번 보냈다',
+   db.lookups.length === 1 && db.lookups[0].name === '김조장' && db.lookups[0].phone === '1111',
+   JSON.stringify(db.lookups));
+lookupMode.delayMs = 0;
 await page.locator('#teamMemberListContainer').screenshot({ path: `${SHOT}/attendance-mobile-loading.png` });
-ok('받는 동안 체크박스는 전부 비활성',
-   loadingState.disabled.length === 4 && loadingState.disabled.every(Boolean), JSON.stringify(loadingState.disabled));
-ok('받는 동안 옛 값을 그리지 않는다 (체크 없음)', !loadingState.checked);
-ok('받는 동안 명단을 흐리게', loadingState.dim);
-ok("저장 버튼이 '불러오는 중…' 으로 막혀 있다",
-   loadingState.btnDisabled && /불러오는 중/.test(loadingState.btn), loadingState.btn);
-ok("요약 카드가 '11/09 출석 불러오는 중' 이라고 말한다",
-   /11\/09 출석 불러오는 중/.test(loadingState.summary), loadingState.summary);
-// 회차는 응답을 기다리지 않고 정해진다 — 화면에 보이는 회차가 곧 앱이 쥔 회차다.
-ok('받는 동안에도 회차가 정해져 있다 (11/09)', loadingState.picker === '2025-11-09', loadingState.picker);
-
-await page.waitForFunction(() => !document.querySelector('.attendance-check')?.disabled, null, { timeout: 10000 });
-ok('응답이 오면 체크할 수 있다', true);
-// 한 조 · 한 회차만 묻는다 — 시트 전체(261명 × 39회차)가 아니라.
-ok('한 조 · 한 회차만 DB 에 묻는다',
-   attQueries.length >= 1 && attQueries.every(q => q.includes('session_date=eq.2025-11-09')
-                                               && q.includes('member_id=in.')),
-   attQueries.join(' | '));
-attMode.delayMs = 0;
 
 // 폰 자판에서 전각 숫자가 들어오는 일이 있다 ('１１１１').
 // 그대로 두면 숫자가 아니라고 지워져 '번호를 안 넣었다' 는 오류가 난다.
@@ -167,7 +145,38 @@ ok('전각 숫자로 쳐도 찾는다',
    await page.evaluate(() => getComputedStyle(document.getElementById('resultContainer')).display !== 'none'),
    await page.$eval('#errorText', el => el.textContent.trim()).catch(() => ''));
 
+// --- 이름은 정확히 · 실패는 갈라 말한다 --------------------------------------
+//
+// 이름 일부 · 초성을 받으면 뒤 4자리를 차례로 넣어 보는 것만으로 명단을 긁어 갈 수 있다.
+const errorAfter = async (name, phone) => {
+  await page.fill('#name', name);
+  await page.fill('#phone', phone);
+  await page.click('#searchBtn');
+  await page.waitForFunction(() => !document.getElementById('searchBtn').disabled, null, { timeout: 10000 });
+  return page.evaluate(() => ({
+    error: getComputedStyle(document.getElementById('errorMessage')).display !== 'none'
+      ? document.getElementById('errorText').textContent.trim() : '',
+    shown: getComputedStyle(document.getElementById('resultContainer')).display !== 'none',
+  }));
+};
+const partial = await errorAfter('김조', '1111');
+ok('이름 일부로는 못 찾는다', /찾을 수 없습니다/.test(partial.error) && !partial.shown, JSON.stringify(partial));
+const initials = await errorAfter('ㄱㅈㅈ', '1111');
+ok('초성으로는 못 찾는다', /찾을 수 없습니다/.test(initials.error), JSON.stringify(initials));
+
+lookupMode.limited = true;
+const limited = await errorAfter('김조장', '1111');
+ok("시도가 너무 많으면 '잠시 후' 라고 말한다 (못 찾았다고 하지 않는다)",
+   /잠시 후 다시/.test(limited.error) && !/찾을 수 없습니다/.test(limited.error), JSON.stringify(limited));
+lookupMode.limited = false;
+lookupMode.fail = true;
+const down = await errorAfter('김조장', '1111');
+ok("연결이 안 되면 그렇게 말한다 (오타로 알고 헛되이 다시 치지 않게)",
+   /연결하지 못했습니다/.test(down.error), JSON.stringify(down));
+lookupMode.fail = false;
+
 // 뒤 검증이 쓸 수 있게 원래대로 다시 조회해 둔다
+await page.fill('#name', '김조장');
 await page.fill('#phone', '1111');
 await page.click('#searchBtn');
 await page.waitForSelector('#teamMemberList .team-member-item', { timeout: 10000 });
@@ -215,25 +224,9 @@ ok('빈칸은 미입력으로 따로 센다 (미입력 1 · 그 외 1)',
 const statCount = await page.$$eval('#teamSummaryCard .stat', els => els.length);
 ok('요약 칸은 여섯 개로 고정 (3칸 격자에 둘째 줄 하나만 남지 않게)', statCount === 6, `${statCount}칸`);
 
-// --- 처음 보는 회차를 못 받으면 — 다시 시도, 저장은 막는다 ------------------
-//
-// 빈 명단을 그대로 저장하면 전원이 X 로 나간다. 못 받았으면 저장할 길이 없어야 한다.
-attMode.fail = true;
+// --- 다른 회차 — 조회 답에 전 회차가 있어 바로 그린다 ----------------------------
 await page.selectOption('#sessionPicker', '2025-11-02');
-await page.waitForSelector('#teamSummaryCard [data-team-att-retry]', { timeout: 10000 });
-const failState = await page.evaluate(() => ({
-  summary: document.getElementById('teamSummaryCard').textContent.replace(/\s+/g, ' ').trim(),
-  btn: document.getElementById('saveAttendanceBtn').textContent.trim(),
-  btnDisabled: document.getElementById('saveAttendanceBtn').disabled,
-  allDisabled: [...document.querySelectorAll('.attendance-check')].every(cb => cb.disabled),
-}));
-ok('못 받으면 그렇다고 말하고 다시 시도 버튼', /불러오지 못했습니다/.test(failState.summary), failState.summary);
-ok('못 받으면 저장은 막힌다', failState.btnDisabled && failState.allDisabled, JSON.stringify(failState));
-
-attMode.fail = false;
-await page.click('#teamSummaryCard [data-team-att-retry]');
-await page.waitForFunction(() => !document.querySelector('.attendance-check')?.disabled, null, { timeout: 10000 });
-ok('다시 시도해서 받으면 정상으로', true);
+await page.waitForTimeout(300);
 
 const at1102 = await checkedOn();
 // 기록이 있는 셋은 체크, 기록이 없는 새로온이는 빈 채로.
@@ -306,6 +299,9 @@ ok('선택칸의 회차로 저장한다', body?.session === await page.$eval('#s
 ok("'회차를 알 수 없어' 가 뜨지 않는다", !dialogs.some(m => /회차를 알 수 없어/.test(m)), JSON.stringify(dialogs));
 // seen = 화면에 띄웠던 값. GAS(v32)가 시트의 지금 칸과 견준다 — 빈칸과 X 를 갈라야 한다.
 const seenOf = Object.fromEntries((body?.batch || []).map(b => [b.name, b.seen]));
+// 누가 저장하는지 — 조회한 그 사람. GAS(v35)가 조장인지 · 자기 조인지 확인한다.
+ok('저장하는 사람(조회한 조장)을 함께 보낸다',
+   body?.by?.name === '김조장' && body?.by?.phone === '1111', JSON.stringify(body?.by));
 ok('사람마다 화면에 띄웠던 값(seen)을 함께 보낸다',
    seenOf['김조장'] === 'O' && seenOf['이조원'] === 'O' && seenOf['새로온이'] === '',
    JSON.stringify(seenOf));
@@ -337,13 +333,16 @@ ok('저장한 줄의 seen 이 새 값으로 바뀐다',
 // DB 는 시트보다 최대 10분 뒤처진다. 그 사이 시트에 손으로 넣은 O 를 화면은 빈칸으로
 // 보여주고, 그대로 저장하면 X 가 나가 시트의 O 가 덮였다.
 // 이미 받아 둔 회차로 돌아가는 것은 기다리지 않는다.
-attQueries.length = 0;
-attMode.delayMs = 1500;
+// 회차를 바꾸면 받아 둔 값으로 바로 그리고, 뒤에서 서버에 다시 물어 맞춘다.
+lookupMode.delayMs = 1500;
+const lookupsBefore = db.lookups.length;
 await page.selectOption('#sessionPicker', '2025-11-09');
-ok('이미 받은 회차로 돌아가면 바로 그린다',
+ok('회차를 바꾸면 기다리지 않고 바로 그린다',
    await page.$eval('.attendance-check[data-name="김조장"]', el => !el.disabled && el.checked));
-attMode.delayMs = 0;
+lookupMode.delayMs = 0;
 await page.waitForTimeout(1800);
+ok('그리고 뒤에서 새로 받아 맞춘다', db.lookups.length === lookupsBefore + 1,
+   `${lookupsBefore} → ${db.lookups.length}`);
 
 postReply = (b) => ({ success: true, saved: 1, missing: [], kept: [], dbPushed: false,
                       changed: [{ id: '새로온이4444', current: 'O' }] });
@@ -410,6 +409,16 @@ await page.click('#matrixCloseBtn');
 await page.waitForTimeout(300);
 const closed = await page.$eval('#matrixModal', el => !el.classList.contains('active'));
 ok('출석표 닫힘', closed);
+
+// --- 조회 화면은 명단 표를 한 번도 읽지 않았다 ----------------------------------
+//
+// 조회 · 조장 명단 · 회차 바꾸기 · 저장 · 배경 갱신 · 전체 출석표까지 다 지나왔다.
+// 잠긴 표(명단 · 출결 · 김밥 · 과제 · 안내방)를 읽으려 든 적이 있으면 실패다.
+ok('조회 화면은 잠긴 표를 한 번도 읽지 않는다', db.privateReads.length === 0, db.privateReads.join(' | '));
+// 명단을 브라우저에 남기지 않는다 — 그 브라우저의 다음 사람이 그대로 읽는다.
+const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }));
+ok('브라우저 저장소에 명단이 없다 (조원 이름이 하나도 없다)',
+   !/이조원|박과제|새로온이/.test(stored) && !/dg_members_v1/.test(stored), stored.slice(0, 200));
 
 await browser.close();
 server.close();

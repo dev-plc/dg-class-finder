@@ -30,10 +30,10 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=134';
+} from './scripts/members-data.js?v=135';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=134';
-import { adminSignIn } from './scripts/admin-auth.js?v=134';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=135';
+import { adminSignIn } from './scripts/admin-auth.js?v=135';
 
 // 1-1. 내 정보 기억
 //
@@ -208,6 +208,8 @@ function displayResult(member) {
     //
     // key 는 시트(DG링크 탭)에 적힌 이름이고, label 은 버튼에 찍는 이름이다.
     // 둘을 하나로 두면 버튼 글자를 바꾸는 순간 링크를 못 찾는다.
+    // ⚠️ 부서를 더하면 supabase/dg_lookup.sql 의 부서 방 목록에도 더한다 — 서버가 조회한
+    //    사람에게 자기 조 방과 부서 방만 준다 (v135). 거기 없으면 그 부서 방 버튼이 조용히 사라진다.
     const GROUP_PREFIX_MAP = [
         { prefix: 'Y', key: '청년부',   label: '청년부' },
         { prefix: 'O', key: '온라인',   label: '온라인DG' },
@@ -273,6 +275,9 @@ function displayResult(member) {
             row.style.display = 'flex';
         } else {
             row.style.display = 'none';
+            // 숨기기만 하면 앞서 본 사람의 방 주소가 페이지에 남는다 — 지운다.
+            link?.removeAttribute('href');
+            if (label) label.textContent = '';
         }
     };
 

@@ -1,7 +1,7 @@
 // 본인 출석 그리드 — 최근 10회차만 펴 두고 나머지는 접는지 검증.
 // Supabase / GAS 는 가짜 응답으로 대신한다 (컨테이너 밖으로 못 나간다).
 
-import { serveRepo, launch, makeReporter, SHOT } from './lib/harness.mjs';
+import { serveRepo, launch, makeReporter, SHOT, routePublicSupabase } from './lib/harness.mjs';
 
 const PORT = 8098;
 const server = await serveRepo(PORT);
@@ -70,31 +70,17 @@ async function openApp(sessions, homework = HOMEWORK, att = null, lunch = null) 
   page.on('console', m => { if (m.type() === 'error') console.log('   [console.error] ' + m.text()); });
   page.on('pageerror', e => console.log('   [pageerror] ' + e.message));
 
-  await page.route('**/rest/v1/**', route => {
-    const url = new URL(route.request().url());
-    const table = url.pathname.split('/').pop();
-    const select = url.searchParams.get('select') || '';
-    let body = [];
-    if (table === 'dg_members') {
-      body = select === 'cohort_id' ? [{ cohort_id: COHORT }] : MEMBERS;
-    } else if (table === 'dg_sessions') {
-      body = sessions;
-    } else if (table === 'dg_attendance') {
-      // 첫 로드는 '오늘 회차' 만 묻는다 (조원 명단 체크박스용) — 그건 빈 값.
-      // 본인 이력 조회만 회차별 행을 돌려준다.
-      body = select.includes('dg_members!inner') ? []
-           : url.search.includes('member_id=eq.u1') ? (att || ATT) : [];
-    } else if (table === 'dg_lunch') {
-      // getUpcomingLunch 는 '오늘 이후' 만 묻는다. 가짜도 그 조건을 지켜야
-      // 지난 신청이 '다가오는 신청' 으로 새어 들어오지 않는다.
-      const gt = (url.search.match(/session_date=gt\.([0-9-]+)/) || [])[1];
-      const rows = lunch || LUNCH;
-      body = gt ? rows.filter(r => r.session_date > gt) : rows;
-    } else if (table === 'dg_homework') {
-      body = homework;
-    }
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  // 조회 화면은 표를 읽지 않는다 (v135) — 서버 함수 dg_lookup 이 본인 것만 준다.
+  // 이 파일의 자료는 대개 '김조원(u1)' 한 사람 것이라, member_id 가 없는 행은 u1 것으로 본다.
+  const mine = (rows) => (rows || []).map(r => ({ member_id: 'u1', ...r }));
+  const db = await routePublicSupabase(page, {
+    members: MEMBERS,
+    sessions,
+    attendance: mine(att || ATT),
+    lunch: mine(lunch || LUNCH),
+    homework: mine(homework),
   });
+  page.__db = db;
 
   // 조회 화면은 출결을 GAS 로 읽지 않는다 (v131). 불리면 실패로 응답해, 기대는 곳이
   // 남아 있으면 여기서 드러나게 한다.
@@ -105,7 +91,7 @@ async function openApp(sessions, homework = HOMEWORK, att = null, lunch = null) 
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
   await page.waitForFunction(() => !document.getElementById('searchBtn').disabled,
                              null, { timeout: 20000 });
-  return { context, page };
+  return { context, page, db };
 }
 
 async function lookup(page, name, phone) {
@@ -763,8 +749,25 @@ const blindTodo = await blind.page.evaluate(() => {
            href: box.querySelector('.hw-todo-btn')?.getAttribute('href') || '' };
 });
 ok('회차를 모르면 다 냈다고 하지 않는다', !/모두 냈/.test(blindTodo.title), blindTodo.title || '(비어 있음)');
-
 await blind.context.close();
+
+// ==========================================================================
+// 5. 조회 화면은 잠긴 표를 읽지 않는다 (v135)
+//
+// 내 출석 · 김밥 · 과제(제출 링크까지)는 조회 답에 본인 것만 들어 있다. 표를 직접 읽으면
+// 남의 것까지 읽을 수 있었다 — 그 길을 닫았다.
+// ==========================================================================
+const solo = await openApp(SESSIONS);
+await lookup(solo.page, '김조원', '1111');
+await solo.page.waitForTimeout(800);
+ok('내 출석 현황을 그리며 잠긴 표를 한 번도 안 읽는다', solo.db.privateReads.length === 0,
+   solo.db.privateReads.join(' | '));
+ok('조회는 한 번 (출결 · 김밥 · 과제가 한 답에)', solo.db.lookups.length === 1, String(solo.db.lookups.length));
+ok('조원에게는 조원 명단이 안 뜬다',
+   await solo.page.evaluate(() => getComputedStyle(document.getElementById('teamMemberListContainer')).display === 'none'));
+const soloStore = await solo.page.evaluate(() => JSON.stringify({ ...localStorage }));
+ok('브라우저 저장소에 다른 사람이 없다', !/박신입/.test(soloStore), soloStore.slice(0, 160));
+await solo.context.close();
 
 await browser.close();
 server.close();

@@ -99,7 +99,11 @@ try {
       ('DG-2026', 'y 1',     'https://t.me/y1-room'),      -- 명단은 'Y1' — 손으로 적어 어긋난 꼴
       ('DG-2026', 'Y2',      'https://t.me/y2-room'),
       ('DG-2026', '청년부',   'https://t.me/group-youth'),
-      ('DG-2026', '온라인DG', 'https://t.me/group-online');
+      ('DG-2026', '온라인DG', 'https://t.me/group-online'),
+      ('DG-2026', '온라인',   'https://t.me/group-online-old'),   -- 같은 이름의 조가 명단에 있다
+      ('DG-2026', 'T5',      'https://t.me/t5-room');            -- 남의 조 방
+    insert into dg_members (cohort_id, name, phone, team, team_no, location, role, status)
+    values ('DG-2026', '온라인조장', '4321', '온라인', 1, '칼빈', '조장', 'active');
     insert into dg_locations (location, image_url, detail_url) values
       ('웨슬리홀', 'https://example.org/wesley.jpg', 'https://example.org/wesley'),
       ('칼빈',     'https://example.org/calvin.jpg', null);
@@ -109,7 +113,7 @@ try {
   const counts = one(db.sql(`select (select count(*) from dg_members where cohort_id='DG-2026' and status='active')
       || ' · ' || (select count(*) from dg_sessions) || ' · ' || (select count(*) from dg_attendance)
       || ' · ' || (select count(*) from dg_homework)`));
-  ok('실제 규모의 자료 (활성 인원 · 회차 · 출석 · 과제)', /^261 · 39 · \d{4,} · 5\d{3}$/.test(counts), counts);
+  ok('실제 규모의 자료 (활성 인원 · 회차 · 출석 · 과제)', /^262 · 39 · \d{4,} · 5\d{3}$/.test(counts), counts);
 
   // ==========================================================================
   // 1. 2단계 SQL — 관리자 표시와 나이 · 담당교역자 잠금 (실제로는 처음 돌려 본다)
@@ -143,7 +147,7 @@ try {
 
   const extras = (as) => db.sql(`select count(*) from public.dg_admin_member_extras('DG-2026')`, { ...as, allowError: true });
   ok('나이 · 교역자 함수 — 관리자에게만 준다',
-     Number(one(extras(ADMIN))) === 262 && Number(one(extras(GUEST))) === 0 && Number(one(extras(SELF_MADE))) === 0,
+     Number(one(extras(ADMIN))) === 263 && Number(one(extras(GUEST))) === 0 && Number(one(extras(SELF_MADE))) === 0,
      `관리자 ${one(extras(ADMIN))} · 표시 없음 ${one(extras(GUEST))}`);
   ok('나이 · 교역자 함수 — 로그인 없이는 부르지도 못한다', !extras(ANON).ok, extras(ANON).err.split('\n')[0]);
 
@@ -180,7 +184,8 @@ try {
   ok('배치도 주소가 온다', me.location?.image_url === 'https://example.org/wesley.jpg', JSON.stringify(me.location));
   const linkTeams = me.links.map(l => l.team).sort().join(',');
   ok("안내방 — 자기 조('y 1' 로 적혀 있어도) + 부서 방. 다른 조 방은 없다",
-     linkTeams === ['y 1', '온라인DG', '청년부'].sort().join(','), linkTeams);
+     linkTeams === ['y 1', '온라인', '온라인DG', '청년부'].sort().join(','), linkTeams);
+  ok('남의 조 방은 안 준다 (T5 · Y2)', !me.links.some(l => ['T5', 'Y2'].includes(l.team)), linkTeams);
   ok('나이 · 담당교역자는 어디에도 없다', !/"age"|"pastor"|이목사/.test(JSON.stringify(me)));
 
   // --- 이름은 정확히 ---------------------------------------------------------
@@ -292,7 +297,7 @@ try {
   ok('관리자는 다섯 표를 읽는다', adminRead.every(r => r.ok && Number(one(r)) > 0), adminRead.map(r => one(r)).join(','));
   ok('관리자도 나이 · 교역자는 표에서 직접 못 읽는다 (함수로만 — 2단계 그대로)',
      !db.sql('select age from dg_members limit 1', { ...ADMIN, allowError: true }).ok
-     && Number(one(extras(ADMIN))) === 262);
+     && Number(one(extras(ADMIN))) === 263);
   // 앱이 관리자 화면에서 실제로 보내는 꼴 — 조인까지.
   ok('관리자 화면의 조인 조회가 된다 (출결 + 명단)',
      Number(one(db.sql(`select count(*) from dg_attendance a join dg_members m on m.id = a.member_id
