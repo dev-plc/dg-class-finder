@@ -1418,57 +1418,81 @@ body.dark-mode .hw-todo-title b { color: #FBBF24; }
     border: 1px solid var(--warm-beige);
 }
 .hw-todo.done .hw-todo-btn:hover { background: var(--warm-beige); }
-.hw-todo-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
+/* 회차마다 한 줄 — 몇 강 · 그 주 출결 배지 · 내야 할 것 (script.js renderHomeworkTodo).
+   예전에는 칩만 두고 라벨을 두 갈래가 다 있을 때만 붙여, 결석분만 있는 사람에게
+   '결석이라 소감문까지' 라는 말이 없었다. 배지는 늘 붙는다. */
+.hw-todo-rows {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    column-gap: 8px;
+    row-gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
-/* 결석분과 예습과제분을 갈라 보여준다. 결석한 주는 '과제+소감문' 이라야
-   출석으로 인정되고(공지 규칙 5), 나온 주는 예습과제만 내면 된다.
-   라벨은 두 갈래가 다 있을 때만 붙는다 — script.js renderHomeworkTodo. */
-.hw-todo-group + .hw-todo-group { margin-top: 8px; }
-.hw-todo-group-label {
-    display: block;
-    margin-bottom: 4px;
-    font-size: 11px;
+/* 줄 자체는 상자가 아니다 — 세 칸이 바깥 grid 의 열에 맞춰 선다 */
+.hw-todo-row { display: contents; }
+.hw-todo-lecture {
+    font-size: 13px;
     font-weight: 700;
-}
-.hw-todo-group-label.absent { color: #B45309; }
-body.dark-mode .hw-todo-group-label.absent { color: #FBBF24; }
-.hw-todo-group-label.prep { font-weight: 600; opacity: 0.65; }
-.hw-todo-chip {
-    padding: 3px 9px;
-    font-size: 11px;
-    font-weight: 700;
-    border-radius: 999px;
-    background: rgba(245, 158, 11, 0.18);
     color: var(--text-dark);
+    white-space: nowrap;
 }
-/* 냈지만 종류가 모자란 회차 (과제만 냈다든지). 안 낸 것과 섞으면
-   '냈는데 왜 안 냈다고 하지' 가 되고, 빼 버리면 무엇을 더 내야 하는지
-   알 길이 없다. 그래서 남기되 낸 것을 옆에 적는다. */
-.hw-todo-chip.part {
-    background: rgba(245, 158, 11, 0.10);
-    display: inline-flex;
-    align-items: baseline;
-    gap: 5px;
-}
-.hw-todo-chip.part > b {
-    font-size: 10px;
+.hw-todo-badge {
+    align-self: start;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
     font-weight: 700;
-    opacity: 0.75;
+    line-height: 18px;
+    white-space: nowrap;
 }
-/* 나온 주의 예습과제 — 결석분보다 덜 급하다는 것이 눈에 들어와야 한다.
-   호박색은 결석분에만 쓰고 이쪽은 중립색으로 둔다. */
-.hw-todo-chip.prep {
+/* 호박색은 결석분에만 — 급한 쪽이 눈에 먼저 들어와야 한다 */
+.hw-todo-badge.absent {
+    background: rgba(245, 158, 11, 0.22);
+    color: #B45309;
+}
+body.dark-mode .hw-todo-badge.absent { color: #FBBF24; }
+.hw-todo-badge.prep {
     background: rgba(0, 0, 0, 0.06);
+    color: var(--text-dark);
     font-weight: 600;
 }
-body.dark-mode .hw-todo-chip.prep { background: rgba(255, 255, 255, 0.10); }
+body.dark-mode .hw-todo-badge.prep { background: rgba(255, 255, 255, 0.10); }
+/* 한글은 낱말 단위로만 끊는다 — 기본값이면 '아니에/요' · '다/시' 처럼 글자 사이에서 잘린다 */
+.hw-todo-need,
+.hw-todo-note { word-break: keep-all; overflow-wrap: anywhere; }
+.hw-todo-need {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+.hw-todo-row.prep .hw-todo-need { font-weight: 500; opacity: 0.85; }
+/* '과제는 냈어요 → …' — 무엇을 다시 해야 하는지. 본문보다 한 단계 작고 흐리게 */
+.hw-todo-need small {
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.45;
+    opacity: 0.75;
+}
+/* '과제는 냈어요 →' / ''과제+소감문'으로 다시' — 토막마다 한 줄 */
+.hw-todo-need small > span { display: block; }
+.hw-todo-row.rest .hw-todo-rest { grid-column: 1 / -1; }
 .hw-todo-rest {
-    padding: 3px 4px;
     font-size: 11px;
     opacity: 0.7;
+}
+/* 결석 줄이 있을 때만 붙는 소감문 규칙 */
+.hw-todo-note {
+    margin: 2px 0 0;
+    padding-top: 8px;
+    border-top: 1px solid rgba(245, 158, 11, 0.30);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-dark);
+    opacity: 0.8;
 }
 
 /* 오래된 과제는 접어 둔다 — 목록이 길어지면 아래의 조원 명단이 밀린다 */

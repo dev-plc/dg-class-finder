@@ -47,13 +47,13 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=135';
+} from './scripts/members-data.js?v=136';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=135';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=136';
 // 검색칸은 초성으로도 찾는다 ('ㅇㅎㅇ' → 이희옥 · 'ㄴ' → 남1조).
 // 조회 화면의 이름 찾기(findMember)도 이것을 쓴다 — 규칙을 한 곳에 둔다.
-import { matches as hangulMatches } from './scripts/hangul.js?v=135';
-import { hasAdminSession, verifyAdmin, adminSignOut } from './scripts/admin-auth.js?v=135';
+import { matches as hangulMatches } from './scripts/hangul.js?v=136';
+import { hasAdminSession, verifyAdmin, adminSignOut } from './scripts/admin-auth.js?v=136';
 
 // 관리자 화면은 표를 **관리자 토큰으로** 읽는다 (표는 관리자만 읽게 잠겨 있다 — v135).
 // 데이터를 부르기 전에 맨 먼저 정한다. 조회 화면은 이것을 부르지 않는다.

@@ -19,8 +19,8 @@
 // 고친 칸은 저장할 때 GAS 가 '본 값(seen)' 과 견주어 지킨다 (saveAttendance).
 
 // import 에 붙은 ?v= 는 캐시 무효화용이다. 이 파일들을 고치면 번호를 함께 올린다.
-import { sbSelect, sbRpc, getActiveCohortId, getCachedCohortId, setAuthTokenProvider } from './supabase-config.js?v=135';
-import { getAdminToken } from './admin-auth.js?v=135';
+import { sbSelect, sbRpc, getActiveCohortId, getCachedCohortId, setAuthTokenProvider } from './supabase-config.js?v=136';
+import { getAdminToken } from './admin-auth.js?v=136';
 
 export const MODULE_VERSION = 'dg members-data v2 (Supabase 조회·출석 읽기 + GAS 출석 쓰기)';
 

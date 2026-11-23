@@ -22,6 +22,7 @@ import {
     homeworkKindLabel,
     homeworkRule,
     isAbsent,
+    isCare,
     isClassSession,
     isPastSession,
     isPresent,
@@ -30,10 +31,10 @@ import {
     splitSubmissionLinks,
     subscribe,
     startAutoRefresh,
-} from './scripts/members-data.js?v=135';
+} from './scripts/members-data.js?v=136';
 
-import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=135';
-import { adminSignIn } from './scripts/admin-auth.js?v=135';
+import { classifyStatus, renderTeamMatrixHTML } from './scripts/matrix-renderer.js?v=136';
+import { adminSignIn } from './scripts/admin-auth.js?v=136';
 
 // 1-1. 내 정보 기억
 //
@@ -669,6 +670,8 @@ async function renderMyHomework(member, attRows = []) {
             // 여기서 버려서, **결석인데 아무것도 안 낸 회차**(kinds 가 빈 배열)가
             // 예습과제만 안 낸 회차와 글자 그대로 똑같이 보였다.
             rule,                                    // 'full'(결석) | 'any'(나온 주)
+            // 나온 주가 출석인지 돌봄인지 줄의 배지에 적는다.
+            status: r.status,
             // 결석한 주에만 '무엇을 냈는데 모자라다' 가 뜻이 있다.
             kinds: rule === 'full' ? (r.homeworkKinds || []) : [],
         }));
@@ -738,44 +741,79 @@ function renderHomeworkTodo(missing, known = true) {
 
     // 회차가 많으면 여덟 개만. 스무 줄짜리 목록은 아무도 안 읽는다.
     //
-    // ⚠️ 묶음마다 여덟씩 두면 칩이 열여섯 개가 되어 상자가 화면을 먹는다.
-    // **총 8칸을 결석분이 먼저 쓰고** 남는 자리에 예습과제분을 채운다 —
+    // ⚠️ 묶음마다 여덟씩 두면 열여섯 줄이 되어 상자가 화면을 먹는다.
+    // **총 8줄을 결석분이 먼저 쓰고** 남는 자리에 예습과제분을 채운다 —
     // 그래야 급한 쪽이 안 잘린다.
     const SHOW = 8;
     const absentShown = absent.slice(0, SHOW);
     const prepShown = prep.slice(0, Math.max(0, SHOW - absentShown.length));
     const hidden = missing.length - absentShown.length - prepShown.length;
 
-    // 아예 안 낸 회차와, 냈지만 종류가 모자란 회차를 갈라 보여준다.
-    // 뒤엣것을 그냥 '안 냄' 으로 두면 '냈는데 왜' 가 되고, 빼 버리면 무엇을
-    // 더 내야 하는지 알 길이 없다. (종류가 모자란 것은 결석분에만 있다)
-    const chip = (m) => {
-        const cls = m.rule === 'full' ? 'hw-todo-chip' : 'hw-todo-chip prep';
-        if (!m.kinds.length) return `<span class="${cls}">${escapeHtml(m.name)}</span>`;
-        const kinds = homeworkKindLabel(m.kinds);
-        return `<span class="${cls} part" title="${escapeAttr(`낸 것: ${kinds} · 출석 인정은 과제와 소감문입니다`)}">`
-             + `${escapeHtml(m.name)}<b>${escapeHtml(kinds)}</b></span>`;
-    };
+    // **회차마다 한 줄** — 몇 강 · 그 주 출결 배지 · 내야 할 것.
+    //
+    // 예전에는 칩(`14강` · `27강 과제`)만 두고 묶음 라벨을 두 갈래가 다 있을 때만
+    // 붙였다. 결석분만 있는 사람에게는 '결석이라 소감문까지' 라는 말이 어디에도 없었고,
+    // `27강 과제` 의 '과제' 는 **낸 것**인데 **내야 할 것**으로 읽혔다 (사용자 보고).
+    // 그래서 배지는 늘 붙이고, 본문은 '무엇을 내야 하는지' 로만 적는다.
+    const rows = [...absentShown, ...prepShown].map(todoRowHtml).join('')
+        + (hidden > 0 ? `<li class="hw-todo-row rest"><span class="hw-todo-rest">외 ${hidden}건</span></li>` : '');
 
-    // 라벨은 **두 갈래가 다 있을 때만** 붙인다. 결석이 없는 사람에게
-    // '나온 회차 …' 라는 줄은 군더더기다.
-    const split = absentShown.length > 0 && prepShown.length > 0;
-    const group = (items, cls, label) => !items.length ? '' : `
-        <div class="hw-todo-group">
-            ${split ? `<span class="hw-todo-group-label ${cls}">${escapeHtml(label)}</span>` : ''}
-            <div class="hw-todo-list">${items.map(chip).join('')}</div>
-        </div>`;
-
-    const rest = hidden > 0 ? `<div class="hw-todo-list"><span class="hw-todo-rest">외 ${hidden}건</span></div>` : '';
+    // 결석 줄이 있을 때만. 나온 주만 남은 사람에게 소감문 규칙은 군더더기다.
+    // ⚠️ '따로 내면 안 된다' 는 시트에 붙은 GAS 와 같은 규칙이다 — docs/RULES.md
+    //    '어떤 제출이 인정인가'. 규칙을 바꾸면 이 문구도 바꾼다.
+    const note = absent.length ? `<p class="hw-todo-note">결석한 주는 '과제+소감문'으로 내야 출석으로 인정돼요.
+            과제·소감문을 따로 내면 인정 안 돼요.</p>` : '';
 
     box.className = 'hw-todo';
     box.innerHTML = `<div class="hw-todo-head">
-            <span class="hw-todo-title">📝 제출하지 않은 과제와 소감문 <b>${missing.length}건</b></span>
+            <span class="hw-todo-title">📝 내야 할 과제 <b>${missing.length}건</b></span>
             ${btn}
         </div>
-        ${group(absentShown, 'absent', `결석한 회차 ${absent.length}건 · 과제와 소감문을 내야 출석으로 인정됩니다`)}
-        ${group(prepShown, 'prep', `나온 회차 ${prep.length}건 · 예습과제만 내면 됩니다`)}
-        ${rest}`;
+        <ul class="hw-todo-rows">${rows}</ul>
+        ${note}`;
+}
+
+/** 폼의 '어떤 과제인가요?' 에서 고르는 예습과제 글자. 결석한 주에 이것만 냈으면 소감문이 빠진 것이다. */
+const HOMEWORK_PREP_ONLY = '과제';
+
+/**
+ * 할 일 한 줄.
+ *
+ *   결석 · 아무것도 안 냄  → 과제+소감문 내기
+ *   결석 · '과제' 만 냄    → 소감문 빠짐 (아랫줄: '과제+소감문' 으로 다시)
+ *   결석 · 그 밖의 종류    → '과제+소감문' 이 아니에요 (아랫줄: 낸 것)
+ *   출석 · 돌봄 · 안 냄    → 과제 내기
+ *
+ * 결석한 주에 과제만 낸 사람에게는 '소감문만 더' 가 아니라 **'과제+소감문' 으로
+ * 다시** 라고 한다. 시트에 붙은 GAS 는 종류에 '과제+소감문' 이 든 제출만 보고
+ * 칸을 바꾼다 — 따로 낸 소감문은 세지 않는다 (docs/RULES.md).
+ */
+function todoRowHtml(m) {
+    const absent = m.rule === 'full';
+    const badge = absent ? '결석' : isCare(m.status) ? '돌봄' : '출석';
+
+    // sub = 아랫줄. 두 토막으로 둔다 — '→' 뒤에서 끊어야 폰 폭에서 '다/시' 처럼
+    // 낱말 한가운데가 안 잘린다.
+    let need, sub = null;
+    if (!absent) {
+        need = '과제 내기';
+    } else if (!m.kinds.length) {
+        need = '과제+소감문 내기';
+    } else if (m.kinds.every(k => String(k).trim() === HOMEWORK_PREP_ONLY)) {
+        need = '소감문 빠짐';
+        sub = ['과제는 냈어요 →', "'과제+소감문'으로 다시"];
+    } else {
+        need = "'과제+소감문'이 아니에요";
+        sub = [`낸 것: ${homeworkKindLabel(m.kinds)} →`, "'과제+소감문'으로 다시"];
+    }
+
+    const cls = absent ? 'absent' : 'prep';
+    return `<li class="hw-todo-row ${cls}">
+            <span class="hw-todo-lecture">${escapeHtml(m.name)}</span>
+            <span class="hw-todo-badge ${cls}">${badge}</span>
+            <span class="hw-todo-need">${escapeHtml(need)}${sub
+                ? `<small>${sub.map(t => `<span>${escapeHtml(t)}</span>`).join(' ')}</small>` : ''}</span>
+        </li>`;
 }
 
 /**

@@ -202,7 +202,7 @@ const todo = () => page.evaluate(() => {
   return {
     cls: box.className,
     title: box.querySelector('.hw-todo-title')?.textContent.trim() || '',
-    chips: [...box.querySelectorAll('.hw-todo-chip')].map(c => c.textContent.trim()),
+    lectures: [...box.querySelectorAll('.hw-todo-row:not(.rest) .hw-todo-lecture')].map(c => c.textContent.trim()),
     rest: box.querySelector('.hw-todo-rest')?.textContent.trim() || '',
     href: btn?.getAttribute('href') || '',
     label: btn?.textContent.trim() || '',
@@ -213,11 +213,12 @@ const todo = () => page.evaluate(() => {
 const td = await todo();
 // 6회차의 '돌봄' 도 센다 — 그 자리에 있었으니 예습과제는 낸다. 18 − 제출 7 = 11.
 ok('안 낸 건수를 센다 (18회차 - 7건 제출)', /11건/.test(td.title), td.title);
-ok("문구는 '과제와 소감문'", /과제와 소감문/.test(td.title) && !/[^와] 과제 /.test(td.title), td.title);
-ok('안 낸 강의를 여덟 개까지만 늘어놓는다', td.chips.length === 8, td.chips.join(' · '));
+// '제출하지 않은 과제와 소감문' 은 무엇을 낼지 말하지 않았다. 줄마다 적고 제목은 짧게.
+ok("제목은 '내야 할 과제 N건'", td.title === '📝 내야 할 과제 11건', td.title);
+ok('안 낸 강의를 여덟 개까지만 늘어놓는다', td.lectures.length === 8, td.lectures.join(' · '));
 ok('나머지는 건수로', td.rest === '외 3건', td.rest);
-ok('낸 강의는 목록에 없다', !td.chips.includes('18강') && !td.chips.includes('16강'),
-   td.chips.join(' · '));
+ok('낸 강의는 목록에 없다', !td.lectures.includes('18강') && !td.lectures.includes('16강'),
+   td.lectures.join(' · '));
 ok('제출 폼으로 이어진다', td.href === 'https://forms.gle/cnhxuonpz2tmMu2y9', td.href);
 ok('새 창으로 연다 (조회 화면을 잃지 않게)', td.target === '_blank', td.target);
 ok('버튼 문구', td.label === '제출하기 →', td.label);
@@ -355,14 +356,14 @@ const fullTodo = await full.page.evaluate(() => {
     cls: box.className,
     title: box.querySelector('.hw-todo-title')?.textContent.trim() || '',
     href: box.querySelector('.hw-todo-btn')?.getAttribute('href') || '',
-    chips: box.querySelectorAll('.hw-todo-chip').length,
+    rows: box.querySelectorAll('.hw-todo-row').length,
   };
 });
 ok('다 낸 사람에게는 안 낸 건수를 안 띄운다',
-   fullTodo.cls.includes('done') && !/제출하지 않은/.test(fullTodo.title), fullTodo.title);
+   fullTodo.cls.includes('done') && !/내야 할/.test(fullTodo.title), fullTodo.title);
 ok('그래도 제출 링크는 남는다',
    fullTodo.href === 'https://forms.gle/cnhxuonpz2tmMu2y9', fullTodo.href);
-ok('밀린 강의 목록은 없다', fullTodo.chips === 0, `${fullTodo.chips}개`);
+ok('밀린 강의 목록은 없다', fullTodo.rows === 0, `${fullTodo.rows}줄`);
 await full.page.locator('#myHomeworkSection').screenshot({ path: `${SHOT}/dg-hw-done.png` });
 await full.context.close();
 
@@ -417,15 +418,24 @@ await noLec.context.close();
 const SEVEN = mkSessions(7);
 const todoOf = (page) => page.evaluate(() => {
   const box = document.getElementById('myHomeworkTodo');
-  const chip = (c) => c.textContent.trim();
+  // 한 줄 = 몇 강 · 그 주 출결 배지 · 내야 할 것 (+ 아랫줄)
+  const rowsOf = (sel) => [...box.querySelectorAll(sel)].map(r => ({
+    lecture: r.querySelector('.hw-todo-lecture')?.textContent.trim() || '',
+    badge: r.querySelector('.hw-todo-badge')?.textContent.trim() || '',
+    need: r.querySelector('.hw-todo-need')?.childNodes[0]?.textContent.trim() || '',
+    // 아랫줄은 두 토막(span)이다 — 토막 사이를 빈칸 하나로 잇는다
+    sub: [...r.querySelectorAll('.hw-todo-need small > span')].map(x => x.textContent.trim()).join(' '),
+  }));
+  const rows = rowsOf('.hw-todo-row:not(.rest)');
   return {
     cls: box.className,
     title: box.querySelector('.hw-todo-title')?.textContent.trim() || '',
-    chips: [...box.querySelectorAll('.hw-todo-chip')].map(chip),
+    rows,
+    lectures: rows.map(r => r.lecture),
     // 결석분 / 예습과제분을 갈라 본다
-    absent: [...box.querySelectorAll('.hw-todo-chip:not(.prep)')].map(chip),
-    prep: [...box.querySelectorAll('.hw-todo-chip.prep')].map(chip),
-    labels: [...box.querySelectorAll('.hw-todo-group-label')].map(e => e.textContent.trim()),
+    absent: rowsOf('.hw-todo-row.absent').map(r => r.lecture),
+    prep: rowsOf('.hw-todo-row.prep').map(r => r.lecture),
+    note: box.querySelector('.hw-todo-note')?.textContent.replace(/\s+/g, ' ').trim() || '',
     rest: box.querySelector('.hw-todo-rest')?.textContent.trim() || '',
   };
 });
@@ -437,15 +447,15 @@ await lookup(late.page, '김조원', '1111');
 const lateTodo = await todoOf(late.page);
 ok('합류 전 빈칸은 안 묻는다 (7회차인데 3건)',
    /3건/.test(lateTodo.title), lateTodo.title);
-ok('묻는 것은 찍힌 회차뿐', lateTodo.chips.join(',') === '5강,6강,7강',
-   lateTodo.chips.join(','));
+ok('묻는 것은 찍힌 회차뿐', lateTodo.lectures.join(',') === '5강,6강,7강',
+   lateTodo.lectures.join(','));
 await late.context.close();
 
 // 기록이 하나도 없으면 요구할 것도 없다 (이번 주에 막 올라온 사람).
 const blank = await openApp(SEVEN, [], []);
 await lookup(blank.page, '김조원', '1111');
 const blankTodo = await todoOf(blank.page);
-ok('기록이 아예 없으면 0건', blankTodo.chips.length === 0 && !/제출하지 않은/.test(blankTodo.title),
+ok('기록이 아예 없으면 0건', blankTodo.lectures.length === 0 && !/내야 할/.test(blankTodo.title),
    blankTodo.title);
 await blank.context.close();
 
@@ -462,11 +472,11 @@ const REJOIN_ATT = [
 const rejoin = await openApp(SEVEN, [], REJOIN_ATT);
 await lookup(rejoin.page, '김조원', '1111');
 const rejoinTodo = await todoOf(rejoin.page);
-ok('하차 기간은 안 묻는다', !rejoinTodo.chips.some(c => /^[345]강/.test(c)),
-   rejoinTodo.chips.join(' | '));
+ok('하차 기간은 안 묻는다', !rejoinTodo.lectures.some(c => /^[345]강/.test(c)),
+   rejoinTodo.lectures.join(' | '));
 // 결석분(7강)이 앞이다 — 결석한 주는 과제+소감문이라야 출석으로 인정된다.
 ok('하차 앞뒤로 나온 회차는 묻는다',
-   rejoinTodo.chips.join(',') === '7강,1강,2강,6강', rejoinTodo.chips.join(','));
+   rejoinTodo.lectures.join(',') === '7강,1강,2강,6강', rejoinTodo.lectures.join(','));
 await rejoin.context.close();
 
 // −(수업 없음) · ◎(지난 기수 이수) 는 사람이 시트에 일부러 넣은 예외 표기다.
@@ -484,9 +494,9 @@ const marked = await openApp(SEVEN, [], MARKED_ATT);
 await lookup(marked.page, '김조원', '1111');
 const markedTodo = await todoOf(marked.page);
 ok('− 와 ◎ 는 안 묻는다',
-   !markedTodo.chips.some(c => /^[124]강/.test(c)), markedTodo.chips.join(','));
-ok('돌봄인 주는 예습과제를 묻는다', markedTodo.chips.join(',') === '3강,5강',
-   markedTodo.chips.join(','));
+   !markedTodo.lectures.some(c => /^[124]강/.test(c)), markedTodo.lectures.join(','));
+ok('돌봄인 주는 예습과제를 묻는다', markedTodo.lectures.join(',') === '3강,5강',
+   markedTodo.lectures.join(','));
 await marked.context.close();
 
 // 돌봄인 주에 예습과제('과제')만 냈으면 다 한 것이다 — 소감문은 안 묻는다.
@@ -497,7 +507,7 @@ const cared = await openApp(SEVEN, [
 await lookup(cared.page, '김조원', '1111');
 const caredTodo = await todoOf(cared.page);
 ok('돌봄인 주도 예습과제만 내면 빠진다',
-   caredTodo.chips.length === 0 && !/제출하지 않은/.test(caredTodo.title), caredTodo.title);
+   caredTodo.lectures.length === 0 && !/내야 할/.test(caredTodo.title), caredTodo.title);
 await cared.context.close();
 
 // 시트가 '과제' 로 바꿔 둔 칸 — 제출 기록이 앱에 **아직 없어도** 📝 가 붙고,
@@ -530,9 +540,9 @@ ok("기록 있는 '과제' 칸도 노란 📝 (툴팁은 제출)",
    chipOf('2강').hwBadge && /과제와 소감문 제출/.test(chipOf('2강').tip), JSON.stringify(chipOf('2강')));
 const mkTodo = await todoOf(mk.page);
 ok("'과제' 칸은 안 낸 과제로 묻지 않는다",
-   !mkTodo.chips.some(c => /^[12]강/.test(c)), mkTodo.chips.join(','));
-ok('나온 주에 아무것도 안 냈으면 여전히 묻는다', mkTodo.chips.join(',') === '3강',
-   mkTodo.chips.join(','));
+   !mkTodo.lectures.some(c => /^[12]강/.test(c)), mkTodo.lectures.join(','));
+ok('나온 주에 아무것도 안 냈으면 여전히 묻는다', mkTodo.lectures.join(',') === '3강',
+   mkTodo.lectures.join(','));
 await mk.context.close();
 
 // ==========================================================================
@@ -650,28 +660,34 @@ const MIX_ATT = SEVEN.map((x, i) => ({
 const mix = await openApp(SEVEN, [], MIX_ATT);
 await lookup(mix.page, '김조원', '1111');
 const mixTodo = await todoOf(mix.page);
-ok('결석분이 먼저 나온다', mixTodo.chips.join(',') === '1강,3강,5강,7강,2강,4강,6강',
-   mixTodo.chips.join(','));
+ok('결석분이 먼저 나온다', mixTodo.lectures.join(',') === '1강,3강,5강,7강,2강,4강,6강',
+   mixTodo.lectures.join(','));
 ok('결석분과 예습과제분이 갈린다',
    mixTodo.absent.join(',') === '1강,3강,5강,7강' && mixTodo.prep.join(',') === '2강,4강,6강',
    `결석 [${mixTodo.absent}] · 예습 [${mixTodo.prep}]`);
-ok('두 갈래가 다 있으면 라벨이 붙는다',
-   mixTodo.labels.length === 2
-   && /결석한 회차 4건/.test(mixTodo.labels[0]) && /과제와 소감문/.test(mixTodo.labels[0])
-   && /나온 회차 3건/.test(mixTodo.labels[1]) && /예습과제/.test(mixTodo.labels[1]),
-   JSON.stringify(mixTodo.labels));
+ok("결석 줄은 '결석' 배지 · '과제+소감문 내기'",
+   mixTodo.rows.slice(0, 4).every(r => r.badge === '결석' && r.need === '과제+소감문 내기' && !r.sub),
+   JSON.stringify(mixTodo.rows.slice(0, 4)));
+ok("나온 줄은 '출석' 배지 · '과제 내기'",
+   mixTodo.rows.slice(4).every(r => r.badge === '출석' && r.need === '과제 내기' && !r.sub),
+   JSON.stringify(mixTodo.rows.slice(4)));
+ok('결석 줄이 있으면 소감문 규칙을 함께 적는다',
+   /결석한 주는 '과제\+소감문'으로 내야 출석으로 인정돼요/.test(mixTodo.note)
+   && /따로 내면 인정 안 돼요/.test(mixTodo.note), mixTodo.note);
 await mix.context.close();
 
-// 한 갈래뿐이면 라벨을 안 붙인다 — 결석이 없는 사람에게 '나온 회차 …' 는 군더더기다.
+// 나온 주만 남았어도 배지는 붙는다. 소감문 규칙은 결석 줄이 없으니 안 적는다.
 const onlyPrep = await openApp(SEVEN, [],
   SEVEN.map(x => ({ session_date: x.session_date, status: 'O' })));
 await lookup(onlyPrep.page, '김조원', '1111');
 const onlyPrepTodo = await todoOf(onlyPrep.page);
-ok('한 갈래뿐이면 라벨이 없다', onlyPrepTodo.labels.length === 0 && onlyPrepTodo.chips.length === 7,
-   `라벨 ${onlyPrepTodo.labels.length} · 칩 ${onlyPrepTodo.chips.length}`);
+ok("나온 주만 있어도 줄마다 '출석' 배지", onlyPrepTodo.rows.length === 7
+   && onlyPrepTodo.rows.every(r => r.badge === '출석' && r.need === '과제 내기'),
+   JSON.stringify(onlyPrepTodo.rows));
+ok('결석 줄이 없으면 소감문 규칙을 안 적는다', onlyPrepTodo.note === '', onlyPrepTodo.note);
 await onlyPrep.context.close();
 
-// **총 8칸을 결석분이 먼저 쓴다.** 묶음마다 여덟씩 두면 칩이 열여섯 개가 되고,
+// **총 8줄을 결석분이 먼저 쓴다.** 묶음마다 여덟씩 두면 열여섯 줄이 되고,
 // 예습과제분이 앞자리를 먹으면 정작 급한 결석분이 잘린다.
 const MANY = mkSessions(14);
 const MANY_PAST = MANY.filter(x => x.session_date <= TODAY);
@@ -679,7 +695,7 @@ const budget = await openApp(MANY, [],
   MANY_PAST.map((x, i) => ({ session_date: x.session_date, status: i < 9 ? 'X' : 'O' })));
 await lookup(budget.page, '김조원', '1111');
 const budgetTodo = await todoOf(budget.page);
-ok('여덟 칸을 결석분이 먼저 쓴다',
+ok('여덟 줄을 결석분이 먼저 쓴다',
    budgetTodo.absent.length === 8 && budgetTodo.prep.length === 0,
    `결석 ${budgetTodo.absent.length} · 예습 ${budgetTodo.prep.length}`);
 ok('나머지는 두 묶음 통틀어 건수로', /외 /.test(budgetTodo.rest), budgetTodo.rest);
@@ -699,15 +715,15 @@ const done2 = await openApp(SEVEN, SEVEN.map(s => ({
 await lookup(done2.page, '김조원', '1111');
 const doneTodo2 = await todoOf(done2.page);
 ok('나온 주에 예습과제만 내도 안내가 안 뜬다',
-   doneTodo2.chips.length === 0 && !/제출하지 않은/.test(doneTodo2.title), doneTodo2.title);
+   doneTodo2.lectures.length === 0 && !/내야 할/.test(doneTodo2.title), doneTodo2.title);
 await done2.context.close();
 
 // 나온 주에 **아무것도** 안 냈으면 그때는 묻는다.
 const noneSubmit = await openApp(SEVEN, [], PRESENT_ATT);
 await lookup(noneSubmit.page, '김조원', '1111');
 const noneTodo2 = await todoOf(noneSubmit.page);
-ok('나온 주라도 아무것도 안 냈으면 묻는다', noneTodo2.chips.length === 7,
-   `${noneTodo2.chips.length}개`);
+ok('나온 주라도 아무것도 안 냈으면 묻는다', noneTodo2.lectures.length === 7,
+   `${noneTodo2.lectures.length}개`);
 await noneSubmit.context.close();
 
 // 결석한 주는 '과제+소감문' 이라야 인정된다. 과제만 냈으면 남되 낸 것을 적는다.
@@ -723,15 +739,104 @@ const part = await openApp(SEVEN, [
 ], ABSENT_ATT);
 await lookup(part.page, '김조원', '1111');
 const partTodo = await todoOf(part.page);
-ok('결석한 주에 과제만 낸 것은 목록에 남는다', partTodo.chips.some(c => c.startsWith('2강')),
-   partTodo.chips.join(' | '));
-ok('무엇을 냈는지 칩에 적는다', partTodo.chips.some(c => c === '2강과제'),
-   partTodo.chips.join(' | '));
-ok('결석했어도 과제+소감문을 냈으면 빠진다', !partTodo.chips.some(c => c.startsWith('1강')),
-   partTodo.chips.join(' | '));
-ok('나온 주는 예습과제만으로 빠진다', partTodo.chips.length === 1,
-   partTodo.chips.join(' | '));
+ok('결석한 주에 과제만 낸 것은 목록에 남는다', partTodo.lectures.some(c => c.startsWith('2강')),
+   partTodo.lectures.join(' | '));
+const part2 = partTodo.rows.find(r => r.lecture === '2강') || {};
+ok("결석 · 과제만 → '소감문 빠짐'", part2.badge === '결석' && part2.need === '소감문 빠짐',
+   JSON.stringify(part2));
+ok("다시 낼 방법을 적는다 ('과제+소감문'으로 다시)",
+   part2.sub === "과제는 냈어요 → '과제+소감문'으로 다시", part2.sub);
+// 사용자 보고: 결석분만 있으면 라벨이 안 붙어 '결석이라 소감문까지' 가 안 보였다.
+ok('결석분만 있어도 배지와 소감문 규칙이 붙는다',
+   partTodo.rows.length === 1 && /따로 내면 인정 안 돼요/.test(partTodo.note), partTodo.note);
+ok('결석했어도 과제+소감문을 냈으면 빠진다', !partTodo.lectures.some(c => c.startsWith('1강')),
+   partTodo.lectures.join(' | '));
+ok('나온 주는 예습과제만으로 빠진다', partTodo.lectures.length === 1,
+   partTodo.lectures.join(' | '));
 await part.context.close();
+
+// ==========================================================================
+// 3-4. 줄마다 '무엇을 내야 하는지' (v136)
+//
+// 사용자 보고: 칩 `14강` · `27강 과제` 만 떴다. 둘 다 결석인데 결석분만 있으면 라벨이
+// 안 붙어 '결석이라 소감문까지' 가 화면에 없었고, '27강 과제' 의 '과제' 는 **낸 것**인데
+// **내야 할 것**으로 읽혔다. 이제 한 줄 = 몇 강 · 그 주 출결 배지 · 내야 할 것.
+// ==========================================================================
+const SAY_ATT = [
+  { session_date: SEVEN[0].session_date, status: 'X' },     // 1강 결석 · 아무것도 안 냄
+  { session_date: SEVEN[1].session_date, status: 'X' },     // 2강 결석 · 과제만
+  { session_date: SEVEN[2].session_date, status: 'X' },     // 3강 결석 · 종류를 안 고르고 냄
+  { session_date: SEVEN[3].session_date, status: 'O' },     // 4강 출석 · 안 냄
+  { session_date: SEVEN[4].session_date, status: '돌봄' },  // 5강 돌봄 · 안 냄
+  { session_date: SEVEN[5].session_date, status: 'O' },     // 6강 출석 · 냄 → 안 묻는다
+];
+const say = await openApp(SEVEN, [
+  { member_id: 'u1', lecture: '2강', kind: '과제', content: 'https://ex.com/2', submitted_at: null },
+  { member_id: 'u1', lecture: '3강', kind: '', content: 'https://ex.com/3', submitted_at: null },
+  { member_id: 'u1', lecture: '6강', kind: '과제', content: '', submitted_at: null },
+], SAY_ATT);
+await lookup(say.page, '김조원', '1111');
+const sayTodo = await todoOf(say.page);
+const sayRow = (lec) => sayTodo.rows.find(r => r.lecture === lec) || {};
+ok('결석 셋이 먼저, 나온 주 둘이 뒤', sayTodo.lectures.join(',') === '1강,2강,3강,4강,5강',
+   sayTodo.lectures.join(','));
+ok("제목은 '내야 할 과제 5건'", sayTodo.title === '📝 내야 할 과제 5건', sayTodo.title);
+ok("결석 · 안 냄 → '과제+소감문 내기'",
+   sayRow('1강').badge === '결석' && sayRow('1강').need === '과제+소감문 내기' && !sayRow('1강').sub,
+   JSON.stringify(sayRow('1강')));
+ok("결석 · 과제만 → '소감문 빠짐' · '과제+소감문'으로 다시",
+   sayRow('2강').badge === '결석' && sayRow('2강').need === '소감문 빠짐'
+   && sayRow('2강').sub === "과제는 냈어요 → '과제+소감문'으로 다시", JSON.stringify(sayRow('2강')));
+ok('결석 · 종류 미기재 → 낸 것을 적고 다시 내라고',
+   sayRow('3강').badge === '결석' && sayRow('3강').need === "'과제+소감문'이 아니에요"
+   && sayRow('3강').sub === "낸 것: 종류 미기재 → '과제+소감문'으로 다시", JSON.stringify(sayRow('3강')));
+ok("출석 · 안 냄 → '출석' 배지 · '과제 내기'",
+   sayRow('4강').badge === '출석' && sayRow('4강').need === '과제 내기', JSON.stringify(sayRow('4강')));
+ok("돌봄 · 안 냄 → '돌봄' 배지 · '과제 내기'",
+   sayRow('5강').badge === '돌봄' && sayRow('5강').need === '과제 내기', JSON.stringify(sayRow('5강')));
+ok('소감문 규칙이 붙는다', /따로 내면 인정 안 돼요/.test(sayTodo.note), sayTodo.note);
+
+// 한 줄의 세 칸이 같은 높이에 선다 — 회차 · 배지 · 본문이 엇갈리면 어느 줄 것인지 헷갈린다.
+// 폰 폭(390 · 360)에서 상자 밖으로 넘치지 않는다.
+const sayFit = () => say.page.evaluate(() => {
+  const box = document.getElementById('myHomeworkTodo');
+  const edge = box.getBoundingClientRect().right;
+  const over = [...box.querySelectorAll('*')]
+    .filter(el => el.getBoundingClientRect().right > edge + 1)
+    .map(el => el.className || el.tagName);
+  const misaligned = [...box.querySelectorAll('.hw-todo-row:not(.rest)')].filter(r => {
+    const tops = ['.hw-todo-lecture', '.hw-todo-badge', '.hw-todo-need']
+      .map(s => r.querySelector(s).getBoundingClientRect().top);
+    return Math.max(...tops) - Math.min(...tops) > 4;
+  }).map(r => r.querySelector('.hw-todo-lecture').textContent);
+  return { over, misaligned,
+           scrollX: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+});
+const fit390 = await sayFit();
+ok('한 줄의 세 칸이 같은 높이', fit390.misaligned.length === 0, fit390.misaligned.join(','));
+ok('390px 에서 상자 밖으로 안 넘친다', fit390.over.length === 0 && fit390.scrollX <= 1,
+   JSON.stringify(fit390));
+await say.page.setViewportSize({ width: 360, height: 800 });
+await say.page.waitForTimeout(200);
+const fit360 = await sayFit();
+ok('360px 에서도 안 넘친다', fit360.over.length === 0 && fit360.scrollX <= 1 && !fit360.misaligned.length,
+   JSON.stringify(fit360));
+await say.page.setViewportSize({ width: 390, height: 844 });
+// 조회 화면은 다크 모드로 열린다 (index.html body.dark-mode). 라이트는 버튼으로 바꾼다.
+// 다크 모드에서 배지 글씨가 바탕에 묻히지 않는다 (글씨색이 배경색과 같으면 사라진다)
+const darkInk = await say.page.evaluate(() => {
+  const b = document.querySelector('#myHomeworkTodo .hw-todo-badge.absent');
+  const need = document.querySelector('#myHomeworkTodo .hw-todo-need');
+  return { badge: getComputedStyle(b).color, need: getComputedStyle(need).color,
+           body: getComputedStyle(document.body).backgroundColor };
+});
+ok('다크 모드에서 글씨가 바탕색과 다르다',
+   darkInk.badge !== darkInk.body && darkInk.need !== darkInk.body, JSON.stringify(darkInk));
+await say.page.locator('#myHomeworkTodo').screenshot({ path: `${SHOT}/dg-hw-todo-dark.png` });
+await say.page.evaluate(() => document.body.classList.remove('dark-mode'));
+await say.page.waitForTimeout(800);   // 테마 바꿈은 0.6초 동안 물든다 (style.css transition)
+await say.page.locator('#myHomeworkTodo').screenshot({ path: `${SHOT}/dg-hw-todo-light.png` });
+await say.context.close();
 
 // ==========================================================================
 // 4. 회차를 못 받아 왔을 때 — '모두 냈어요' 는 거짓말이 된다
