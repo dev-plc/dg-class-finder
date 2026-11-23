@@ -759,14 +759,15 @@ function renderHomeworkTodo(missing, known = true) {
         + (hidden > 0 ? `<li class="hw-todo-row rest"><span class="hw-todo-rest">외 ${hidden}건</span></li>` : '');
 
     // 결석 줄이 있을 때만. 나온 주만 남은 사람에게 소감문 규칙은 군더더기다.
-    // ⚠️ '따로 내면 안 된다' 는 시트에 붙은 GAS 와 같은 규칙이다 — docs/RULES.md
-    //    '어떤 제출이 인정인가'. 규칙을 바꾸면 이 문구도 바꾼다.
-    const note = absent.length ? `<p class="hw-todo-note">결석한 주는 '과제+소감문'으로 내야 출석으로 인정돼요.
-            과제·소감문을 따로 내면 인정 안 돼요.</p>` : '';
+    // ⚠️ 시트에 붙은 GAS 와 같은 규칙이다 — 종류에 '과제+소감문' 이 든 제출만 칸을 바꾼다
+    //    (docs/RULES.md '어떤 제출이 인정인가'). 규칙을 바꾸면 이 문구도 바꾼다.
+    // '결석은 … 출석으로' — 사용자가 고른 문구다. 둘째 문장('따로 내면 안 된다')은 뺐다.
+    const note = absent.length
+        ? `<p class="hw-todo-note">결석은 '과제+소감문'으로 내야 출석으로 인정돼요.</p>` : '';
 
     box.className = 'hw-todo';
     box.innerHTML = `<div class="hw-todo-head">
-            <span class="hw-todo-title">📝 내야 할 과제 <b>${missing.length}건</b></span>
+            <span class="hw-todo-title">📝 제출할 과제·소감문 <b>${missing.length}건</b></span>
             ${btn}
         </div>
         <ul class="hw-todo-rows">${rows}</ul>
@@ -779,10 +780,12 @@ const HOMEWORK_PREP_ONLY = '과제';
 /**
  * 할 일 한 줄.
  *
- *   결석 · 아무것도 안 냄  → 과제+소감문 내기
- *   결석 · '과제' 만 냄    → 소감문 빠짐 (아랫줄: '과제+소감문' 으로 다시)
- *   결석 · 그 밖의 종류    → '과제+소감문' 이 아니에요 (아랫줄: 낸 것)
- *   출석 · 돌봄 · 안 냄    → 과제 내기
+ *   결석 · 아무것도 안 냄  → 과제+소감문 필요
+ *   결석 · '과제' 만 냄    → 소감문 필요 (아랫줄: '과제+소감문' 으로 다시)
+ *   결석 · 그 밖의 종류    → '과제+소감문' 필요 (아랫줄: 낸 것)
+ *   출석 · 돌봄 · 안 냄    → 과제 필요
+ *
+ * 끝말은 '~필요' 로 맞춘다 (사용자가 고른 문구).
  *
  * 결석한 주에 과제만 낸 사람에게는 '소감문만 더' 가 아니라 **'과제+소감문' 으로
  * 다시** 라고 한다. 시트에 붙은 GAS 는 종류에 '과제+소감문' 이 든 제출만 보고
@@ -796,14 +799,14 @@ function todoRowHtml(m) {
     // 낱말 한가운데가 안 잘린다.
     let need, sub = null;
     if (!absent) {
-        need = '과제 내기';
+        need = '과제 필요';
     } else if (!m.kinds.length) {
-        need = '과제+소감문 내기';
+        need = '과제+소감문 필요';
     } else if (m.kinds.every(k => String(k).trim() === HOMEWORK_PREP_ONLY)) {
-        need = '소감문 빠짐';
+        need = '소감문 필요';
         sub = ['과제는 냈어요 →', "'과제+소감문'으로 다시"];
     } else {
-        need = "'과제+소감문'이 아니에요";
+        need = "'과제+소감문' 필요";
         sub = [`낸 것: ${homeworkKindLabel(m.kinds)} →`, "'과제+소감문'으로 다시"];
     }
 

@@ -214,7 +214,7 @@ const td = await todo();
 // 6회차의 '돌봄' 도 센다 — 그 자리에 있었으니 예습과제는 낸다. 18 − 제출 7 = 11.
 ok('안 낸 건수를 센다 (18회차 - 7건 제출)', /11건/.test(td.title), td.title);
 // '제출하지 않은 과제와 소감문' 은 무엇을 낼지 말하지 않았다. 줄마다 적고 제목은 짧게.
-ok("제목은 '내야 할 과제 N건'", td.title === '📝 내야 할 과제 11건', td.title);
+ok("제목은 '제출할 과제·소감문 N건'", td.title === '📝 제출할 과제·소감문 11건', td.title);
 ok('안 낸 강의를 여덟 개까지만 늘어놓는다', td.lectures.length === 8, td.lectures.join(' · '));
 ok('나머지는 건수로', td.rest === '외 3건', td.rest);
 ok('낸 강의는 목록에 없다', !td.lectures.includes('18강') && !td.lectures.includes('16강'),
@@ -360,7 +360,7 @@ const fullTodo = await full.page.evaluate(() => {
   };
 });
 ok('다 낸 사람에게는 안 낸 건수를 안 띄운다',
-   fullTodo.cls.includes('done') && !/내야 할/.test(fullTodo.title), fullTodo.title);
+   fullTodo.cls.includes('done') && !/제출할/.test(fullTodo.title), fullTodo.title);
 ok('그래도 제출 링크는 남는다',
    fullTodo.href === 'https://forms.gle/cnhxuonpz2tmMu2y9', fullTodo.href);
 ok('밀린 강의 목록은 없다', fullTodo.rows === 0, `${fullTodo.rows}줄`);
@@ -455,7 +455,7 @@ await late.context.close();
 const blank = await openApp(SEVEN, [], []);
 await lookup(blank.page, '김조원', '1111');
 const blankTodo = await todoOf(blank.page);
-ok('기록이 아예 없으면 0건', blankTodo.lectures.length === 0 && !/내야 할/.test(blankTodo.title),
+ok('기록이 아예 없으면 0건', blankTodo.lectures.length === 0 && !/제출할/.test(blankTodo.title),
    blankTodo.title);
 await blank.context.close();
 
@@ -507,7 +507,7 @@ const cared = await openApp(SEVEN, [
 await lookup(cared.page, '김조원', '1111');
 const caredTodo = await todoOf(cared.page);
 ok('돌봄인 주도 예습과제만 내면 빠진다',
-   caredTodo.lectures.length === 0 && !/내야 할/.test(caredTodo.title), caredTodo.title);
+   caredTodo.lectures.length === 0 && !/제출할/.test(caredTodo.title), caredTodo.title);
 await cared.context.close();
 
 // 시트가 '과제' 로 바꿔 둔 칸 — 제출 기록이 앱에 **아직 없어도** 📝 가 붙고,
@@ -665,15 +665,15 @@ ok('결석분이 먼저 나온다', mixTodo.lectures.join(',') === '1강,3강,5�
 ok('결석분과 예습과제분이 갈린다',
    mixTodo.absent.join(',') === '1강,3강,5강,7강' && mixTodo.prep.join(',') === '2강,4강,6강',
    `결석 [${mixTodo.absent}] · 예습 [${mixTodo.prep}]`);
-ok("결석 줄은 '결석' 배지 · '과제+소감문 내기'",
-   mixTodo.rows.slice(0, 4).every(r => r.badge === '결석' && r.need === '과제+소감문 내기' && !r.sub),
+ok("결석 줄은 '결석' 배지 · '과제+소감문 필요'",
+   mixTodo.rows.slice(0, 4).every(r => r.badge === '결석' && r.need === '과제+소감문 필요' && !r.sub),
    JSON.stringify(mixTodo.rows.slice(0, 4)));
-ok("나온 줄은 '출석' 배지 · '과제 내기'",
-   mixTodo.rows.slice(4).every(r => r.badge === '출석' && r.need === '과제 내기' && !r.sub),
+ok("나온 줄은 '출석' 배지 · '과제 필요'",
+   mixTodo.rows.slice(4).every(r => r.badge === '출석' && r.need === '과제 필요' && !r.sub),
    JSON.stringify(mixTodo.rows.slice(4)));
 ok('결석 줄이 있으면 소감문 규칙을 함께 적는다',
-   /결석한 주는 '과제\+소감문'으로 내야 출석으로 인정돼요/.test(mixTodo.note)
-   && /따로 내면 인정 안 돼요/.test(mixTodo.note), mixTodo.note);
+   mixTodo.note === "결석은 '과제+소감문'으로 내야 출석으로 인정돼요."
+   && !/따로/.test(mixTodo.note), mixTodo.note);
 await mix.context.close();
 
 // 나온 주만 남았어도 배지는 붙는다. 소감문 규칙은 결석 줄이 없으니 안 적는다.
@@ -682,7 +682,7 @@ const onlyPrep = await openApp(SEVEN, [],
 await lookup(onlyPrep.page, '김조원', '1111');
 const onlyPrepTodo = await todoOf(onlyPrep.page);
 ok("나온 주만 있어도 줄마다 '출석' 배지", onlyPrepTodo.rows.length === 7
-   && onlyPrepTodo.rows.every(r => r.badge === '출석' && r.need === '과제 내기'),
+   && onlyPrepTodo.rows.every(r => r.badge === '출석' && r.need === '과제 필요'),
    JSON.stringify(onlyPrepTodo.rows));
 ok('결석 줄이 없으면 소감문 규칙을 안 적는다', onlyPrepTodo.note === '', onlyPrepTodo.note);
 await onlyPrep.context.close();
@@ -715,7 +715,7 @@ const done2 = await openApp(SEVEN, SEVEN.map(s => ({
 await lookup(done2.page, '김조원', '1111');
 const doneTodo2 = await todoOf(done2.page);
 ok('나온 주에 예습과제만 내도 안내가 안 뜬다',
-   doneTodo2.lectures.length === 0 && !/내야 할/.test(doneTodo2.title), doneTodo2.title);
+   doneTodo2.lectures.length === 0 && !/제출할/.test(doneTodo2.title), doneTodo2.title);
 await done2.context.close();
 
 // 나온 주에 **아무것도** 안 냈으면 그때는 묻는다.
@@ -742,13 +742,13 @@ const partTodo = await todoOf(part.page);
 ok('결석한 주에 과제만 낸 것은 목록에 남는다', partTodo.lectures.some(c => c.startsWith('2강')),
    partTodo.lectures.join(' | '));
 const part2 = partTodo.rows.find(r => r.lecture === '2강') || {};
-ok("결석 · 과제만 → '소감문 빠짐'", part2.badge === '결석' && part2.need === '소감문 빠짐',
+ok("결석 · 과제만 → '소감문 필요'", part2.badge === '결석' && part2.need === '소감문 필요',
    JSON.stringify(part2));
 ok("다시 낼 방법을 적는다 ('과제+소감문'으로 다시)",
    part2.sub === "과제는 냈어요 → '과제+소감문'으로 다시", part2.sub);
 // 사용자 보고: 결석분만 있으면 라벨이 안 붙어 '결석이라 소감문까지' 가 안 보였다.
 ok('결석분만 있어도 배지와 소감문 규칙이 붙는다',
-   partTodo.rows.length === 1 && /따로 내면 인정 안 돼요/.test(partTodo.note), partTodo.note);
+   partTodo.rows.length === 1 && /^결석은 '과제\+소감문'으로 내야/.test(partTodo.note), partTodo.note);
 ok('결석했어도 과제+소감문을 냈으면 빠진다', !partTodo.lectures.some(c => c.startsWith('1강')),
    partTodo.lectures.join(' | '));
 ok('나온 주는 예습과제만으로 빠진다', partTodo.lectures.length === 1,
@@ -780,21 +780,22 @@ const sayTodo = await todoOf(say.page);
 const sayRow = (lec) => sayTodo.rows.find(r => r.lecture === lec) || {};
 ok('결석 셋이 먼저, 나온 주 둘이 뒤', sayTodo.lectures.join(',') === '1강,2강,3강,4강,5강',
    sayTodo.lectures.join(','));
-ok("제목은 '내야 할 과제 5건'", sayTodo.title === '📝 내야 할 과제 5건', sayTodo.title);
-ok("결석 · 안 냄 → '과제+소감문 내기'",
-   sayRow('1강').badge === '결석' && sayRow('1강').need === '과제+소감문 내기' && !sayRow('1강').sub,
+ok("제목은 '제출할 과제·소감문 5건'", sayTodo.title === '📝 제출할 과제·소감문 5건', sayTodo.title);
+ok("결석 · 안 냄 → '과제+소감문 필요'",
+   sayRow('1강').badge === '결석' && sayRow('1강').need === '과제+소감문 필요' && !sayRow('1강').sub,
    JSON.stringify(sayRow('1강')));
-ok("결석 · 과제만 → '소감문 빠짐' · '과제+소감문'으로 다시",
-   sayRow('2강').badge === '결석' && sayRow('2강').need === '소감문 빠짐'
+ok("결석 · 과제만 → '소감문 필요' · '과제+소감문'으로 다시",
+   sayRow('2강').badge === '결석' && sayRow('2강').need === '소감문 필요'
    && sayRow('2강').sub === "과제는 냈어요 → '과제+소감문'으로 다시", JSON.stringify(sayRow('2강')));
 ok('결석 · 종류 미기재 → 낸 것을 적고 다시 내라고',
-   sayRow('3강').badge === '결석' && sayRow('3강').need === "'과제+소감문'이 아니에요"
+   sayRow('3강').badge === '결석' && sayRow('3강').need === "'과제+소감문' 필요"
    && sayRow('3강').sub === "낸 것: 종류 미기재 → '과제+소감문'으로 다시", JSON.stringify(sayRow('3강')));
-ok("출석 · 안 냄 → '출석' 배지 · '과제 내기'",
-   sayRow('4강').badge === '출석' && sayRow('4강').need === '과제 내기', JSON.stringify(sayRow('4강')));
-ok("돌봄 · 안 냄 → '돌봄' 배지 · '과제 내기'",
-   sayRow('5강').badge === '돌봄' && sayRow('5강').need === '과제 내기', JSON.stringify(sayRow('5강')));
-ok('소감문 규칙이 붙는다', /따로 내면 인정 안 돼요/.test(sayTodo.note), sayTodo.note);
+ok("출석 · 안 냄 → '출석' 배지 · '과제 필요'",
+   sayRow('4강').badge === '출석' && sayRow('4강').need === '과제 필요', JSON.stringify(sayRow('4강')));
+ok("돌봄 · 안 냄 → '돌봄' 배지 · '과제 필요'",
+   sayRow('5강').badge === '돌봄' && sayRow('5강').need === '과제 필요', JSON.stringify(sayRow('5강')));
+ok('소감문 규칙이 한 문장으로 붙는다',
+   sayTodo.note === "결석은 '과제+소감문'으로 내야 출석으로 인정돼요.", sayTodo.note);
 
 // 한 줄의 세 칸이 같은 높이에 선다 — 회차 · 배지 · 본문이 엇갈리면 어느 줄 것인지 헷갈린다.
 // 폰 폭(390 · 360)에서 상자 밖으로 넘치지 않는다.
