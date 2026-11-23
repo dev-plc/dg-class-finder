@@ -781,7 +781,7 @@ const HOMEWORK_PREP_ONLY = '과제';
  * 할 일 한 줄.
  *
  *   결석 · 아무것도 안 냄  → 과제+소감문 필요
- *   결석 · '과제' 만 냄    → 소감문 필요 (아랫줄: '과제+소감문' 으로 다시)
+ *   결석 · '과제' 만 냄    → 소감문 필요 (아랫줄: '과제+소감문' 으로 다시 제출)
  *   결석 · 그 밖의 종류    → '과제+소감문' 필요 (아랫줄: 낸 것)
  *   출석 · 돌봄 · 안 냄    → 과제 필요
  *
@@ -804,10 +804,10 @@ function todoRowHtml(m) {
         need = '과제+소감문 필요';
     } else if (m.kinds.every(k => String(k).trim() === HOMEWORK_PREP_ONLY)) {
         need = '소감문 필요';
-        sub = ['과제는 냈어요 →', "'과제+소감문'으로 다시"];
+        sub = ['과제는 냈어요 →', "'과제+소감문'으로 다시 제출"];
     } else {
         need = "'과제+소감문' 필요";
-        sub = [`낸 것: ${homeworkKindLabel(m.kinds)} →`, "'과제+소감문'으로 다시"];
+        sub = [`낸 것: ${homeworkKindLabel(m.kinds)} →`, "'과제+소감문'으로 다시 제출"];
     }
 
     const cls = absent ? 'absent' : 'prep';

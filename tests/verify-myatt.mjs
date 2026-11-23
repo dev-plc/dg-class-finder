@@ -744,8 +744,8 @@ ok('결석한 주에 과제만 낸 것은 목록에 남는다', partTodo.lecture
 const part2 = partTodo.rows.find(r => r.lecture === '2강') || {};
 ok("결석 · 과제만 → '소감문 필요'", part2.badge === '결석' && part2.need === '소감문 필요',
    JSON.stringify(part2));
-ok("다시 낼 방법을 적는다 ('과제+소감문'으로 다시)",
-   part2.sub === "과제는 냈어요 → '과제+소감문'으로 다시", part2.sub);
+ok("다시 낼 방법을 적는다 ('과제+소감문'으로 다시 제출)",
+   part2.sub === "과제는 냈어요 → '과제+소감문'으로 다시 제출", part2.sub);
 // 사용자 보고: 결석분만 있으면 라벨이 안 붙어 '결석이라 소감문까지' 가 안 보였다.
 ok('결석분만 있어도 배지와 소감문 규칙이 붙는다',
    partTodo.rows.length === 1 && /^결석은 '과제\+소감문'으로 내야/.test(partTodo.note), partTodo.note);
@@ -784,12 +784,12 @@ ok("제목은 '제출할 과제·소감문 5건'", sayTodo.title === '📝 제�
 ok("결석 · 안 냄 → '과제+소감문 필요'",
    sayRow('1강').badge === '결석' && sayRow('1강').need === '과제+소감문 필요' && !sayRow('1강').sub,
    JSON.stringify(sayRow('1강')));
-ok("결석 · 과제만 → '소감문 필요' · '과제+소감문'으로 다시",
+ok("결석 · 과제만 → '소감문 필요' · '과제+소감문'으로 다시 제출",
    sayRow('2강').badge === '결석' && sayRow('2강').need === '소감문 필요'
-   && sayRow('2강').sub === "과제는 냈어요 → '과제+소감문'으로 다시", JSON.stringify(sayRow('2강')));
+   && sayRow('2강').sub === "과제는 냈어요 → '과제+소감문'으로 다시 제출", JSON.stringify(sayRow('2강')));
 ok('결석 · 종류 미기재 → 낸 것을 적고 다시 내라고',
    sayRow('3강').badge === '결석' && sayRow('3강').need === "'과제+소감문' 필요"
-   && sayRow('3강').sub === "낸 것: 종류 미기재 → '과제+소감문'으로 다시", JSON.stringify(sayRow('3강')));
+   && sayRow('3강').sub === "낸 것: 종류 미기재 → '과제+소감문'으로 다시 제출", JSON.stringify(sayRow('3강')));
 ok("출석 · 안 냄 → '출석' 배지 · '과제 필요'",
    sayRow('4강').badge === '출석' && sayRow('4강').need === '과제 필요', JSON.stringify(sayRow('4강')));
 ok("돌봄 · 안 냄 → '돌봄' 배지 · '과제 필요'",
